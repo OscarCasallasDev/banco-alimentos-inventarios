@@ -2,17 +2,32 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { cookies } from "next/headers";
 
 /**
  * Obtener información del usuario actual.
- * En producción, verificar token JWT o cookie de sesión.
+ * Lee el user_id de la cookie de sesión y retorna el usuario correspondiente.
  */
 export async function GET() {
   try {
+    const cookieStore = await cookies();
+    const userId = cookieStore.get("user_id")?.value;
+
+    if (!userId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "UNAUTHORIZED",
+            message: "No autenticado",
+          },
+        },
+        { status: 401 }
+      );
+    }
+
     const db = getDb();
 
-    // Demo: retornar usuario admin por defecto
-    // En producción, obtener userId del token/sesión
     const [user] = await db
       .select({
         id: users.id,
@@ -25,7 +40,7 @@ export async function GET() {
         createdAt: users.createdAt,
       })
       .from(users)
-      .where(eq(users.username, "admin"))
+      .where(eq(users.id, userId))
       .limit(1);
 
     if (!user) {
@@ -34,7 +49,7 @@ export async function GET() {
           success: false,
           error: {
             code: "UNAUTHORIZED",
-            message: "No autenticado",
+            message: "Usuario no encontrado",
           },
         },
         { status: 401 }

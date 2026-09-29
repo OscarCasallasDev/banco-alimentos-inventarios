@@ -213,12 +213,12 @@ VALUES (
 
 INSERT INTO audit_logs (id, user_id, action, entity, entity_id, result, details, ip_address, created_at)
 VALUES
-  (gen_random_uuid(), (SELECT id FROM users WHERE email = 'admin@bancoalimentos.org'), 'LOGIN', 'users', NULL, 'SUCCESS', 'Inicio de sesión DEMO', '127.0.0.1', NOW() - INTERVAL '1 hour'),
-  (gen_random_uuid(), (SELECT id FROM users WHERE email = 'admin@bancoalimentos.org'), 'PRODUCT_CREATE', 'products', NULL, 'SUCCESS', 'Carga inicial de productos DEMO', '127.0.0.1', NOW() - INTERVAL '7 days'),
-  (gen_random_uuid(), (SELECT id FROM users WHERE email = 'admin@bancoalimentos.org'), 'ENTRY_CREATE', 'entries', NULL, 'SUCCESS', 'Entrada DEMO registrada', '127.0.0.1', NOW() - INTERVAL '7 days'),
-  (gen_random_uuid(), (SELECT id FROM users WHERE email = 'admin@bancoalimentos.org'), 'ORDER_CREATE', 'orders', NULL, 'SUCCESS', 'Pedido DEMO creado', '127.0.0.1', NOW() - INTERVAL '3 days'),
-  (gen_random_uuid(), (SELECT id FROM users WHERE email = 'admin@bancoalimentos.org'), 'DISPATCH_CREATE', 'dispatches', NULL, 'SUCCESS', 'Despacho DEMO registrado', '127.0.0.1', NOW() - INTERVAL '2 days'),
-  (gen_random_uuid(), (SELECT id FROM users WHERE email = 'admin@bancoalimentos.org'), 'AUDIT_CREATE', 'audits', NULL, 'SUCCESS', 'Auditoría DEMO completada', '127.0.0.1', NOW() - INTERVAL '1 day');
+  (gen_random_uuid(), (SELECT id FROM users WHERE username = 'admin'), 'LOGIN', 'users', NULL, 'SUCCESS', 'Inicio de sesión DEMO', '127.0.0.1', NOW() - INTERVAL '1 hour'),
+  (gen_random_uuid(), (SELECT id FROM users WHERE username = 'admin'), 'PRODUCT_CREATE', 'products', NULL, 'SUCCESS', 'Carga inicial de productos DEMO', '127.0.0.1', NOW() - INTERVAL '7 days'),
+  (gen_random_uuid(), (SELECT id FROM users WHERE username = 'admin'), 'ENTRY_CREATE', 'entries', NULL, 'SUCCESS', 'Entrada DEMO registrada', '127.0.0.1', NOW() - INTERVAL '7 days'),
+  (gen_random_uuid(), (SELECT id FROM users WHERE username = 'admin'), 'ORDER_CREATE', 'orders', NULL, 'SUCCESS', 'Pedido DEMO creado', '127.0.0.1', NOW() - INTERVAL '3 days'),
+  (gen_random_uuid(), (SELECT id FROM users WHERE username = 'admin'), 'DISPATCH_CREATE', 'dispatches', NULL, 'SUCCESS', 'Despacho DEMO registrado', '127.0.0.1', NOW() - INTERVAL '2 days'),
+  (gen_random_uuid(), (SELECT id FROM users WHERE username = 'admin'), 'AUDIT_CREATE', 'audits', NULL, 'SUCCESS', 'Auditoría DEMO completada', '127.0.0.1', NOW() - INTERVAL '1 day');
 
 -- ============================================================
 -- FIN DEL SEED

@@ -1,295 +1,193 @@
 # Estado Actual del Proyecto
 
-## Sistema de Gestión, Trazabilidad y Conciliación de Inventarios
-### Banco Arquidiocesano de Alimentos de Ibagué
+**Última actualización:** 2026-09-28
 
 ---
 
-## Resumen de Implementación
+## Resumen Ejecutivo
 
-### FASE 0: Análisis del entorno
-**Estado**: Completado
-
-- Análisis de requerimientos del Banco de Alimentos
-- Definición de stack tecnológico
-- Configuración inicial del proyecto
+El proyecto tiene una **base sólida** con todas las tablas, API routes y páginas principales implementadas. Sin embargo, hay **problemas críticos de autenticación** que impiden el acceso al sistema, y varias funcionalidades pendientes de implementar.
 
 ---
 
-### FASE 1: Arquitectura + Scaffold
-**Estado**: Completado
+## ✅ Lo que YA está implementado
 
-- Next.js 16 con App Router
-- TypeScript estricto
-- Tailwind CSS 4
-- Drizzle ORM
-- Estructura de carpetas definida
+### Base de datos (COMPLETO)
+- 18 tablas con Drizzle ORM
+- 14 ENUM types
+- Migraciones SQL (0000, 0001)
+- Seed data con productos, bodegas, documentos demo
+- Relaciones y foreign keys
 
----
+### API Routes (20 rutas)
+- ✅ Autenticación (login, logout, me)
+- ✅ Productos CRUD completo
+- ✅ Bodegas CRUD completo
+- ✅ Categorías CRUD
+- ✅ Usuarios CRUD
+- ✅ Inventario (listado)
+- ✅ Entradas (crear + listar)
+- ✅ Pedidos (crear + listar)
+- ✅ Facturas (crear + listar)
+- ✅ Recibos (crear + listar)
+- ✅ Despachos (crear + listar)
+- ✅ Auditoría (crear + listar)
+- ✅ Dashboard stats
+- ✅ Reportes
+- ✅ Integración Siigo (export Excel)
 
-### FASE 2: Base de datos
-**Estado**: Completado
+### Frontend (14 páginas)
+- ✅ Dashboard con estadísticas
+- ✅ Productos (CRUD con modal)
+- ✅ Bodegas (CRUD)
+- ✅ Inventario (listado)
+- ✅ Entradas, Salidas, Pedidos, Facturas, Recibos
+- ✅ Auditoría
+- ✅ Reportes
+- ✅ Integración Siigo (interfaz demo)
+- ✅ Usuarios (CRUD)
+- ✅ Configuración
+- ✅ Layout responsive con sidebar
 
-- Schema completo con 18 tablas
-- Migraciones SQL
-- Seed data con datos demo
-- Conexión a Supabase configurada
-- Índices optimizados
+### Validaciones
+- ✅ Schemas Zod para todas las entidades
+- ✅ Manejo de errores centralizado
+- ✅ Tests de validaciones
 
-**Tablas implementadas**:
-- users, roles, categories, products, warehouses
-- inventory, inventory_movements
-- entries, entry_items
-- orders, order_items
-- invoices, invoice_items
-- receipts, dispatches, dispatch_items
-- audits, audit_items, audit_logs, documents
-
----
-
-### FASE 3: Autenticación + Layout
-**Estado**: Completado
-
-- Login con usuario y contraseña (no email)
-- Usuario demo: admin / admin123
-- Layout con sidebar responsive
-- Navegación completa
-- Colores institucionales aplicados
-
-**Colores**:
-- Primario: #48151C
-- Acento: #D5C58A
-- Blanco: #FFFFFF
-- Negro: #000000
-
----
-
-### FASE 4: Productos + Bodegas (CRUD)
-**Estado**: Completado
-
-**Productos**:
-- Listado con búsqueda
-- Crear, editar, eliminar (soft delete)
-- Categorías
-- Validaciones
-
-**Bodegas**:
-- Listado con búsqueda
-- Crear, editar, eliminar (soft delete)
-- Tipos: Propia, Tercero, Campaña, Programa
-- Validaciones
+### Integración Siigo (DEMO)
+- ✅ Formatos definidos (E1, E3, N3, N5, SF1, F2, R1-R4)
+- ✅ Exportador Excel funcional
+- ✅ Tests del exportador
 
 ---
 
-### FASE 5: Inventario + Entradas
-**Estado**: Completado
+## ❌ Problemas CRÍTICOS (que impiden usar el sistema)
 
-**Inventario**:
-- Consulta de stock por producto y bodega
-- Alertas de stock bajo
-- Historial de movimientos
+### 1. Autenticación rota ⚠️ PRIORIDAD MÁXIMA
+- **Problema:** No hay archivo `.env` con `DATABASE_URL`
+- **Consecuencia:** La app no puede conectar a la base de datos
+- **Solución:** Crear `.env.local` con las credenciales de Supabase
 
-**Entradas**:
-- Registro de ingresos al inventario
-- Formatos: E1, E3, N3, N5
-- Actualización automática de inventario
-- Trazabilidad completa
+### 2. Seed con errores
+- **Problema:** El seed.sql referencia `users.email` que ya no existe
+- **Consecuencia:** No se puede ejecutar el seed para crear el usuario admin
+- **Solución:** Corregido en seed.sql (usar `username` en lugar de `email`)
 
----
+### 3. Sin middleware de protección
+- **Problema:** Las rutas no están protegidas del lado del servidor
+- **Consecuencia:** Cualquiera puede acceder a las API sin autenticarse
+- **Solución:** Creado `src/middleware.ts`
 
-### FASE 6: Salidas (Pedido → Factura → Recibo → Despacho)
-**Estado**: Completado
+### 4. Sesión no validada
+- **Problema:** `/api/auth/me` estaba hardcodeado
+- **Consecuencia:** No importa quién inicie sesión, siempre retorna admin
+- **Solución:** Corregido para leer la cookie `user_id`
 
-**Pedidos**:
-- Creación de pedidos de salida
-- Verificación de stock
-- Estados: Borrador, Aprobado, Facturado, Despachado, Cancelado
-
-**Facturas**:
-- Generación de facturas desde pedidos
-- Formatos: SF1, F2
-- Estados: Borrador, Generada, Asociada, Cancelada
-
-**Recibos**:
-- Generación de recibos desde facturas
-- Formatos: R1, R2, R3, R4
-- Estados: Borrador, Generado, Cancelado
-
-**Despachos**:
-- Registro de despachos desde recibos
-- Descuento automático de inventario
-- Estados: Pendiente, Preparado, Despachado, Cancelado
+### 5. Logout no limpia cookies
+- **Problema:** El endpoint de logout no hacía nada
+- **Consecuencia:** La sesión persiste después de cerrar sesión
+- **Solución:** Corregido para eliminar cookies
 
 ---
 
-### FASE 7: Auditoría + Reportes
-**Estado**: Completado
+## 🔧 Mejoras necesarias (por prioridad)
 
-**Auditoría**:
-- Creación de auditorías de inventario
-- Comparación sistema vs físico
-- Cálculo automático de diferencias
-- Estados: Pendiente, En Progreso, Completada, Cancelada
+### Alta prioridad
+1. **Configurar base de datos** - Crear `.env.local` con credenciales reales
+2. **Ejecutar migraciones y seed** - Para crear las tablas y el usuario admin
+3. **Verificar login** - Probar que admin/admin123 funciona
+4. **Agregar usuario_id real a las API** - Actualmente usa un UUID hardcodeado
 
-**Reportes**:
-- Inventario por bodega
-- Productos con stock bajo
-- Movimientos recientes
-- Diferencias de auditoría
+### Media prioridad
+5. **Paginación en listados** - Las API retornan todos los registros
+6. **Búsqueda y filtros** - Las API no soportan query params
+7. **Logging de auditoría** - La tabla `audit_logs` existe pero no se llena
+8. **Manejo de errores en frontend** - Mostrar errores al usuario
+9. **Estados de carga** - Skeleton loaders en las páginas
+10. **Confirmaciones de acciones** - Para operaciones destructivas
 
----
-
-### FASE 8: Integración Siigo
-**Estado**: Parcial (PENDIENTE validación)
-
-**Formatos pendientes**:
-- E1, E3, N3, N5 (Entradas)
-- SF1, F2 (Facturas)
-- R1, R2, R3, R4 (Recibos)
-
-**Pendientes de validación con el Banco**:
-- Significado exacto de los formatos
-- Diferencia funcional SF1/F2
-- Relación R1/R2/R3/R4 con SF1/F2
-- Plantillas ExcelSiigo (GET/PUSH)
-- Nombres definitivos de bodegas virtuales
-- Formato físico de soportes
+### Baja prioridad
+11. **Tests de integración** - Probar flujos completos
+12. **Tests E2E** - Con Playwright o Cypress
+13. **Componentes reutilizables** - La carpeta `components/` está vacía
+14. **Custom hooks** - La carpeta `hooks/` está vacía
+15. **Notificaciones toast** - Feedback visual al usuario
+16. **Exportar a PDF** - Documentos imprimibles
+17. **Notificaciones por email** - Alertas de stock bajo
+18. **Respaldo automático** - Backup de base de datos
 
 ---
 
-### FASE 9: Pruebas
-**Estado**: Pendiente
+## 📋 Pendientes de validación con el Banco
 
-- Pruebas unitarias
-- Pruebas de integración
-- Pruebas de usabilidad
-- Pruebas de rendimiento
+Estos puntos requieren información del Banco de Alimentos:
 
----
-
-### FASE 10: Deploy
-**Estado**: Pendiente
-
-- Configuración de Vercel
-- Configuración de Supabase
-- Variables de entorno
-- CI/CD
+- [ ] Significado exacto de formatos E1/E3/N3/N5
+- [ ] Diferencia funcional SF1/F2
+- [ ] Relación R1/R2/R3/R4 con SF1/F2
+- [ ] Plantillas ExcelSiigo (GET/PUSH)
+- [ ] Nombres definitivos de bodegas virtuales
+- [ ] Formato físico de soportes
 
 ---
 
-## Estructura de Archivos Creados
-
-```
-src/
-├── app/
-│   ├── (protected)/
-│   │   ├── auditoria/page.tsx
-│   │   ├── bodegas/page.tsx
-│   │   ├── configuracion/page.tsx
-│   │   ├── entradas/page.tsx
-│   │   ├── facturas/page.tsx
-│   │   ├── integracion-siigo/page.tsx
-│   │   ├── inventario/page.tsx
-│   │   ├── layout.tsx
-│   │   ├── page.tsx
-│   │   ├── pedidos/page.tsx
-│   │   ├── productos/page.tsx
-│   │   ├── recibos/page.tsx
-│   │   ├── reportes/page.tsx
-│   │   ├── salidas/page.tsx
-│   │   └── usuarios/page.tsx
-│   ├── api/
-│   │   ├── auditoria/route.ts
-│   │   ├── auth/
-│   │   │   ├── login/route.ts
-│   │   │   ├── logout/route.ts
-│   │   │   └── me/route.ts
-│   │   ├── bodegas/
-│   │   │   ├── route.ts
-│   │   │   └── [id]/route.ts
-│   │   ├── categorias/route.ts
-│   │   ├── dashboard/route.ts
-│   │   ├── despachos/route.ts
-│   │   ├── entradas/route.ts
-│   │   ├── facturas/route.ts
-│   │   ├── inventario/route.ts
-│   │   ├── pedidos/route.ts
-│   │   ├── productos/
-│   │   │   ├── route.ts
-│   │   │   └── [id]/route.ts
-│   │   ├── recibos/route.ts
-│   │   ├── reportes/route.ts
-│   │   └── usuarios/
-│   │       ├── route.ts
-│   │       └── [id]/route.ts
-│   ├── login/page.tsx
-│   ├── layout.tsx
-│   ├── globals.css
-│   └── page.tsx
-├── lib/
-│   ├── db/
-│   │   ├── client.ts
-│   │   └── schema.ts
-│   └── utils.ts
-└── types/
-    └── index.ts
-
-drizzle/
-├── 0000_wet_nighthawk.sql
-├── 0001_update_users_username.sql
-└── seed.sql
-
-docs/
-├── ARQUITECTURA.md
-├── MODELO_DATOS.md
-├── INTEGRACION_SIIGO.md
-├── RESUMEN_IMPLEMENTACION.md
-└── ESTADO_ACTUAL.md
-```
-
----
-
-## Credenciales de Acceso
-
-| Usuario | Contraseña | Rol |
-|---------|------------|-----|
-| admin | admin123 | SUPERADMIN |
-
----
-
-## Configuración de Supabase
-
-| Variable | Valor |
-|----------|-------|
-| NEXT_PUBLIC_SUPABASE_URL | https://hszylkcojdjnbjatuhnv.supabase.co |
-| NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY | sb_publishable_674Wkrhp-3VOXOxmOA_zAg_G6QiQ1w4 |
-
----
-
-## Comandos Disponibles
+## 🚀 Inicio rápido
 
 ```bash
-# Desarrollo
+# 1. Instalar dependencias
+npm install
+
+# 2. Configurar variables de entorno
+cp .env.example .env.local
+# Editar .env.local con tus credenciales de Supabase
+
+# 3. Ejecutar migraciones
+npx drizzle-kit push
+
+# 4. Ejecutar seed (crear usuario admin)
+# Conectar a la base de datos y ejecutar drizzle/seed.sql
+
+# 5. Iniciar desarrollo
 npm run dev
 
-# Build
-npm run build
-
-# Iniciar producción
-npm start
-
-# Lint
-npm run lint
+# 6. Abrir http://localhost:3000
+# Usuario: admin
+# Contraseña: admin123
 ```
 
 ---
 
-## Próximos Pasos
+## 📊 Progreso por FASE
 
-1. **FASE 8**: Validar formatos Siigo con el Banco
-2. **FASE 9**: Implementar pruebas
-3. **FASE 10**: Deploy a producción
+| FASE | Descripción | Estado |
+|------|-------------|--------|
+| FASE 0 | Análisis del entorno | ✅ Completado |
+| FASE 1 | Arquitectura + Scaffold | ✅ Completado |
+| FASE 2 | Base de datos (schema + migraciones + seed) | ✅ Completado |
+| FASE 3 | Autenticación + Layout | ⚠️ Parcial (login roto) |
+| FASE 4 | Productos + Bodegas (CRUD) | ✅ Completado |
+| FASE 5 | Inventario + Entradas | ✅ Completado |
+| FASE 6 | Salidas (Pedido → Factura → Recibo → Despacho) | ✅ Completado |
+| FASE 7 | Auditoría + Reportes | ✅ Completado |
+| FASE 8 | Integración Siigo (DEMO) | ⚠️ Demo only |
+| FASE 9 | Pruebas | ⚠️ Solo validaciones |
+| FASE 10 | Deploy | ⏳ Pendiente |
 
 ---
 
-*Última actualización: FASE 7 — Auditoría + Reportes*
+## 🔐 Notas de seguridad
+
+- **NUNCA** subir `.env.local` al repositorio
+- **NUNCA** exponer `service_role_key` de Supabase
+- Las contraseñas usan SHA-256 (demo) - en producción usar bcrypt
+- No hay rate limiting en login (vulnerable a fuerza bruta)
+- No hay CSRF protection
+- No hay RLS policies en Supabase
+
+---
+
+## 📞 Soporte
+
+Para dudas o problemas, contactar a:
+- **Desarrollador:** Oscar Daniel Casallas Lozano
+- **Programa:** Paz y Región 2026B — Universidad de Ibagué

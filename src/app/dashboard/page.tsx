@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Package,
   Boxes,
@@ -10,6 +11,14 @@ import {
   ShieldCheck,
   TrendingUp,
   TrendingDown,
+  ClipboardList,
+  FileText,
+  Receipt,
+  Warehouse,
+  BarChart3,
+  Users,
+  Settings,
+  Link2,
 } from "lucide-react";
 import { formatNumber } from "@/lib/utils";
 
@@ -36,6 +45,93 @@ interface DashboardData {
   pendingAudits: number;
   detectedDifferences: number;
 }
+
+const modules = [
+  {
+    name: "Entradas",
+    description: "Registrar ingresos de productos al inventario",
+    href: "/entradas",
+    icon: ArrowDownToLine,
+    color: "bg-green-600",
+  },
+  {
+    name: "Salidas",
+    description: "Gestionar salidas y despachos de productos",
+    href: "/salidas",
+    icon: ArrowUpFromLine,
+    color: "bg-orange-600",
+  },
+  {
+    name: "Pedidos",
+    description: "Crear y gestionar pedidos de productos",
+    href: "/pedidos",
+    icon: ClipboardList,
+    color: "bg-blue-600",
+  },
+  {
+    name: "Facturas",
+    description: "Generar y consultar facturas",
+    href: "/facturas",
+    icon: FileText,
+    color: "bg-purple-600",
+  },
+  {
+    name: "Recibos",
+    description: "Gestionar recibos de entrega",
+    href: "/recibos",
+    icon: Receipt,
+    color: "bg-teal-600",
+  },
+  {
+    name: "Auditoría",
+    description: "Realizar auditorías de inventario",
+    href: "/auditoria",
+    icon: ShieldCheck,
+    color: "bg-red-600",
+  },
+  {
+    name: "Inventario",
+    description: "Consultar stock por producto y bodega",
+    href: "/inventario",
+    icon: Boxes,
+    color: "bg-indigo-600",
+  },
+  {
+    name: "Productos",
+    description: "Gestionar catálogo de productos",
+    href: "/productos",
+    icon: Package,
+    color: "bg-pink-600",
+  },
+  {
+    name: "Bodegas",
+    description: "Administrar bodegas y almacenes",
+    href: "/bodegas",
+    icon: Warehouse,
+    color: "bg-yellow-600",
+  },
+  {
+    name: "Reportes",
+    description: "Ver reportes y exportar datos",
+    href: "/reportes",
+    icon: BarChart3,
+    color: "bg-cyan-600",
+  },
+  {
+    name: "Usuarios",
+    description: "Gestionar usuarios del sistema",
+    href: "/usuarios",
+    icon: Users,
+    color: "bg-gray-600",
+  },
+  {
+    name: "Integración Siigo",
+    description: "Exportar datos a Siigo Pyme",
+    href: "/integracion-siigo",
+    icon: Link2,
+    color: "bg-emerald-600",
+  },
+];
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -128,6 +224,38 @@ export default function DashboardPage() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Módulos del sistema */}
+      <div>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+          Módulos del Sistema
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {modules.map((module) => (
+            <Link
+              key={module.href}
+              href={module.href}
+              className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md hover:border-primary-300 transition-all group"
+            >
+              <div className="flex items-start gap-4">
+                <div
+                  className={`w-12 h-12 ${module.color} rounded-xl flex items-center justify-center flex-shrink-0`}
+                >
+                  <module.icon className="w-6 h-6 text-white" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-semibold text-gray-900 group-hover:text-primary-700 transition-colors">
+                    {module.name}
+                  </h3>
+                  <p className="text-sm text-gray-500 mt-1 line-clamp-2">
+                    {module.description}
+                  </p>
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
       </div>
 
       {/* Movimientos recientes */}
