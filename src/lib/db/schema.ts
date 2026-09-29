@@ -157,6 +157,7 @@ export const users = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     username: varchar("username", { length: 100 }).notNull().unique(),
+    email: varchar("email", { length: 255 }).notNull().unique(),
     passwordHash: text("password_hash").notNull(),
     firstName: varchar("first_name", { length: 100 }).notNull(),
     lastName: varchar("last_name", { length: 100 }).notNull(),
@@ -168,6 +169,7 @@ export const users = pgTable(
   },
   (table) => [
     index("idx_users_username").on(table.username),
+    index("idx_users_email").on(table.email),
     index("idx_users_role").on(table.role),
     index("idx_users_status").on(table.status),
   ]

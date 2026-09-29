@@ -1,114 +1,87 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
-import { getDb } from "@/lib/db/client";
-import { warehouses } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { supabase } from "@/lib/db/supabase-client";
 
-const updateSchema = z.object({
-  code: z.string().min(1).optional(),
-  name: z.string().min(1).optional(),
-  description: z.string().optional(),
-  type: z.enum(["PROPIA", "TERCERO", "CAMPAIGN", "PROGRAM"]).optional(),
-  status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
-  observations: z.string().optional(),
-});
-
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const db = getDb();
-    const [warehouse] = await db
-      .select()
-      .from(warehouses)
-      .where(eq(warehouses.id, id))
-      .limit(1);
+    const { data, error } = await supabase
+      .from("warehouses")
+      .select("*")
+      .eq("id", id)
+      .single();
 
-    if (!warehouse) {
+    if (error) {
+      if (error.code === "PGRST116") {
+        return NextResponse.json(
+          { success: false, error: { code: "NOT_FOUND", message: "bodega no encontrado" } },
+          { status: 404 }
+        );
+      }
       return NextResponse.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Bodega no encontrada" } },
-        { status: 404 }
+        { success: false, error: { code: "DB_ERROR", message: "Error de base de datos" } },
+        { status: 500 }
       );
     }
 
-    return NextResponse.json({ success: true, data: warehouse });
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     console.error("Error obteniendo bodega:", error);
     return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error al obtener bodega" } },
+      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
       { status: 500 }
     );
   }
 }
 
-export async function PUT(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const body = await request.json();
-    const data = updateSchema.parse(body);
 
-    const db = getDb();
-    const [updated] = await db
-      .update(warehouses)
-      .set({ ...data, updatedAt: new Date() })
-      .where(eq(warehouses.id, id))
-      .returning();
+    const { data, error } = await supabase
+      .from("warehouses")
+      .update(body)
+      .eq("id", id)
+      .select()
+      .single();
 
-    if (!updated) {
+    if (error) {
       return NextResponse.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Bodega no encontrada" } },
-        { status: 404 }
+        { success: false, error: { code: "DB_ERROR", message: "Error actualizando bodega" } },
+        { status: 500 }
       );
     }
 
-    return NextResponse.json({ success: true, data: updated });
+    return NextResponse.json({ success: true, data });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, error: { code: "VALIDATION_ERROR", message: "Datos inválidos", details: error.flatten().fieldErrors } },
-        { status: 400 }
-      );
-    }
     console.error("Error actualizando bodega:", error);
     return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error al actualizar bodega" } },
+      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
       { status: 500 }
     );
   }
 }
 
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const db = getDb();
+    const { error } = await supabase
+      .from("warehouses")
+      .delete()
+      .eq("id", id);
 
-    // Soft delete: cambiar estado a INACTIVE
-    const [deleted] = await db
-      .update(warehouses)
-      .set({ status: "INACTIVE", updatedAt: new Date() })
-      .where(eq(warehouses.id, id))
-      .returning();
-
-    if (!deleted) {
+    if (error) {
       return NextResponse.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Bodega no encontrada" } },
-        { status: 404 }
+        { success: false, error: { code: "DB_ERROR", message: "Error eliminando bodega" } },
+        { status: 500 }
       );
     }
 
-    return NextResponse.json({ success: true, data: deleted });
+    return NextResponse.json({ success: true, message: "bodega eliminado correctamente" });
   } catch (error) {
     console.error("Error eliminando bodega:", error);
     return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error al elimin bodega" } },
+      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
       { status: 500 }
     );
   }

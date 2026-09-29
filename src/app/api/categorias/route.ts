@@ -1,27 +1,25 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
-import { getDb } from "@/lib/db/client";
-import { categories } from "@/lib/db/schema";
-import { desc } from "drizzle-orm";
-
-const categorySchema = z.object({
-  name: z.string().min(1, "El nombre es requerido"),
-  description: z.string().optional(),
-});
+import { supabase } from "@/lib/db/supabase-client";
 
 export async function GET() {
   try {
-    const db = getDb();
-    const allCategories = await db
-      .select()
-      .from(categories)
-      .orderBy(desc(categories.createdAt));
+    const { data, error } = await supabase
+      .from("categories")
+      .select("*")
+      .order("created_at", { ascending: false });
 
-    return NextResponse.json({ success: true, data: allCategories });
+    if (error) {
+      return NextResponse.json(
+        { success: false, error: { code: "DB_ERROR", message: "Error al obtener categorías" } },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     console.error("Error obteniendo categorías:", error);
     return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error al obtener categorías" } },
+      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
       { status: 500 }
     );
   }
@@ -30,25 +28,25 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const data = categorySchema.parse(body);
 
-    const db = getDb();
-    const [newCategory] = await db
-      .insert(categories)
-      .values({ name: data.name, description: data.description })
-      .returning();
+    const { data, error } = await supabase
+      .from("categories")
+      .insert(body)
+      .select()
+      .single();
 
-    return NextResponse.json({ success: true, data: newCategory }, { status: 201 });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
+    if (error) {
       return NextResponse.json(
-        { success: false, error: { code: "VALIDATION_ERROR", message: "Datos inválidos", details: error.flatten().fieldErrors } },
-        { status: 400 }
+        { success: false, error: { code: "DB_ERROR", message: "Error creando categoría" } },
+        { status: 500 }
       );
     }
+
+    return NextResponse.json({ success: true, data }, { status: 201 });
+  } catch (error) {
     console.error("Error creando categoría:", error);
     return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error al crear categoría" } },
+      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
       { status: 500 }
     );
   }

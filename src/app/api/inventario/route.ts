@@ -1,35 +1,52 @@
 import { NextResponse } from "next/server";
-import { getDb } from "@/lib/db/client";
-import { inventory, products, warehouses } from "@/lib/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { supabase } from "@/lib/db/supabase-client";
 
 export async function GET() {
   try {
-    const db = getDb();
-    const items = await db
-      .select({
-        id: inventory.id,
-        productId: inventory.productId,
-        productName: products.name,
-        productCode: products.code,
-        warehouseId: inventory.warehouseId,
-        warehouseName: warehouses.name,
-        warehouseCode: warehouses.code,
-        quantity: inventory.quantity,
-        lastMovementAt: inventory.lastMovementAt,
-        createdAt: inventory.createdAt,
-        updatedAt: inventory.updatedAt,
-      })
-      .from(inventory)
-      .innerJoin(products, eq(inventory.productId, products.id))
-      .innerJoin(warehouses, eq(inventory.warehouseId, warehouses.id))
-      .orderBy(products.name);
+    const { data, error } = await supabase
+      .from("inventory")
+      .select("*")
+      .order("created_at", { ascending: false });
 
-    return NextResponse.json({ success: true, data: items });
+    if (error) {
+      return NextResponse.json(
+        { success: false, error: { code: "DB_ERROR", message: "Error al obtener inventarios" } },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true, data });
   } catch (error) {
-    console.error("Error obteniendo inventario:", error);
+    console.error("Error obteniendo inventarios:", error);
     return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error al obtener inventario" } },
+      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+
+    const { data, error } = await supabase
+      .from("inventory")
+      .insert(body)
+      .select()
+      .single();
+
+    if (error) {
+      return NextResponse.json(
+        { success: false, error: { code: "DB_ERROR", message: "Error creando inventario" } },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true, data }, { status: 201 });
+  } catch (error) {
+    console.error("Error creando inventario:", error);
+    return NextResponse.json(
+      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
       { status: 500 }
     );
   }

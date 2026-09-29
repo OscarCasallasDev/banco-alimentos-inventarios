@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getDb } from "@/lib/db/client";
-import { users } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { supabase } from "@/lib/db/supabase-client";
 import { createHash, timingSafeEqual, randomBytes } from "crypto";
 
 const loginSchema = z.object({
@@ -19,23 +17,32 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { username, password } = loginSchema.parse(body);
 
-    const db = getDb();
-
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.username, username))
+    // Buscar usuario por username
+    const { data: users, error } = await supabase
+      .from("users")
+      .select("*")
+      .eq("username", username)
       .limit(1);
 
-    if (!user) {
+    if (error) {
+      return NextResponse.json(
+        { success: false, error: { code: "DB_ERROR", message: "Error de base de datos" } },
+        { status: 500 }
+      );
+    }
+
+    if (!users || users.length === 0) {
       return NextResponse.json(
         { success: false, error: { code: "INVALID_CREDENTIALS", message: "Credenciales inválidas" } },
         { status: 401 }
       );
     }
 
+    const user = users[0];
+
+    // Verificar contraseña
     const hashedInput = hashPassword(password);
-    const storedHash = Buffer.from(user.passwordHash, "hex");
+    const storedHash = Buffer.from(user.password_hash, "hex");
     const inputHash = Buffer.from(hashedInput, "hex");
 
     if (storedHash.length !== inputHash.length || !timingSafeEqual(storedHash, inputHash)) {
@@ -45,6 +52,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // Verificar estado del usuario
     if (user.status !== "ACTIVE") {
       return NextResponse.json(
         { success: false, error: { code: "UNAUTHORIZED", message: "Usuario inactivo" } },
@@ -52,8 +60,13 @@ export async function POST(request: Request) {
       );
     }
 
-    await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
+    // Actualizar último login
+    await supabase
+      .from("users")
+      .update({ last_login_at: new Date().toISOString() })
+      .eq("id", user.id);
 
+    // Crear token de sesión
     const sessionToken = randomBytes(32).toString("hex");
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 24);
@@ -63,8 +76,8 @@ export async function POST(request: Request) {
       data: {
         id: user.id,
         username: user.username,
-        firstName: user.firstName,
-        lastName: user.lastName,
+        firstName: user.first_name,
+        lastName: user.last_name,
         role: user.role,
         status: user.status,
       },

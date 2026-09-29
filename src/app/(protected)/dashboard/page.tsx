@@ -197,11 +197,30 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-600 mt-1">
-          Resumen general del sistema de inventarios
-        </p>
+      {/* Banner con logo y colores del Banco */}
+      <div className="bg-gradient-to-r from-primary-600 to-primary-700 rounded-2xl p-6 lg:p-8 text-white">
+        <div className="flex flex-col lg:flex-row items-center gap-6">
+          <div className="flex-shrink-0">
+            <div className="w-20 h-20 lg:w-24 lg:h-24 bg-white rounded-2xl p-2 shadow-lg">
+              <img
+                src="/logo2.jpeg"
+                alt="Banco de Alimentos"
+                className="w-full h-full object-contain rounded-xl"
+              />
+            </div>
+          </div>
+          <div className="text-center lg:text-left">
+            <h1 className="text-2xl lg:text-3xl font-bold">
+              Banco Arquidiocesano de Alimentos de Ibagué
+            </h1>
+            <p className="text-primary-100 mt-2 text-lg">
+              Sistema de Gestión, Trazabilidad y Conciliación de Inventarios
+            </p>
+            <p className="text-primary-200 mt-1 text-sm">
+              Bienvenido al sistema de gestión de inventarios
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Tarjetas de estadísticas */}

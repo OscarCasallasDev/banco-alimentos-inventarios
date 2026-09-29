@@ -302,22 +302,31 @@ export default function ProductosPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Código *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Código <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
                     value={form.code}
-                    onChange={(e) => setForm({ ...form, code: e.target.value })}
+                    onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    placeholder="Ej: GRN-001"
                     required
                   />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Letras mayúsculas, números y guiones. Ej: GRN-001
+                  </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nombre <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    placeholder="Ej: Arroz"
                     required
                   />
                 </div>
@@ -330,6 +339,7 @@ export default function ProductosPage() {
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                   rows={2}
+                  placeholder="Descripción del producto..."
                 />
               </div>
 
@@ -365,9 +375,11 @@ export default function ProductosPage() {
                   <input
                     type="number"
                     step="0.01"
+                    min="0"
                     value={form.weight}
                     onChange={(e) => setForm({ ...form, weight: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    placeholder="0.00"
                   />
                 </div>
                 <div>
@@ -377,16 +389,22 @@ export default function ProductosPage() {
                     value={form.unit}
                     onChange={(e) => setForm({ ...form, unit: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    placeholder="Ej: kg, L, unidad"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Stock Mín.</label>
                   <input
                     type="number"
+                    min="0"
                     value={form.minStock}
                     onChange={(e) => setForm({ ...form, minStock: parseInt(e.target.value) || 0 })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    placeholder="0"
                   />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Alerta cuando el stock sea menor a este valor
+                  </p>
                 </div>
               </div>
 

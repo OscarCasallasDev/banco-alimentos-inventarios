@@ -292,30 +292,37 @@ export default function EntradasPage() {
 
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Formato *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Formato <span className="text-red-500">*</span>
+                  </label>
                   <select
                     value={form.format}
                     onChange={(e) => setForm({ ...form, format: e.target.value as "E1" | "E3" | "N3" | "N5" })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                   >
-                    <option value="E1">E1</option>
-                    <option value="E3">E3</option>
-                    <option value="N3">N3</option>
-                    <option value="N5">N5</option>
+                    <option value="E1">E1 - Entrada de mercancía</option>
+                    <option value="E3">E3 - Entrada por donación</option>
+                    <option value="N3">N3 - Nota de ajuste</option>
+                    <option value="N5">N5 - Nota de contabilización</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Número *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Número <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
                     value={form.number}
                     onChange={(e) => setForm({ ...form, number: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    placeholder="Ej: ENT-2026-0001"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Fecha *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Fecha <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="date"
                     value={form.date}
@@ -334,7 +341,11 @@ export default function EntradasPage() {
                     value={form.nit}
                     onChange={(e) => setForm({ ...form, nit: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    placeholder="Ej: 900.123.456-7"
                   />
+                  <p className="mt-1 text-xs text-gray-500">
+                    NIT del proveedor o donante
+                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Origen</label>
@@ -343,6 +354,7 @@ export default function EntradasPage() {
                     value={form.origin}
                     onChange={(e) => setForm({ ...form, origin: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    placeholder="Ej: Donación Empresa Local"
                   />
                 </div>
               </div>
@@ -353,14 +365,17 @@ export default function EntradasPage() {
                   type="text"
                   value={form.document}
                   onChange={(e) => setForm({ ...form, document: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  className="w-full px-3 py2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  placeholder="Ej: FAC-2026-001"
                 />
               </div>
 
               {/* Items */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-gray-700">Items *</label>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Items <span className="text-red-500">*</span>
+                  </label>
                   <button
                     type="button"
                     onClick={addItem}
@@ -449,6 +464,7 @@ export default function EntradasPage() {
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                   rows={2}
+                  placeholder="Observaciones adicionales..."
                 />
               </div>
 

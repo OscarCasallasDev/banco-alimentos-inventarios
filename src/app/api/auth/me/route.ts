@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import { getDb } from "@/lib/db/client";
-import { users } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { supabase } from "@/lib/db/supabase-client";
 import { cookies } from "next/headers";
 
 /**
@@ -26,24 +24,13 @@ export async function GET() {
       );
     }
 
-    const db = getDb();
+    const { data: user, error } = await supabase
+      .from("users")
+      .select("id, username, first_name, last_name, role, status, last_login_at, created_at")
+      .eq("id", userId)
+      .single();
 
-    const [user] = await db
-      .select({
-        id: users.id,
-        username: users.username,
-        firstName: users.firstName,
-        lastName: users.lastName,
-        role: users.role,
-        status: users.status,
-        lastLoginAt: users.lastLoginAt,
-        createdAt: users.createdAt,
-      })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-
-    if (!user) {
+    if (error || !user) {
       return NextResponse.json(
         {
           success: false,
@@ -58,7 +45,16 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      data: user,
+      data: {
+        id: user.id,
+        username: user.username,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        role: user.role,
+        status: user.status,
+        lastLoginAt: user.last_login_at,
+        createdAt: user.created_at,
+      },
     });
   } catch (error) {
     console.error("Error obteniendo usuario:", error);

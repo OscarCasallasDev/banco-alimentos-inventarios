@@ -18,8 +18,8 @@ INSERT INTO roles (id, name, description, permissions) VALUES
 -- Usuario: admin / Contraseña: admin123 (hash SHA-256)
 -- Hash: 240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9
 
-INSERT INTO users (id, username, password_hash, first_name, last_name, role, status) VALUES
-  (gen_random_uuid(), 'admin', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'Admin', 'Sistema', 'SUPERADMIN', 'ACTIVE');
+INSERT INTO users (id, username, email, password_hash, first_name, last_name, role, status) VALUES
+  (gen_random_uuid(), 'admin', 'admin@bancoalimentos.org', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'Admin', 'Sistema', 'SUPERADMIN', 'ACTIVE');
 
 -- ---------- CATEGORÍAS ----------
 
