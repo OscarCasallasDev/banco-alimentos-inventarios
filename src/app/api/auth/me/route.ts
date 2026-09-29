@@ -16,7 +16,7 @@ export async function GET() {
     const [user] = await db
       .select({
         id: users.id,
-        email: users.email,
+        username: users.username,
         firstName: users.firstName,
         lastName: users.lastName,
         role: users.role,
@@ -25,7 +25,7 @@ export async function GET() {
         createdAt: users.createdAt,
       })
       .from(users)
-      .where(eq(users.email, "admin@bancoalimentos.org"))
+      .where(eq(users.username, "admin"))
       .limit(1);
 
     if (!user) {

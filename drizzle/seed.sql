@@ -15,11 +15,11 @@ INSERT INTO roles (id, name, description, permissions) VALUES
   (gen_random_uuid(), 'CONTABILIDAD', 'Encargado de contabilidad y auditoría', ARRAY['audits.*', 'reports.*', 'products.read']);
 
 -- ---------- USUARIO ADMIN (DEMO) ----------
--- Contraseña: admin123 (hash SHA-256)
+-- Usuario: admin / Contraseña: admin123 (hash SHA-256)
 -- Hash: 240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9
 
-INSERT INTO users (id, email, password_hash, first_name, last_name, role, status) VALUES
-  (gen_random_uuid(), 'admin@bancoalimentos.org', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'Admin', 'Sistema', 'SUPERADMIN', 'ACTIVE');
+INSERT INTO users (id, username, password_hash, first_name, last_name, role, status) VALUES
+  (gen_random_uuid(), 'admin', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'Admin', 'Sistema', 'SUPERADMIN', 'ACTIVE');
 
 -- ---------- CATEGORÍAS ----------
 
@@ -116,7 +116,7 @@ SELECT
   i.quantity,
   NULL,
   'SEED',
-  (SELECT id FROM users WHERE email = 'admin@bancoalimentos.org'),
+  (SELECT id FROM users WHERE username = 'admin'),
   'Carga inicial de inventario DEMO',
   NOW() - INTERVAL '7 days'
 FROM inventory i;
@@ -133,7 +133,7 @@ VALUES (
   'Donación Empresa Local',
   'FAC-2026-001',
   'CONFIRMED',
-  (SELECT id FROM users WHERE email = 'admin@bancoalimentos.org'),
+  (SELECT id FROM users WHERE username = 'admin'),
   'Entrada DEMO de arroz y frijol',
   NOW() - INTERVAL '7 days'
 );
@@ -148,7 +148,7 @@ VALUES (
   '800.987.654-3',
   'Comunidad Rural El Salado',
   'APPROVED',
-  (SELECT id FROM users WHERE email = 'admin@bancoalimentos.org'),
+  (SELECT id FROM users WHERE username = 'admin'),
   'Pedido DEMO para comunidad rural',
   NOW() - INTERVAL '3 days'
 );
@@ -163,7 +163,7 @@ VALUES (
   (SELECT id FROM orders WHERE number = 'PED-2026-0001'),
   CURRENT_DATE - INTERVAL '3 days',
   'GENERATED',
-  (SELECT id FROM users WHERE email = 'admin@bancoalimentos.org'),
+  (SELECT id FROM users WHERE username = 'admin'),
   NOW() - INTERVAL '3 days'
 );
 
@@ -177,7 +177,7 @@ VALUES (
   (SELECT id FROM invoices WHERE number = 'FAC-2026-0001'),
   CURRENT_DATE - INTERVAL '3 days',
   'GENERATED',
-  (SELECT id FROM users WHERE email = 'admin@bancoalimentos.org'),
+  (SELECT id FROM users WHERE username = 'admin'),
   NOW() - INTERVAL '3 days'
 );
 
@@ -190,7 +190,7 @@ VALUES (
   (SELECT id FROM receipts WHERE number = 'REC-2026-0001'),
   CURRENT_DATE - INTERVAL '2 days',
   'DISPATCHED',
-  (SELECT id FROM users WHERE email = 'admin@bancoalimentos.org'),
+  (SELECT id FROM users WHERE username = 'admin'),
   'Despacho DEMO completado',
   NOW() - INTERVAL '2 days'
 );
@@ -204,7 +204,7 @@ VALUES (
   (SELECT id FROM warehouses WHERE code = '1.1'),
   'Oscar Casallas',
   'COMPLETED',
-  (SELECT id FROM users WHERE email = 'admin@bancoalimentos.org'),
+  (SELECT id FROM users WHERE username = 'admin'),
   'Auditoría DEMO mensual',
   NOW() - INTERVAL '1 day'
 );

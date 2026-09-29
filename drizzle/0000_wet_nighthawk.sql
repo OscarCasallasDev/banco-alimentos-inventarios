@@ -218,7 +218,7 @@ CREATE TABLE "roles" (
 --> statement-breakpoint
 CREATE TABLE "users" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"email" varchar(255) NOT NULL,
+	"username" varchar(100) NOT NULL,
 	"password_hash" text NOT NULL,
 	"first_name" varchar(100) NOT NULL,
 	"last_name" varchar(100) NOT NULL,
@@ -227,7 +227,7 @@ CREATE TABLE "users" (
 	"last_login_at" timestamp,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
-	CONSTRAINT "users_email_unique" UNIQUE("email")
+	CONSTRAINT "users_username_unique" UNIQUE("username")
 );
 --> statement-breakpoint
 CREATE TABLE "warehouses" (
@@ -318,7 +318,7 @@ CREATE INDEX "idx_products_status" ON "products" USING btree ("status");--> stat
 CREATE INDEX "idx_receipts_date" ON "receipts" USING btree ("date");--> statement-breakpoint
 CREATE INDEX "idx_receipts_status" ON "receipts" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "idx_receipts_invoice" ON "receipts" USING btree ("invoice_id");--> statement-breakpoint
-CREATE INDEX "idx_users_email" ON "users" USING btree ("email");--> statement-breakpoint
+CREATE INDEX "idx_users_username" ON "users" USING btree ("username");--> statement-breakpoint
 CREATE INDEX "idx_users_role" ON "users" USING btree ("role");--> statement-breakpoint
 CREATE INDEX "idx_users_status" ON "users" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "idx_warehouses_code" ON "warehouses" USING btree ("code");--> statement-breakpoint

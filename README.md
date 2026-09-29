@@ -1,31 +1,28 @@
 # Sistema de Gestión, Trazabilidad y Conciliación de Inventarios
 
-## Banco Arquidiocesano de Alimentos de Ibagué
+**Banco Arquidiocesano de Alimentos de Ibagué**
 
-Sistema web de gestión de inventarios que funciona como solución complementaria a Siigo Pyme, especializado en gestión, control, trazabilidad y conciliación de inventarios.
+Sistema integral para la gestión de inventarios, trazabilidad de movimientos y conciliación de existencias, diseñado específicamente para las necesidades del Banco de Alimentos.
 
 ---
 
 ## Características
 
-- **Dashboard** con resumen general del sistema
-- **Gestión de productos** (CRUD completo)
-- **Bodegas virtuales** configurables
-- **Entradas** con formatos E1/E3/N3/N5
-- **Salidas** con flujo Pedido → Factura → Recibo → Despacho
-- **Inventario** calculado desde movimientos
-- **Auditoría** de inventario (sistema vs físico)
-- **Reportes** exportables a Excel
-- **Integración Siigo** (preparada, estado DEMO)
-- **Responsive** (Desktop / Tablet / Móvil)
-- **Autenticación** con roles y permisos
+- **Gestión de Productos**: CRUD completo del catálogo de productos
+- **Gestión de Bodegas**: Administración de bodegas y almacenes
+- **Inventario en Tiempo Real**: Consulta de stock por producto y bodega
+- **Entradas**: Registro de ingresos al inventario con trazabilidad
+- **Salidas**: Flujo completo (Pedido → Factura → Recibo → Despacho)
+- **Auditoría**: Control y conciliación de inventarios
+- **Reportes**: Análisis y exportación de datos
+- **Integración Siigo**: Preparado para integración con Siigo Pyme (pendiente validación)
 
 ---
 
 ## Stack Tecnológico
 
 | Capa | Tecnología |
-|---|---|
+|------|------------|
 | Framework | Next.js 16 (App Router) |
 | Lenguaje | TypeScript (estricto) |
 | UI | React 19 + Tailwind CSS 4 |
@@ -36,58 +33,62 @@ Sistema web de gestión de inventarios que funciona como solución complementari
 | Estado/Cache | TanStack React Query |
 | Gráficos | Recharts |
 | Excel | SheetJS (xlsx) |
+| Iconos | Lucide React |
 | Despliegue | Vercel + Supabase |
+
+---
+
+## Colores Institucionales
+
+| Color | Código | Uso |
+|-------|--------|-----|
+| Blanco | #FFFFFF | Fondos, texto principal |
+| Primario | #48151C | Botones, navegación, énfasis |
+| Negro | #000000 | Texto, bordes |
+| Acento | #D5C58A | Alertas, detalles, badges |
 
 ---
 
 ## Inicio Rápido
 
-### 1. Clonar el repositorio
+### Requisitos
+
+- Node.js 18+
+- npm o yarn
+- Cuenta en Supabase
+
+### Instalación
 
 ```bash
-git clone <url-del-repositorio>
-cd banco-alimentos-inventarios
-```
+# Clonar el repositorio
+git clone https://github.com/OscarCasallasDev/banco-alimentos-inventarios.git
 
-### 2. Instalar dependencias
-
-```bash
+# Instalar dependencias
 npm install
-```
 
-### 3. Configurar variables de entorno
-
-```bash
+# Configurar variables de entorno
 cp .env.example .env.local
-```
 
-Edita `.env.local` con tus credenciales de Supabase.
-
-### 4. Configurar la base de datos
-
-```bash
-# Generar migraciones
-npx drizzle-kit generate
-
-# Aplicar migraciones
-npx drizzle-kit push
-
-# Cargar datos DEMO
-# (Ejecutar drizzle/seed.sql en tu cliente de Supabase)
-```
-
-### 5. Ejecutar en desarrollo
-
-```bash
+# Ejecutar en desarrollo
 npm run dev
 ```
 
-Abre [http://localhost:3000](http://localhost:3000)
+### Variables de Entorno
 
-### 6. Credenciales de demostración
+Crea un archivo `.env.local` con las siguientes variables:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://hszylkcojdjnbjatuhnv.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_674Wkrhp-3VOXOxmOA_zAg_G6QiQ1w4
+DATABASE_URL=postgresql://postgres.hszylkcojdjnbjatuhnv:postgres@aws-0-us-east-1.pooler.supabase.com:5432/postgres
+```
+
+---
+
+## Credenciales de Acceso
 
 | Usuario | Contraseña | Rol |
-|---|---|---|
+|---------|------------|-----|
 | admin | admin123 | SUPERADMIN |
 
 ---
@@ -99,22 +100,11 @@ src/
 ├── app/                    # Next.js App Router
 │   ├── (protected)/        # Rutas protegidas
 │   ├── api/                # API Routes
-│   ├── login/              # Login
-│   └── layout.tsx          # Layout raíz
+│   ├── login/              # Página de login
+│   ├── layout.tsx          # Layout raíz
+│   └── page.tsx            # Página principal
 ├── components/             # Componentes React
-│   ├── ui/                 # Componentes base
-│   ├── layout/             # Sidebar, Header
-│   ├── forms/              # Formularios
-│   ├── tables/             # Tablas
-│   ├── documents/          # Soportes
-│   └── siigo/              # Integración Siigo
 ├── lib/                    # Lógica y utilidades
-│   ├── db/                 # Drizzle schema + client
-│   ├── auth/               # Autenticación
-│   ├── services/           # Lógica de negocio
-│   ├── validations/        # Schemas Zod
-│   ├── reports/            # Generación Excel
-│   └── utils/              # Utilidades
 ├── types/                  # Tipos TypeScript
 └── hooks/                  # Custom hooks
 drizzle/                    # Migraciones SQL
@@ -123,61 +113,38 @@ docs/                       # Documentación
 
 ---
 
-## Scripts Disponibles
-
-| Comando | Descripción |
-|---|---|
-| `npm run dev` | Servidor de desarrollo |
-| `npm run build` | Build de producción |
-| `npm run start` | Servidor de producción |
-| `npm run lint` | Linter ESLint |
-| `npx drizzle-kit generate` | Generar migraciones |
-| `npx drizzle-kit push` | Aplicar migraciones |
-| `npx drizzle-kit studio` | Studio de Drizzle |
-
----
-
 ## Fases del Proyecto
 
 | Fase | Estado | Descripción |
-|---|---|---|
-| FASE 0 | ✅ | Análisis del entorno |
-| FASE 1 | ✅ | Arquitectura + Scaffold |
-| FASE 2 | ⏳ | Base de datos (schema + migraciones + seed) |
-| FASE 3 | ⏳ | Autenticación + Layout |
-| FASE 4 | ⏳ | Productos + Bodegas (CRUD) |
-| FASE 5 | ⏳ | Inventario + Entradas |
-| FASE 6 | ⏳ | Salidas (Pedido → Factura → Recibo → Despacho) |
-| FASE 7 | ⏳ | Auditoría + Reportes |
-| FASE 8 | ⏳ | Integración Siigo (DEMO) |
-| FASE 9 | ⏳ | Pruebas |
-| FASE 10 | ⏳ | Deploy |
-
----
-
-## Integración con Siigo Pyme
-
-El sistema está preparado para integrarse con Siigo Pyme mediante ExcelSiigo (GET/PUSH).
-
-**Estado actual**: DEMO (simulado)
-
-Ver `docs/INTEGRACION_SIIGO.md` para más detalles.
+|------|--------|-------------|
+| FASE 0 | Completado | Análisis del entorno |
+| FASE 1 | Completado | Arquitectura + Scaffold |
+| FASE 2 | Completado | Base de datos (schema + migraciones + seed) |
+| FASE 3 | Completado | Autenticación + Layout |
+| FASE 4 | Completado | Productos + Bodegas (CRUD) |
+| FASE 5 | Completado | Inventario + Entradas |
+| FASE 6 | Completado | Salidas (Pedido → Factura → Recibo → Despacho) |
+| FASE 7 | Completado | Auditoría + Reportes |
+| FASE 8 | Parcial | Integración Siigo (PENDIENTE validación) |
+| FASE 9 | Pendiente | Pruebas |
+| FASE 10 | Pendiente | Deploy |
 
 ---
 
 ## Documentación
 
-- [Arquitectura](docs/ARQUITECTURA.md)
-- [Modelo de Datos](docs/MODELO_DATOS.md)
-- [Integración Siigo](docs/INTEGRACION_SIIGO.md)
-- [Reglas del Proyecto](AGENTS.md)
+- [Arquitectura](./docs/ARQUITECTURA.md)
+- [Modelo de Datos](./docs/MODELO_DATOS.md)
+- [Integración Siigo](./docs/INTEGRACION_SIIGO.md)
+- [Resumen de Implementación](./docs/RESUMEN_IMPLEMENTACION.md)
 
 ---
 
 ## Licencia
 
-Proyecto educativo — Universidad de Ibagué, Programa Paz y Región 2026B.
+Proyecto educativo — Universidad de Ibagué, Programa Paz y Región 2026B
 
 ---
 
-*Desarrollado por Oscar Daniel Casallas Lozano*
+**Desarrollador**: Oscar Daniel Casallas Lozano
+**Organización**: Banco Arquidiocesano de Alimentos de Ibagué

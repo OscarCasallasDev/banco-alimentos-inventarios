@@ -65,37 +65,37 @@ export default function DashboardPage() {
       name: "Total Productos",
       value: data?.totalProducts || 0,
       icon: Package,
-      color: "bg-blue-500",
+      color: "bg-primary-600",
     },
     {
       name: "Total Unidades",
       value: formatNumber(data?.totalUnits || 0),
       icon: Boxes,
-      color: "bg-green-500",
+      color: "bg-accent-500",
     },
     {
       name: "Entradas Recientes",
       value: data?.recentEntries?.length || 0,
       icon: ArrowDownToLine,
-      color: "bg-emerald-500",
+      color: "bg-green-600",
     },
     {
       name: "Salidas Recientes",
       value: data?.recentExits?.length || 0,
       icon: ArrowUpFromLine,
-      color: "bg-orange-500",
+      color: "bg-orange-600",
     },
     {
       name: "Stock Bajo",
       value: data?.lowStockProducts?.length || 0,
       icon: AlertTriangle,
-      color: "bg-yellow-500",
+      color: "bg-yellow-600",
     },
     {
       name: "Auditorías Pendientes",
       value: data?.pendingAudits || 0,
       icon: ShieldCheck,
-      color: "bg-purple-500",
+      color: "bg-purple-600",
     },
   ];
 

@@ -49,7 +49,7 @@ export default function ProtectedLayout({
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [user, setUser] = useState<{ name: string; email: string } | null>(null);
+  const [user, setUser] = useState<{ firstName: string; lastName: string; username: string } | null>(null);
 
   useEffect(() => {
     // Verificar sesión
@@ -137,15 +137,15 @@ export default function ProtectedLayout({
             <div className="flex items-center gap-3 mb-3">
               <div className="w-9 h-9 bg-primary-100 rounded-full flex items-center justify-center">
                 <span className="text-primary-700 font-semibold text-sm">
-                  {user?.name?.charAt(0) || "A"}
+                  {user?.firstName?.charAt(0) || "A"}
                 </span>
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 truncate">
-                  {user?.name || "Usuario"}
+                  {user ? `${user.firstName} ${user.lastName}` : "Usuario"}
                 </p>
                 <p className="text-xs text-gray-500 truncate">
-                  {user?.email || "..."}
+                  @{user?.username || "..."}
                 </p>
               </div>
             </div>

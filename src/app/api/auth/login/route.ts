@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { createHash, timingSafeEqual } from "crypto";
 
 const loginSchema = z.object({
-  email: z.string().email("Correo electrónico inválido"),
+  username: z.string().min(1, "El usuario es requerido"),
   password: z.string().min(1, "La contraseña es requerida"),
 });
 
@@ -21,15 +21,15 @@ function hashPassword(password: string): string {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { email, password } = loginSchema.parse(body);
+    const { username, password } = loginSchema.parse(body);
 
     const db = getDb();
 
-    // Buscar usuario por email
+    // Buscar usuario por username
     const [user] = await db
       .select()
       .from(users)
-      .where(eq(users.email, email))
+      .where(eq(users.username, username))
       .limit(1);
 
     if (!user) {
@@ -91,7 +91,7 @@ export async function POST(request: Request) {
       success: true,
       data: {
         id: user.id,
-        email: user.email,
+        username: user.username,
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,

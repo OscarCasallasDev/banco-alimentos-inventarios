@@ -5,406 +5,414 @@
 
 ---
 
-## 1. DIAGRAMA ENTIDAD-RELACIÓN
+## Diagrama de Relaciones
 
 ```
-┌──────────┐     ┌──────────────┐     ┌─────────────┐
-│  users   │     │   products   │     │ categories  │
-├──────────┤     ├──────────────┤     ├─────────────┤
-│ id (PK)  │     │ id (PK)      │     │ id (PK)     │
-│ email    │     │ code         │     │ name        │
-│ password │     │ name         │     │ description │
-│ role     │     │ description  │     └─────────────┘
-│ status   │     │ presentation │            │
-└──────────┘     │ weight       │            │
-     │           │ unit         │            │
-     │           │ categoryId(FK)────────────┘
-     │           │ status       │
-     │           │ minStock     │
-     │           └──────────────┘
-     │                  │
-     │                  │
-     │           ┌──────────────┐     ┌─────────────┐
-     │           │  inventory   │     │ warehouses  │
-     │           ├──────────────┤     ├─────────────┤
-     │           │ id (PK)      │     │ id (PK)     │
-     │           │ productId(FK)│────│ code        │
-     │           │ warehouseId(FK)───│ name        │
-     │           │ quantity     │     │ type        │
-     │           └──────────────┘     │ status      │
-     │                  │             └─────────────┘
-     │                  │
-     │           ┌──────────────────┐
-     │           │inventory_movements│
-     │           ├──────────────────┤
-     │           │ id (PK)          │
-     │           │ type             │
-     │           │ productId (FK)   │
-     │           │ warehouseId (FK) │
-     │           │ quantity         │
-     │           │ balanceAfter     │
-     │           │ documentId       │
-     │           │ userId (FK)      │
-     │           └──────────────────┘
-     │
-     │           ┌──────────────┐     ┌─────────────┐
-     │           │   entries    │     │ entry_items │
-     │           ├──────────────┤     ├─────────────┤
-     │           │ id (PK)      │◄────│ entryId(FK) │
-     │           │ format       │     │ productId   │
-     │           │ number       │     │ warehouseId │
-     │           │ date         │     │ quantity    │
-     │           │ nit          │     └─────────────┘
-     │           │ status       │
-     │           │ userId (FK)  │
-     │           └──────────────┘
-     │
-     │           ┌──────────────┐     ┌─────────────┐
-     │           │   orders     │     │ order_items │
-     │           ├──────────────┤     ├─────────────┤
-     │           │ id (PK)      │◄────│ orderId(FK) │
-     │           │ number       │     │ productId   │
-     │           │ date         │     │ warehouseId │
-     │           │ nit          │     │ quantity    │
-     │           │ status       │     └─────────────┘
-     │           │ userId (FK)  │
-     │           └──────────────┘
-     │                  │
-     │                  ▼
-     │           ┌──────────────┐     ┌─────────────┐
-     │           │  invoices    │     │invoice_items│
-     │           ├──────────────┤     ├─────────────┤
-     │           │ id (PK)      │◄────│ invoiceId   │
-     │           │ format       │     │ productId   │
-     │           │ number       │     │ quantity    │
-     │           │ orderId (FK) │     └─────────────┘
-     │           │ status       │
-     │           │ userId (FK)  │
-     │           └──────────────┘
-     │                  │
-     │                  ▼
-     │           ┌──────────────┐
-     │           │  receipts    │
-     │           ├──────────────┤
-     │           │ id (PK)      │
-     │           │ format       │
-     │           │ number       │
-     │           │ invoiceId(FK)│
-     │           │ status       │
-     │           │ userId (FK)  │
-     │           └──────────────┘
-     │                  │
-     │                  ▼
-     │           ┌──────────────┐     ┌─────────────┐
-     │           │  dispatches  │     │dispatch_items│
-     │           ├──────────────┤     ├─────────────┤
-     │           │ id (PK)      │◄────│ dispatchId  │
-     │           │ number       │     │ productId   │
-     │           │ receiptId(FK)│     │ warehouseId │
-     │           │ status       │     │ quantity    │
-     │           │ userId (FK)  │     └─────────────┘
-     │           └──────────────┘
-     │
-     │           ┌──────────────┐     ┌─────────────┐
-     │           │   audits     │     │ audit_items │
-     │           ├──────────────┤     ├─────────────┤
-     │           │ id (PK)      │◄────│ auditId(FK) │
-     │           │ date         │     │ productId   │
-     │           │ warehouseId  │     │ systemQty   │
-     │           │ status       │     │ physicalQty │
-     │           │ userId (FK)  │     │ difference  │
-     │           └──────────────┘     └─────────────┘
-     │
-     │           ┌──────────────┐
-     └──────────►│ audit_logs   │
-                 ├──────────────┤
-                 │ id (PK)      │
-                 │ userId (FK)  │
-                 │ action       │
-                 │ entity       │
-                 │ entityId     │
-                 │ result       │
-                 │ createdAt    │
-                 └──────────────┘
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   users     │     │   roles     │     │ categories  │
+├─────────────┤     ├─────────────┤     ├─────────────┤
+│ id (PK)     │     │ id (PK)     │     │ id (PK)     │
+│ username    │     │ name        │     │ name        │
+│ password_hash│    │ description │     │ description │
+│ first_name  │     │ permissions │     └─────────────┘
+│ last_name   │     └─────────────┘            │
+│ role (FK)   │                                │
+│ status      │     ┌─────────────┐            │
+│ last_login  │     │  products   │◄───────────┘
+└─────────────┘     ├─────────────┤
+       │            │ id (PK)     │
+       │            │ code        │
+       │            │ name        │
+       │            │ description │
+       │            │ presentation│
+       │            │ weight      │
+       │            │ unit        │
+       │            │ category_id │
+       │            │ status      │
+       │            │ min_stock   │
+       │            └─────────────┘
+       │                   │
+       │                   │
+       │            ┌─────────────┐
+       │            │  inventory  │
+       │            ├─────────────┤
+       │            │ id (PK)     │
+       │            │ product_id  │
+       │            │ warehouse_id│
+       │            │ quantity    │
+       │            │ last_movement│
+       │            └─────────────┘
+       │                   │
+       │                   │
+       │            ┌─────────────┐
+       │            │  warehouses │
+       │            ├─────────────┤
+       │            │ id (PK)     │
+       │            │ code        │
+       │            │ name        │
+       │            │ description │
+       │            │ type        │
+       │            │ status      │
+       │            │ observations│
+       │            └─────────────┘
+       │
+       │            ┌─────────────────────┐
+       │            │ inventory_movements │
+       │            ├─────────────────────┤
+       │            │ id (PK)             │
+       │            │ type                │
+       │            │ product_id          │
+       │            │ warehouse_id        │
+       │            │ quantity            │
+       │            │ balance_after       │
+       │            │ document_id         │
+       │            │ document_type       │
+       │            │ user_id             │
+       │            │ notes               │
+       │            └─────────────────────┘
+       │
+       │            ┌─────────────┐     ┌─────────────┐
+       │            │   entries   │     │  entry_items│
+       │            ├─────────────┤     ├─────────────┤
+       │            │ id (PK)     │◄────│ entry_id    │
+       │            │ format      │     │ product_id  │
+       │            │ number      │     │ warehouse_id│
+       │            │ date        │     │ quantity    │
+       │            │ nit         │     │ unit        │
+       │            │ origin      │     │ presentation│
+       │            │ document    │     └─────────────┘
+       │            │ status      │
+       │            │ user_id     │
+       │            │ notes       │
+       │            └─────────────┘
+       │
+       │            ┌─────────────┐     ┌─────────────┐
+       │            │   orders    │     │ order_items │
+       │            ├─────────────┤     ├─────────────┤
+       │            │ id (PK)     │◄────│ order_id    │
+       │            │ number      │     │ product_id  │
+       │            │ date        │     │ warehouse_id│
+       │            │ nit         │     │ quantity    │
+       │            │ destination │     └─────────────┘
+       │            │ status      │
+       │            │ user_id     │
+       │            │ notes       │
+       │            └─────────────┘
+       │                   │
+       │                   │
+       │            ┌─────────────┐     ┌─────────────┐
+       │            │  invoices   │     │invoice_items│
+       │            ├─────────────┤     ├─────────────┤
+       │            │ id (PK)     │◄────│ invoice_id  │
+       │            │ format      │     │ product_id  │
+       │            │ number      │     │ quantity    │
+       │            │ order_id    │     └─────────────┘
+       │            │ date        │
+       │            │ status      │
+       │            │ user_id     │
+       │            └─────────────┘
+       │                   │
+       │                   │
+       │            ┌─────────────┐
+       │            │  receipts   │
+       │            ├─────────────┤
+       │            │ id (PK)     │
+       │            │ format      │
+       │            │ number      │
+       │            │ invoice_id  │
+       │            │ date        │
+       │            │ status      │
+       │            │ user_id     │
+       │            └─────────────┘
+       │                   │
+       │                   │
+       │            ┌─────────────┐     ┌─────────────┐
+       │            │ dispatches  │     │dispatch_items
+       │            ├─────────────┤     ├─────────────┤
+       │            │ id (PK)     │◄────│ dispatch_id │
+       │            │ number      │     │ product_id  │
+       │            │ receipt_id  │     │ warehouse_id│
+       │            │ date        │     │ quantity    │
+       │            │ status      │     └─────────────┘
+       │            │ user_id     │
+       │            │ notes       │
+       │            └─────────────┘
+       │
+       │            ┌─────────────┐     ┌─────────────┐
+       │            │   audits    │     │ audit_items │
+       │            ├─────────────┤     ├─────────────┤
+       │            │ id (PK)     │◄────│ audit_id    │
+       │            │ date        │     │ product_id  │
+       │            │ warehouse_id│     │ system_qty  │
+       │            │ responsible │     │ physical_qty│
+       │            │ status      │     │ difference  │
+       │            │ user_id     │     │ observation │
+       │            │ notes       │     └─────────────┘
+       │            └─────────────┘
+       │
+       │            ┌─────────────┐
+       │            │ audit_logs  │
+       │            ├─────────────┤
+       │            │ id (PK)     │
+       │            │ user_id     │
+       │            │ action      │
+       │            │ entity      │
+       │            │ entity_id   │
+       │            │ result      │
+       │            │ details     │
+       │            │ ip_address  │
+       │            └─────────────┘
+       │
+       │            ┌─────────────┐
+       │            │  documents  │
+       │            ├─────────────┤
+       │            │ id (PK)     │
+       │            │ type        │
+       │            │ number      │
+       │            │ related_id  │
+       │            │ generated_by│
+       │            └─────────────┘
 ```
 
 ---
 
-## 2. DESCRIPCIÓN DE TABLAS
+## Tablas
 
-### 2.1 users
-Almacena los usuarios del sistema.
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| id | UUID PK | Identificador único |
-| email | VARCHAR(255) | Correo electrónico (único) |
-| password_hash | TEXT | Hash de contraseña (bcrypt) |
+### users
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| id | UUID | Identificador único |
+| username | VARCHAR(100) | Nombre de usuario (único) |
+| password_hash | TEXT | Hash de contraseña |
 | first_name | VARCHAR(100) | Nombre |
 | last_name | VARCHAR(100) | Apellido |
-| role | VARCHAR(50) | Rol del usuario |
-| status | VARCHAR(20) | Estado: ACTIVE, INACTIVE, SUSPENDED |
+| role | ENUM | Rol del usuario |
+| status | ENUM | Estado del usuario |
 | last_login_at | TIMESTAMP | Último inicio de sesión |
 | created_at | TIMESTAMP | Fecha de creación |
 | updated_at | TIMESTAMP | Fecha de actualización |
 
-### 2.2 products
-Catálogo de productos del Banco de Alimentos.
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| id | UUID PK | Identificador único |
-| code | VARCHAR(50) | Código único del producto |
+### products
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| id | UUID | Identificador único |
+| code | VARCHAR(50) | Código del producto (único) |
 | name | VARCHAR(255) | Nombre del producto |
-| description | TEXT | Descripción detallada |
-| presentation | VARCHAR(100) | Presentación (ej: "Bolsa 500g") |
-| weight | DECIMAL(10,2) | Peso numérico |
+| description | TEXT | Descripción |
+| presentation | VARCHAR(100) | Presentación |
+| weight | DECIMAL(10,2) | Peso |
 | unit | VARCHAR(20) | Unidad de medida |
-| category_id | UUID FK | Categoría del producto |
-| status | VARCHAR(20) | Estado: ACTIVE, INACTIVE, DISCONTINUED |
-| min_stock | INTEGER | Stock mínimo para alertas |
+| category_id | UUID | Categoría (FK) |
+| status | ENUM | Estado del producto |
+| min_stock | INTEGER | Stock mínimo |
 | created_at | TIMESTAMP | Fecha de creación |
 | updated_at | TIMESTAMP | Fecha de actualización |
 
-### 2.3 warehouses
-Bodegas virtuales para diferenciar productos, campañas o programas.
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| id | UUID PK | Identificador único |
-| code | VARCHAR(20) | Código de la bodega (ej: "1.1") |
-| name | VARCHAR(255) | Nombre descriptivo |
+### warehouses
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| id | UUID | Identificador único |
+| code | VARCHAR(20) | Código de bodega (único) |
+| name | VARCHAR(255) | Nombre de bodega |
 | description | TEXT | Descripción |
-| type | VARCHAR(20) | Tipo: PROPIA, TERCERO, CAMPAIGN, PROGRAM |
-| status | VARCHAR(20) | Estado: ACTIVE, INACTIVE |
+| type | ENUM | Tipo de bodega |
+| status | ENUM | Estado de bodega |
 | observations | TEXT | Observaciones |
 | created_at | TIMESTAMP | Fecha de creación |
 | updated_at | TIMESTAMP | Fecha de actualización |
 
-### 2.4 inventory
-Existencias calculadas por producto y bodega.
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| id | UUID PK | Identificador único |
-| product_id | UUID FK | Producto |
-| warehouse_id | UUID FK | Bodega |
-| quantity | INTEGER | Cantidad actual |
+### inventory
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| id | UUID | Identificador único |
+| product_id | UUID | Producto (FK) |
+| warehouse_id | UUID | Bodega (FK) |
+| quantity | INTEGER | Cantidad en stock |
 | last_movement_at | TIMESTAMP | Último movimiento |
 | created_at | TIMESTAMP | Fecha de creación |
 | updated_at | TIMESTAMP | Fecha de actualización |
 
-**Constraint UNIQUE**: (product_id, warehouse_id)
-
-### 2.5 inventory_movements
-Historial de todos los movimientos de inventario.
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| id | UUID PK | Identificador único |
-| type | VARCHAR(20) | Tipo: ENTRY, EXIT, ADJUSTMENT, AUDIT |
-| product_id | UUID FK | Producto |
-| warehouse_id | UUID FK | Bodega |
-| quantity | INTEGER | Cantidad (positivo/negativo) |
-| balance_after | INTEGER | Saldo después del movimiento |
-| document_id | UUID | ID del documento relacionado |
-| document_type | VARCHAR(50) | Tipo de documento |
-| user_id | UUID FK | Usuario que realizó el movimiento |
-| notes | TEXT | Observaciones |
-| created_at | TIMESTAMP | Fecha del movimiento |
-
-### 2.6 entries
-Documentos de entrada/ingreso.
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| id | UUID PK | Identificador único |
-| format | VARCHAR(10) | Formato: E1, E3, N3, N5 |
-| number | VARCHAR(50) | Consecutivo interno |
-| date | DATE | Fecha de la entrada |
-| nit | VARCHAR(50) | NIT del proveedor/donante |
-| origin | VARCHAR(255) | Origen del producto |
-| document | VARCHAR(100) | Número de documento |
-| status | VARCHAR(20) | Estado: DRAFT, CONFIRMED, CANCELLED |
-| user_id | UUID FK | Usuario responsable |
-| notes | TEXT | Observaciones |
-| created_at | TIMESTAMP | Fecha de creación |
-| updated_at | TIMESTAMP | Fecha de actualización |
-
-### 2.7 entry_items
-Detalle de productos en una entrada.
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| id | UUID PK | Identificador único |
-| entry_id | UUID FK | Entrada relacionada |
-| product_id | UUID FK | Producto |
-| warehouse_id | UUID FK | Bodega destino |
+### inventory_movements
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| id | UUID | Identificador único |
+| type | ENUM | Tipo de movimiento |
+| product_id | UUID | Producto (FK) |
+| warehouse_id | UUID | Bodega (FK) |
 | quantity | INTEGER | Cantidad |
-| unit | VARCHAR(20) | Unidad de medida |
-| presentation | VARCHAR(100) | Presentación |
+| balance_after | INTEGER | Saldo después del movimiento |
+| document_id | UUID | Documento relacionado |
+| document_type | VARCHAR(50) | Tipo de documento |
+| user_id | UUID | Usuario (FK) |
+| notes | TEXT | Notas |
 | created_at | TIMESTAMP | Fecha de creación |
-
-### 2.8 orders
-Órdenes de pedido.
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| id | UUID PK | Identificador único |
-| number | VARCHAR(50) | Número de pedido |
-| date | DATE | Fecha del pedido |
-| nit | VARCHAR(50) | NIT del destinatario |
-| destination | VARCHAR(255) | Destino |
-| status | VARCHAR(20) | Estado: DRAFT, APPROVED, INVOICED, DISPATCHED, CANCELLED |
-| user_id | UUID FK | Usuario responsable |
-| notes | TEXT | Observaciones |
-| created_at | TIMESTAMP | Fecha de creación |
-| updated_at | TIMESTAMP | Fecha de actualización |
-
-### 2.9 invoices
-Facturas de venta.
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| id | UUID PK | Identificador único |
-| format | VARCHAR(10) | Formato: SF1, F2 |
-| number | VARCHAR(50) | Número de factura |
-| order_id | UUID FK | Pedido relacionado |
-| date | DATE | Fecha de la factura |
-| status | VARCHAR(20) | Estado: DRAFT, GENERATED, ASSOCIATED_TO_RECEIPT, CANCELLED |
-| user_id | UUID FK | Usuario responsable |
-| created_at | TIMESTAMP | Fecha de creación |
-| updated_at | TIMESTAMP | Fecha de actualización |
-
-### 2.10 receipts
-Recibos de caja.
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| id | UUID PK | Identificador único |
-| format | VARCHAR(10) | Formato: R1, R2, R3, R4 |
-| number | VARCHAR(50) | Número de recibo |
-| invoice_id | UUID FK | Factura relacionada |
-| date | DATE | Fecha del recibo |
-| status | VARCHAR(20) | Estado: DRAFT, GENERATED, CANCELLED |
-| user_id | UUID FK | Usuario responsable |
-| created_at | TIMESTAMP | Fecha de creación |
-| updated_at | TIMESTAMP | Fecha de actualización |
-
-### 2.11 dispatches
-Despachos de productos.
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| id | UUID PK | Identificador único |
-| number | VARCHAR(50) | Número de despacho |
-| receipt_id | UUID FK | Recibo relacionado |
-| date | DATE | Fecha del despacho |
-| status | VARCHAR(20) | Estado: PENDING, PREPARED, DISPATCHED, CANCELLED |
-| user_id | UUID FK | Usuario responsable |
-| notes | TEXT | Observaciones |
-| created_at | TIMESTAMP | Fecha de creación |
-| updated_at | TIMESTAMP | Fecha de actualización |
-
-### 2.12 audits
-Auditorías de inventario.
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| id | UUID PK | Identificador único |
-| date | DATE | Fecha de la auditoría |
-| warehouse_id | UUID FK | Bodega auditada |
-| responsible | VARCHAR(255) | Responsable del conteo |
-| status | VARCHAR(20) | Estado: PENDING, IN_PROGRESS, COMPLETED, CANCELLED |
-| user_id | UUID FK | Usuario que registró |
-| notes | TEXT | Observaciones |
-| created_at | TIMESTAMP | Fecha de creación |
-| updated_at | TIMESTAMP | Fecha de actualización |
-
-### 2.13 audit_items
-Detalle de productos auditados.
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| id | UUID PK | Identificador único |
-| audit_id | UUID FK | Auditoría relacionada |
-| product_id | UUID FK | Producto |
-| system_quantity | INTEGER | Existencia según sistema |
-| physical_quantity | INTEGER | Existencia física contada |
-| difference | INTEGER | Diferencia (física - sistema) |
-| observation | TEXT | Observación |
-| created_at | TIMESTAMP | Fecha de creación |
-
-### 2.14 audit_logs
-Registro de actividad del sistema.
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| id | UUID PK | Identificador único |
-| user_id | UUID FK | Usuario que realizó la acción |
-| action | VARCHAR(50) | Acción realizada |
-| entity | VARCHAR(100) | Entidad afectada |
-| entity_id | UUID | ID del registro afectado |
-| result | VARCHAR(20) | Resultado: SUCCESS, FAILURE, ERROR |
-| details | TEXT | Detalles adicionales |
-| ip_address | INET | Dirección IP |
-| created_at | TIMESTAMP | Fecha del evento |
 
 ---
 
-## 3. ÍNDICES
+## Enums
 
-| Tabla | Índice | Columnas | Justificación |
-|---|---|---|---|
-| products | idx_products_code | code | Búsqueda por código |
-| products | idx_products_category | category_id | Filtro por categoría |
-| products | idx_products_status | status | Filtro por estado |
-| inventory | idx_inventory_product_warehouse | product_id, warehouse_id | Búsqueda de stock |
-| inventory_movements | idx_movements_product | product_id | Historial por producto |
-| inventory_movements | idx_movements_warehouse | warehouse_id | Historial por bodega |
-| inventory_movements | idx_movements_user | user_id | Historial por usuario |
-| inventory_movements | idx_movements_created | created_at | Filtro por fecha |
-| entries | idx_entries_date | date | Filtro por fecha |
-| entries | idx_entries_status | status | Filtro por estado |
-| orders | idx_orders_date | date | Filtro por fecha |
-| orders | idx_orders_status | status | Filtro por estado |
-| audit_logs | idx_logs_user | user_id | Historial por usuario |
-| audit_logs | idx_logs_created | created_at | Filtro por fecha |
+### user_role
+- SUPERADMIN
+- ADMIN
+- RECEPCION
+- DESPACHO
+- CONTABILIDAD
+
+### user_status
+- ACTIVE
+- INACTIVE
+- SUSPENDED
+
+### product_status
+- ACTIVE
+- INACTIVE
+- DISCONTINUED
+
+### warehouse_type
+- PROPIA
+- TERCERO
+- CAMPAIGN
+- PROGRAM
+
+### warehouse_status
+- ACTIVE
+- INACTIVE
+
+### movement_type
+- ENTRY
+- EXIT
+- ADJUSTMENT
+- AUDIT
+
+### entry_format
+- E1
+- E3
+- N3
+- N5
+
+### entry_status
+- DRAFT
+- CONFIRMED
+- CANCELLED
+
+### order_status
+- DRAFT
+- APPROVED
+- INVOICED
+- DISPATCHED
+- CANCELLED
+
+### invoice_format
+- SF1
+- F2
+
+### invoice_status
+- DRAFT
+- GENERATED
+- ASSOCIATED_TO_RECEIPT
+- CANCELLED
+
+### receipt_format
+- R1
+- R2
+- R3
+- R4
+
+### receipt_status
+- DRAFT
+- GENERATED
+- CANCELLED
+
+### dispatch_status
+- PENDING
+- PREPARED
+- DISPATCHED
+- CANCELLED
+
+### audit_status
+- PENDING
+- IN_PROGRESS
+- COMPLETED
+- CANCELLED
+
+### document_type
+- ENTRY
+- ORDER
+- INVOICE
+- RECEIPT
+- DISPATCH
 
 ---
 
-## 4. CONSTRAINTS
+## Índices
 
-| Tabla | Constraint | Descripción |
-|---|---|---|
-| products | UNIQUE (code) | Código único |
-| products | CHECK (weight > 0) | Peso positivo |
-| products | CHECK (min_stock >= 0) | Stock mínimo no negativo |
-| inventory | UNIQUE (product_id, warehouse_id) | Un registro por producto-bodega |
-| inventory | CHECK (quantity >= 0) | Cantidad no negativa |
-| inventory_movements | CHECK (quantity != 0) | Cantidad diferente de cero |
-| entry_items | CHECK (quantity > 0) | Cantidad positiva |
-| order_items | CHECK (quantity > 0) | Cantidad positiva |
-| dispatch_items | CHECK (quantity > 0) | Cantidad positiva |
-| audit_items | CHECK (physical_quantity >= 0) | Cantidad física no negativa |
+| Tabla | Índice | Columnas |
+|-------|--------|----------|
+| users | idx_users_username | username |
+| users | idx_users_role | role |
+| users | idx_users_status | status |
+| products | idx_products_code | code |
+| products | idx_products_category | category_id |
+| products | idx_products_status | status |
+| warehouses | idx_warehouses_code | code |
+| warehouses | idx_warehouses_status | status |
+| inventory | idx_inventory_product_warehouse | product_id, warehouse_id (UNIQUE) |
+| inventory | idx_inventory_product | product_id |
+| inventory | idx_inventory_warehouse | warehouse_id |
+| inventory_movements | idx_movements_product | product_id |
+| inventory_movements | idx_movements_warehouse | warehouse_id |
+| inventory_movements | idx_movements_user | user_id |
+| inventory_movements | idx_movements_created | created_at |
+| inventory_movements | idx_movements_type | type |
+| entries | idx_entries_date | date |
+| entries | idx_entries_status | status |
+| entries | idx_entries_user | user_id |
+| entry_items | idx_entry_items_entry | entry_id |
+| entry_items | idx_entry_items_product | product_id |
+| orders | idx_orders_date | date |
+| orders | idx_orders_status | status |
+| orders | idx_orders_user | user_id |
+| order_items | idx_order_items_order | order_id |
+| order_items | idx_order_items_product | product_id |
+| invoices | idx_invoices_date | date |
+| invoices | idx_invoices_status | status |
+| invoices | idx_invoices_order | order_id |
+| invoice_items | idx_invoice_items_invoice | invoice_id |
+| invoice_items | idx_invoice_items_product | product_id |
+| receipts | idx_receipts_date | date |
+| receipts | idx_receipts_status | status |
+| receipts | idx_receipts_invoice | invoice_id |
+| dispatches | idx_dispatches_date | date |
+| dispatches | idx_dispatches_status | status |
+| dispatches | idx_dispatches_receipt | receipt_id |
+| dispatch_items | idx_dispatch_items_dispatch | dispatch_id |
+| dispatch_items | idx_dispatch_items_product | product_id |
+| audits | idx_audits_date | date |
+| audits | idx_audits_status | status |
+| audits | idx_audits_warehouse | warehouse_id |
+| audit_items | idx_audit_items_audit | audit_id |
+| audit_items | idx_audit_items_product | product_id |
+| audit_logs | idx_logs_user | user_id |
+| audit_logs | idx_logs_created | created_at |
+| audit_logs | idx_logs_action | action |
+| documents | idx_documents_type | type |
+| documents | idx_documents_related | related_id |
 
 ---
 
-## 5. POLÍTICAS RLS (ROW LEVEL SECURITY)
+## Reglas de Negocio
 
-| Tabla | Política | Descripción |
-|---|---|---|
-| products | SELECT | Todos los usuarios autenticados pueden ver |
-| products | INSERT/UPDATE/DELETE | Solo SUPERADMIN y ADMIN |
-| warehouses | SELECT | Todos los usuarios autenticados pueden ver |
-| warehouses | INSERT/UPDATE/DELETE | Solo SUPERADMIN |
-| inventory | SELECT | Todos los usuarios autenticados pueden ver |
-| inventory | INSERT/UPDATE | Solo vía triggers/API |
-| inventory_movements | SELECT | Todos los usuarios autenticados pueden ver |
-| inventory_movements | INSERT | Solo vía API (no directo) |
-| audit_logs | SELECT | Solo SUPERADMIN y CONTABILIDAD |
-| audit_logs | INSERT | Solo vía API (no directo) |
+1. No cantidades negativas en entradas
+2. No cantidades cero
+3. No salidas superiores a existencia disponible
+4. No eliminar productos con historial (soft delete)
+5. No modificar movimientos históricos directamente
+6. Toda entrada afecta inventario
+7. Toda salida confirmada disminuye inventario
+8. Toda operación tiene usuario y fecha
+9. Toda salida asociada a su flujo documental
+10. Información histórica siempre trazable
 
 ---
 
-*Documento actualizado en FASE 1 — Arquitectura + Scaffold*
+*Última actualización: FASE 2 — Base de datos*

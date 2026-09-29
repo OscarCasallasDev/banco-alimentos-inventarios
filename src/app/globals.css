@@ -1,17 +1,31 @@
 @import "tailwindcss";
 
 @theme {
-  /* Colores principales — Banco de Alimentos */
-  --color-primary-50: #eff6ff;
-  --color-primary-100: #dbeafe;
-  --color-primary-200: #bfdbfe;
-  --color-primary-300: #93c5fd;
-  --color-primary-400: #60a5fa;
-  --color-primary-500: #3b82f6;
-  --color-primary-600: #2563eb;
-  --color-primary-700: #1d4ed8;
-  --color-primary-800: #1e40af;
-  --color-primary-900: #1e3a8a;
+  /* Colores principales — Banco Arquidiocesano de Alimentos de Ibagué */
+  /* Primario: #48151C (rojo oscuro/borgoña) */
+  --color-primary-50: #fdf2f4;
+  --color-primary-100: #f5e0e3;
+  --color-primary-200: #e8b8bf;
+  --color-primary-300: #d48a94;
+  --color-primary-400: #b85c6a;
+  --color-primary-500: #9c3d4d;
+  --color-primary-600: #48151C;
+  --color-primary-700: #3d1219;
+  --color-primary-800: #330f15;
+  --color-primary-900: #290c11;
+  --color-primary-950: #1a080b;
+
+  /* Acento: #D5C58A (dorado/beige) */
+  --color-accent-50: #fbf9f3;
+  --color-accent-100: #f5efe0;
+  --color-accent-200: #e8dcc0;
+  --color-accent-300: #d5c58a;
+  --color-accent-400: #c4ad6a;
+  --color-accent-500: #b39a55;
+  --color-accent-600: #9a7f42;
+  --color-accent-700: #7d6536;
+  --color-accent-800: #66522e;
+  --color-accent-900: #554428;
 
   /* Colores de estado */
   --color-success-500: #22c55e;
