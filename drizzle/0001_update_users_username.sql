@@ -1,24 +1,24 @@
 -- ============================================================
--- MIGRACIÓN 0001: Actualizar tabla users para usar username
--- en lugar de email
+-- MIGRACIÓN 0001: Usuario de acceso por `username`
+-- Sistema de Gestión de Inventarios
+-- Banco Arquidiocesano de Alimentos de Ibagué
+--
+-- NOTA: esta migración queda como no-op porque la migración base
+-- (0000_wet_nighthawk.sql) ya crea la columna `username` con su
+-- restricción de unicidad. Se conserva el archivo para no alterar el
+-- historial del journal de Drizzle.
 -- ============================================================
 
--- Agregar columna username
-ALTER TABLE "users" ADD COLUMN "username" varchar(100);
-
--- Copiar datos de email a username (usando el parte antes del @)
-UPDATE "users" SET "username" = SPLIT_PART(email, '@', 1);
-
--- Hacer username NOT NULL y UNIQUE
-ALTER TABLE "users" ALTER COLUMN "username" SET NOT NULL;
-ALTER TABLE "users" ADD CONSTRAINT "users_username_unique" UNIQUE("username");
-
--- Crear índice
-CREATE INDEX "idx_users_username" ON "users" USING btree ("username");
-
--- Eliminar columna email (opcional, después de verificar)
--- ALTER TABLE "users" DROP COLUMN "email";
--- DROP INDEX IF EXISTS "idx_users_email";
+-- Verificación (no modifica nada):
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'username'
+  ) THEN
+    RAISE EXCEPTION 'La columna users.username no existe: revise la migración 0000';
+  END IF;
+END $$;
 
 -- ============================================================
 -- FIN DE LA MIGRACIÓN

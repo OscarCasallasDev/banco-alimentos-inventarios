@@ -1,88 +1,96 @@
-import { NextResponse } from "next/server";
-import { supabase } from "@/lib/db/supabase-client";
+import { getDb, withTransaction } from "@/lib/db/client";
+import { requireUser } from "@/lib/auth/session";
+import { jsonOk, handleRouteError } from "@/lib/api/response";
+import {
+  deactivateProduct,
+  getProduct,
+  updateProduct,
+} from "@/lib/services/product.service";
+import { recordAuditLog } from "@/lib/services/audit-log.service";
+import { updateProductSchema } from "@/lib/validations/schemas";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    await requireUser();
+
     const { id } = await params;
-    const { data, error } = await supabase
-      .from("products")
-      .select("*")
-      .eq("id", id)
-      .single();
+    const db = getDb();
+    const product = await getProduct(db, id);
 
-    if (error) {
-      if (error.code === "PGRST116") {
-        return NextResponse.json(
-          { success: false, error: { code: "NOT_FOUND", message: "producto no encontrado" } },
-          { status: 404 }
-        );
-      }
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error de base de datos" } },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ success: true, data });
+    return jsonOk(product);
   } catch (error) {
-    console.error("Error obteniendo producto:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
-    );
+    return handleRouteError(error, "productos:GET:id");
   }
 }
 
-export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const user = await requireUser();
+
     const { id } = await params;
     const body = await request.json();
+    const input = updateProductSchema.parse(body);
 
-    const { data, error } = await supabase
-      .from("products")
-      .update(body)
-      .eq("id", id)
-      .select()
-      .single();
+    const product = await withTransaction(async (tx) => {
+      const updated = await updateProduct(tx, id, input);
 
-    if (error) {
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error actualizando producto" } },
-        { status: 500 }
-      );
-    }
+      await recordAuditLog(tx, {
+        userId: user.id,
+        action: "PRODUCT_UPDATE",
+        entity: "products",
+        entityId: id,
+        details: `Producto ${updated.code} actualizado`,
+      });
 
-    return NextResponse.json({ success: true, data });
+      return updated;
+    });
+
+    return jsonOk(product);
   } catch (error) {
-    console.error("Error actualizando producto:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
-    );
+    return handleRouteError(error, "productos:PUT");
   }
 }
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+/**
+ * Baja lógica del producto (regla 4: los productos con historial no se eliminan).
+ */
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const user = await requireUser();
+
     const { id } = await params;
-    const { error } = await supabase
-      .from("products")
-      .delete()
-      .eq("id", id);
 
-    if (error) {
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error eliminando producto" } },
-        { status: 500 }
-      );
-    }
+    const product = await withTransaction(async (tx) => {
+      const deactivated = await deactivateProduct(tx, id);
 
-    return NextResponse.json({ success: true, message: "producto eliminado correctamente" });
+      await recordAuditLog(tx, {
+        userId: user.id,
+        action: "PRODUCT_DEACTIVATE",
+        entity: "products",
+        entityId: id,
+        details: `Producto ${deactivated.code} desactivado`,
+      });
+
+      return deactivated;
+    });
+
+    return jsonOk({
+      id: product.id,
+      code: product.code,
+      name: product.name,
+      status: product.status,
+      message: "El producto se desactivó. Su historial se conserva.",
+    });
   } catch (error) {
-    console.error("Error eliminando producto:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
-    );
+    return handleRouteError(error, "productos:DELETE");
   }
 }

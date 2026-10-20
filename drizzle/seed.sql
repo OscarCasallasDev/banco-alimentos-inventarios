@@ -221,5 +221,99 @@ VALUES
   (gen_random_uuid(), (SELECT id FROM users WHERE username = 'admin'), 'AUDIT_CREATE', 'audits', NULL, 'SUCCESS', 'Auditoría DEMO completada', '127.0.0.1', NOW() - INTERVAL '1 day');
 
 -- ============================================================
+-- DETALLE DE DOCUMENTOS (trazabilidad del flujo)
+-- ============================================================
+
+INSERT INTO entry_items (id, entry_id, product_id, warehouse_id, quantity, unit, presentation)
+SELECT
+  gen_random_uuid(),
+  e.id,
+  p.id,
+  w.id,
+  CASE p.code WHEN 'GRN-001' THEN 150 WHEN 'GRN-002' THEN 80 END,
+  p.unit,
+  p.presentation
+FROM entries e
+CROSS JOIN products p
+CROSS JOIN warehouses w
+WHERE e.number = 'ENT-2026-0001' AND p.code IN ('GRN-001', 'GRN-002') AND w.code = '1.1';
+
+INSERT INTO order_items (id, order_id, product_id, warehouse_id, quantity)
+SELECT
+  gen_random_uuid(),
+  o.id,
+  p.id,
+  w.id,
+  CASE p.code WHEN 'GRN-001' THEN 10 WHEN 'LAC-001' THEN 5 END
+FROM orders o
+CROSS JOIN products p
+CROSS JOIN warehouses w
+WHERE o.number = 'PED-2026-0001' AND p.code IN ('GRN-001', 'LAC-001') AND w.code = '1.1';
+
+INSERT INTO invoice_items (id, invoice_id, product_id, quantity)
+SELECT gen_random_uuid(), i.id, oi.product_id, oi.quantity
+FROM invoices i
+JOIN order_items oi ON oi.order_id = i.order_id;
+
+INSERT INTO dispatch_items (id, dispatch_id, product_id, warehouse_id, quantity)
+SELECT gen_random_uuid(), d.id, oi.product_id, oi.warehouse_id, oi.quantity
+FROM dispatches d
+JOIN receipts r ON r.id = d.receipt_id
+JOIN invoices i ON i.id = r.invoice_id
+JOIN order_items oi ON oi.order_id = i.order_id;
+
+-- ---------- AUDITORÍA: ÍTEMS Y AJUSTE DE INVENTARIO ----------
+
+INSERT INTO audit_items (id, audit_id, product_id, system_quantity, physical_quantity, difference, observation)
+SELECT
+  gen_random_uuid(),
+  a.id,
+  p.id,
+  i.quantity,
+  i.quantity - 2,
+  -2,
+  'Faltante de 2 unidades verificado en conteo físico'
+FROM audits a
+CROSS JOIN products p
+JOIN inventory i ON i.product_id = p.id AND i.warehouse_id = a.warehouse_id
+WHERE p.code = 'GRN-001';
+
+-- El inventario refleja el conteo físico de la auditoría.
+UPDATE inventory
+SET quantity = quantity - 2, last_movement_at = NOW() - INTERVAL '1 day'
+WHERE product_id = (SELECT id FROM products WHERE code = 'GRN-001')
+  AND warehouse_id = (SELECT id FROM warehouses WHERE code = '1.1');
+
+INSERT INTO inventory_movements (id, type, product_id, warehouse_id, quantity, balance_after, document_id, document_type, user_id, notes, created_at)
+SELECT
+  gen_random_uuid(),
+  'ADJUSTMENT',
+  i.product_id,
+  i.warehouse_id,
+  -2,
+  i.quantity,
+  a.id,
+  'AUDIT',
+  a.user_id,
+  'Ajuste por auditoría física',
+  NOW() - INTERVAL '1 day'
+FROM audits a
+JOIN inventory i ON i.product_id = (SELECT id FROM products WHERE code = 'GRN-001')
+  AND i.warehouse_id = a.warehouse_id;
+
+-- ---------- SOPORTES DOCUMENTALES ----------
+
+INSERT INTO documents (id, type, number, related_id, generated_by, created_at)
+SELECT gen_random_uuid(), 'ENTRY'::document_type, e.number, e.id, e.user_id, e.created_at FROM entries e
+UNION ALL
+SELECT gen_random_uuid(), 'ORDER'::document_type, o.number, o.id, o.user_id, o.created_at FROM orders o
+UNION ALL
+SELECT gen_random_uuid(), 'INVOICE'::document_type, i.number, i.id, i.user_id, i.created_at FROM invoices i
+UNION ALL
+SELECT gen_random_uuid(), 'RECEIPT'::document_type, r.number, r.id, r.user_id, r.created_at FROM receipts r
+UNION ALL
+SELECT gen_random_uuid(), 'DISPATCH'::document_type, d.number, d.id, d.user_id, d.created_at FROM dispatches d;
+
+-- ============================================================
 -- FIN DEL SEED
 -- ============================================================

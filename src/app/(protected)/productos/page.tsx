@@ -11,6 +11,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/Toast";
 
 interface Product {
   id: string;
@@ -18,7 +19,7 @@ interface Product {
   name: string;
   description: string | null;
   presentation: string | null;
-  weight: string;
+  weight: number;
   unit: string;
   categoryId: string | null;
   categoryName: string | null;
@@ -57,6 +58,7 @@ const emptyForm: {
 };
 
 export default function ProductosPage() {
+  const { showToast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,6 +68,7 @@ export default function ProductosPage() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetchProducts();
@@ -79,6 +82,7 @@ export default function ProductosPage() {
       if (data.success) setProducts(data.data);
     } catch (err) {
       console.error(err);
+      showToast("error", "Error al cargar productos", "No se pudo conectar con el servidor");
     } finally {
       setLoading(false);
     }
@@ -94,10 +98,51 @@ export default function ProductosPage() {
     }
   }
 
+  function validateForm(): boolean {
+    const errors: Record<string, string> = {};
+
+    // Validar código
+    if (!form.code.trim()) {
+      errors.code = "El código es obligatorio";
+    } else if (!/^[A-Z0-9-]+$/.test(form.code)) {
+      errors.code = "El código solo puede contener letras mayúsculas, números y guiones";
+    } else if (form.code.length < 3) {
+      errors.code = "El código debe tener al menos 3 caracteres";
+    }
+
+    // Validar nombre
+    if (!form.name.trim()) {
+      errors.name = "El nombre es obligatorio";
+    } else if (form.name.trim().length < 3) {
+      errors.name = "El nombre debe tener al menos 3 caracteres";
+    } else if (form.name.trim().length > 100) {
+      errors.name = "El nombre no puede exceder 100 caracteres";
+    }
+
+    // Validar peso
+    if (form.weight && parseFloat(form.weight) < 0) {
+      errors.weight = "El peso no puede ser negativo";
+    }
+
+    // Validar stock mínimo
+    if (form.minStock < 0) {
+      errors.minStock = "El stock mínimo no puede ser negativo";
+    }
+
+    // Validar unidad
+    if (!form.unit.trim()) {
+      errors.unit = "La unidad es obligatoria";
+    }
+
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  }
+
   function openCreate() {
     setForm(emptyForm);
     setEditingId(null);
     setError("");
+    setFieldErrors({});
     setShowModal(true);
   }
 
@@ -107,7 +152,7 @@ export default function ProductosPage() {
       name: product.name,
       description: product.description || "",
       presentation: product.presentation || "",
-      weight: product.weight,
+      weight: product.weight.toString(),
       unit: product.unit,
       categoryId: product.categoryId || "",
       status: product.status,
@@ -115,11 +160,18 @@ export default function ProductosPage() {
     });
     setEditingId(product.id);
     setError("");
+    setFieldErrors({});
     setShowModal(true);
   }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    
+    if (!validateForm()) {
+      showToast("error", "Datos inválidos", "Por favor corrige los campos marcados en rojo");
+      return;
+    }
+
     setSaving(true);
     setError("");
 
@@ -133,7 +185,7 @@ export default function ProductosPage() {
         body: JSON.stringify({
           ...form,
           weight: parseFloat(form.weight) || 0,
-          minStock: parseInt(form.minStock.toString()) || 0,
+          minStock: Number(form.minStock) || 0,
           categoryId: form.categoryId || null,
         }),
       });
@@ -141,27 +193,38 @@ export default function ProductosPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error?.message || "Error al guardar");
+        const errorMsg = data.error?.message || "Error al guardar";
+        setError(errorMsg);
+        showToast("error", "Error al guardar", errorMsg);
         return;
       }
 
+      showToast("success", editingId ? "Producto actualizado" : "Producto creado", `El producto "${form.name}" se guardó correctamente`);
       setShowModal(false);
       fetchProducts();
     } catch {
-      setError("Error de conexión");
+      setError("Error de conexión. Verifica tu internet e intenta nuevamente.");
+      showToast("error", "Error de conexión", "Verifica tu internet e intenta nuevamente");
     } finally {
       setSaving(false);
     }
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("¿Estás seguro de eliminar este producto?")) return;
+    if (!confirm("¿Estás seguro de desactivar este producto? Su historial se conserva y dejará de admitir movimientos.")) return;
 
     try {
       const res = await fetch(`/api/productos/${id}`, { method: "DELETE" });
-      if (res.ok) fetchProducts();
+      if (res.ok) {
+        showToast("success", "Producto desactivado", "El producto ya no admite movimientos. Su historial se conserva.");
+        fetchProducts();
+      } else {
+        const data = await res.json();
+        showToast("error", "Error al desactivar", data.error?.message || "No se pudo desactivar el producto");
+      }
     } catch (err) {
       console.error(err);
+      showToast("error", "Error de conexión", "No se pudo conectar con el servidor");
     }
   }
 
@@ -295,7 +358,7 @@ export default function ProductosPage() {
             <form onSubmit={handleSave} className="p-6 space-y-4">
               {error && (
                 <div className="flex items-center gap-2 bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm">
-                  <AlertCircle className="w-4 h-4" />
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
                   {error}
                 </div>
               )}
@@ -309,13 +372,21 @@ export default function ProductosPage() {
                     type="text"
                     value={form.code}
                     onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    className={cn(
+                      "w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500",
+                      fieldErrors.code ? "border-red-500 bg-red-50" : "border-gray-300"
+                    )}
                     placeholder="Ej: GRN-001"
                     required
                   />
-                  <p className="mt-1 text-xs text-gray-500">
-                    Letras mayúsculas, números y guiones. Ej: GRN-001
-                  </p>
+                  {fieldErrors.code && (
+                    <p className="mt-1 text-xs text-red-600">{fieldErrors.code}</p>
+                  )}
+                  {!fieldErrors.code && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Letras mayúsculas, números y guiones. Ej: GRN-001
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -325,10 +396,16 @@ export default function ProductosPage() {
                     type="text"
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    className={cn(
+                      "w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500",
+                      fieldErrors.name ? "border-red-500 bg-red-50" : "border-gray-300"
+                    )}
                     placeholder="Ej: Arroz"
                     required
                   />
+                  {fieldErrors.name && (
+                    <p className="mt-1 text-xs text-red-600">{fieldErrors.name}</p>
+                  )}
                 </div>
               </div>
 
@@ -378,19 +455,34 @@ export default function ProductosPage() {
                     min="0"
                     value={form.weight}
                     onChange={(e) => setForm({ ...form, weight: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    className={cn(
+                      "w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500",
+                      fieldErrors.weight ? "border-red-500 bg-red-50" : "border-gray-300"
+                    )}
                     placeholder="0.00"
                   />
+                  {fieldErrors.weight && (
+                    <p className="mt-1 text-xs text-red-600">{fieldErrors.weight}</p>
+                  )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Unidad</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Unidad <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
                     value={form.unit}
                     onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    className={cn(
+                      "w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500",
+                      fieldErrors.unit ? "border-red-500 bg-red-50" : "border-gray-300"
+                    )}
                     placeholder="Ej: kg, L, unidad"
+                    required
                   />
+                  {fieldErrors.unit && (
+                    <p className="mt-1 text-xs text-red-600">{fieldErrors.unit}</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Stock Mín.</label>
@@ -399,12 +491,20 @@ export default function ProductosPage() {
                     min="0"
                     value={form.minStock}
                     onChange={(e) => setForm({ ...form, minStock: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    className={cn(
+                      "w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500",
+                      fieldErrors.minStock ? "border-red-500 bg-red-50" : "border-gray-300"
+                    )}
                     placeholder="0"
                   />
-                  <p className="mt-1 text-xs text-gray-500">
-                    Alerta cuando el stock sea menor a este valor
-                  </p>
+                  {fieldErrors.minStock && (
+                    <p className="mt-1 text-xs text-red-600">{fieldErrors.minStock}</p>
+                  )}
+                  {!fieldErrors.minStock && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Alerta cuando el stock sea menor a este valor
+                    </p>
+                  )}
                 </div>
               </div>
 

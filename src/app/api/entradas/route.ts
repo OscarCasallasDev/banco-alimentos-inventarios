@@ -1,53 +1,37 @@
-import { NextResponse } from "next/server";
-import { supabase } from "@/lib/db/supabase-client";
+import { getDb, withTransaction } from "@/lib/db/client";
+import { requireUser } from "@/lib/auth/session";
+import { jsonOk, handleRouteError } from "@/lib/api/response";
+import { createEntry, listEntries } from "@/lib/services/entry.service";
+import { createEntrySchema } from "@/lib/validations/schemas";
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
-      .from("entries")
-      .select("*")
-      .order("created_at", { ascending: false });
+    await requireUser();
 
-    if (error) {
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error al obtener entradas" } },
-        { status: 500 }
-      );
-    }
+    const db = getDb();
+    const data = await listEntries(db);
 
-    return NextResponse.json({ success: true, data });
+    return jsonOk(data);
   } catch (error) {
-    console.error("Error obteniendo entradas:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
-    );
+    return handleRouteError(error, "entradas:GET");
   }
 }
 
 export async function POST(request: Request) {
   try {
+    const user = await requireUser();
+
     const body = await request.json();
+    const input = createEntrySchema.parse(body);
 
-    const { data, error } = await supabase
-      .from("entries")
-      .insert(body)
-      .select()
-      .single();
-
-    if (error) {
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error creando entrada" } },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ success: true, data }, { status: 201 });
-  } catch (error) {
-    console.error("Error creando entrada:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
+    // Regla 6: la entrada, sus ítems y el movimiento de inventario se
+    // guardan en una sola transacción (o se revierte todo).
+    const entry = await withTransaction(async (tx) =>
+      createEntry(tx, input, user.id)
     );
+
+    return jsonOk(entry, 201);
+  } catch (error) {
+    return handleRouteError(error, "entradas:POST");
   }
 }

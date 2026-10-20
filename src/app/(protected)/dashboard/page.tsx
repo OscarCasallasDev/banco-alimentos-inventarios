@@ -17,7 +17,6 @@ import {
   Warehouse,
   BarChart3,
   Users,
-  Settings,
   Link2,
 } from "lucide-react";
 import { formatNumber } from "@/lib/utils";
@@ -25,22 +24,29 @@ import { formatNumber } from "@/lib/utils";
 interface DashboardData {
   totalProducts: number;
   totalUnits: number;
+  totalWarehouses: number;
+  totalUsers: number;
   recentEntries: Array<{
     id: string;
     number: string;
     date: string;
     format: string;
+    status: string;
+    origin: string | null;
   }>;
   recentExits: Array<{
     id: string;
     number: string;
     date: string;
+    status: string;
+    notes: string | null;
   }>;
   lowStockProducts: Array<{
     id: string;
     name: string;
     code: string;
     minStock: number;
+    quantity: number;
   }>;
   pendingAudits: number;
   detectedDifferences: number;
@@ -192,6 +198,18 @@ export default function DashboardPage() {
       value: data?.pendingAudits || 0,
       icon: ShieldCheck,
       color: "bg-purple-600",
+    },
+    {
+      name: "Bodegas",
+      value: data?.totalWarehouses || 0,
+      icon: Warehouse,
+      color: "bg-yellow-600",
+    },
+    {
+      name: "Usuarios",
+      value: data?.totalUsers || 0,
+      icon: Users,
+      color: "bg-gray-600",
     },
   ];
 
@@ -348,6 +366,9 @@ export default function DashboardPage() {
                     Producto
                   </th>
                   <th className="text-left py-2 px-3 font-medium text-gray-600">
+                    Existencia
+                  </th>
+                  <th className="text-left py-2 px-3 font-medium text-gray-600">
                     Stock Mínimo
                   </th>
                 </tr>
@@ -359,6 +380,11 @@ export default function DashboardPage() {
                       {product.code}
                     </td>
                     <td className="py-2 px-3 text-gray-900">{product.name}</td>
+                    <td className="py-2 px-3">
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                        {product.quantity}
+                      </span>
+                    </td>
                     <td className="py-2 px-3">
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                         {product.minStock}

@@ -24,20 +24,22 @@ export default function InventarioPage() {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    fetchInventory();
-  }, []);
+    let active = true;
 
-  async function fetchInventory() {
-    try {
-      const res = await fetch("/api/inventario");
-      const data = await res.json();
-      if (data.success) setItems(data.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }
+    fetch("/api/inventario")
+      .then((res) => res.json())
+      .then((data) => {
+        if (active && data.success) setItems(data.data);
+      })
+      .catch((err) => console.error(err))
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const filtered = items.filter(
     (item) =>

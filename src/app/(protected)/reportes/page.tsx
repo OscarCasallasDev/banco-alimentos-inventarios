@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 import {
-  BarChart3,
-  Download,
   Package,
   AlertTriangle,
   TrendingUp,
@@ -27,7 +25,7 @@ interface ReportData {
     quantity: number;
     minStock: number;
   }>;
-  recentMovements: Array<{
+  recentEntries: Array<{
     id: string;
     number: string;
     format: string;
@@ -50,20 +48,22 @@ export default function ReportesPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchReports();
-  }, []);
+    let active = true;
 
-  async function fetchReports() {
-    try {
-      const res = await fetch("/api/reportes");
-      const result = await res.json();
-      if (result.success) setData(result.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }
+    fetch("/api/reportes")
+      .then((res) => res.json())
+      .then((result) => {
+        if (active && result.success) setData(result.data);
+      })
+      .catch((err) => console.error(err))
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   if (loading) {
     return (
@@ -154,7 +154,7 @@ export default function ReportesPage() {
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
           <TrendingUp className="w-5 h-5 text-green-600" />
-          Movimientos Recientes
+          Entradas Recientes
         </h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -167,7 +167,7 @@ export default function ReportesPage() {
               </tr>
             </thead>
             <tbody>
-              {data?.recentMovements.map((movement) => (
+              {data?.recentEntries.map((movement) => (
                 <tr key={movement.id} className="border-b border-gray-100">
                   <td className="py-2 px-3 font-mono text-gray-900">{movement.number}</td>
                   <td className="py-2 px-3">

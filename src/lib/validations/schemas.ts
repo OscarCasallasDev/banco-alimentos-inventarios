@@ -1,6 +1,10 @@
 /**
  * Schemas de validación Zod — Sistema de Gestión de Inventarios
  * Banco Arquidiocesano de Alimentos de Ibagué
+ *
+ * FUENTE ÚNICA DE VERDAD para la validación de entrada de la API.
+ * Todos los campos están en camelCase, igual que el resto de la aplicación.
+ * Los servicios se encargan de convertir a las columnas snake_case.
  */
 
 import { z } from "zod";
@@ -20,6 +24,33 @@ export const loginSchema = z.object({
     .max(100, "La contraseña no puede exceder 100 caracteres"),
 });
 
+export const registerSchema = z.object({
+  firstName: z
+    .string()
+    .min(1, "El nombre es requerido")
+    .max(100, "El nombre no puede exceder 100 caracteres"),
+  lastName: z
+    .string()
+    .min(1, "El apellido es requerido")
+    .max(100, "El apellido no puede exceder 100 caracteres"),
+  email: z
+    .string()
+    .email("Correo electrónico inválido")
+    .max(255, "El correo no puede exceder 255 caracteres"),
+  username: z
+    .string()
+    .min(3, "El usuario debe tener al menos 3 caracteres")
+    .max(50, "El usuario no puede exceder 50 caracteres")
+    .regex(
+      /^[a-zA-Z0-9_]+$/,
+      "El usuario solo puede contener letras, números y guiones bajos"
+    ),
+  password: z
+    .string()
+    .min(6, "La contraseña debe tener al menos 6 caracteres")
+    .max(100, "La contraseña no puede exceder 100 caracteres"),
+});
+
 // ============================================================
 // USUARIOS
 // ============================================================
@@ -29,7 +60,14 @@ export const createUserSchema = z.object({
     .string()
     .min(3, "El usuario debe tener al menos 3 caracteres")
     .max(100, "El usuario no puede exceder 100 caracteres")
-    .regex(/^[a-zA-Z0-9_]+$/, "El usuario solo puede contener letras, números y guiones bajos"),
+    .regex(
+      /^[a-zA-Z0-9_]+$/,
+      "El usuario solo puede contener letras, números y guiones bajos"
+    ),
+  email: z
+    .string()
+    .email("Correo electrónico inválido")
+    .max(255, "El correo no puede exceder 255 caracteres"),
   firstName: z
     .string()
     .min(1, "El nombre es requerido")
@@ -42,15 +80,60 @@ export const createUserSchema = z.object({
     .string()
     .min(6, "La contraseña debe tener al menos 6 caracteres")
     .max(100, "La contraseña no puede exceder 100 caracteres"),
-  role: z.enum(["SUPERADMIN", "ADMIN", "RECEPCION", "DESPACHO", "CONTABILIDAD"]),
-  status: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]),
+  role: z
+    .enum(["SUPERADMIN", "ADMIN", "RECEPCION", "DESPACHO", "CONTABILIDAD"])
+    .default("RECEPCION"),
+  status: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]).default("ACTIVE"),
 });
 
-export const updateUserSchema = createUserSchema.partial().omit({ password: true }).extend({
+export const updateUserSchema = z.object({
+  username: z
+    .string()
+    .min(3, "El usuario debe tener al menos 3 caracteres")
+    .max(100, "El usuario no puede exceder 100 caracteres")
+    .regex(
+      /^[a-zA-Z0-9_]+$/,
+      "El usuario solo puede contener letras, números y guiones bajos"
+    )
+    .optional(),
+  email: z
+    .string()
+    .email("Correo electrónico inválido")
+    .max(255, "El correo no puede exceder 255 caracteres")
+    .optional(),
+  firstName: z
+    .string()
+    .min(1, "El nombre es requerido")
+    .max(100, "El nombre no puede exceder 100 caracteres")
+    .optional(),
+  lastName: z
+    .string()
+    .min(1, "El apellido es requerido")
+    .max(100, "El apellido no puede exceder 100 caracteres")
+    .optional(),
   password: z
     .string()
     .min(6, "La contraseña debe tener al menos 6 caracteres")
     .max(100, "La contraseña no puede exceder 100 caracteres")
+    .optional(),
+  role: z
+    .enum(["SUPERADMIN", "ADMIN", "RECEPCION", "DESPACHO", "CONTABILIDAD"])
+    .optional(),
+  status: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]).optional(),
+});
+
+// ============================================================
+// CATEGORÍAS
+// ============================================================
+
+export const createCategorySchema = z.object({
+  name: z
+    .string()
+    .min(1, "El nombre es requerido")
+    .max(255, "El nombre no puede exceder 255 caracteres"),
+  description: z
+    .string()
+    .max(1000, "La descripción no puede exceder 1000 caracteres")
     .optional(),
 });
 
@@ -61,11 +144,17 @@ export const updateUserSchema = createUserSchema.partial().omit({ password: true
 export const createProductSchema = z.object({
   code: z
     .string()
+    .trim()
     .min(1, "El código es requerido")
     .max(50, "El código no puede exceder 50 caracteres")
-    .regex(/^[A-Z0-9-]+$/, "El código solo puede contener letras mayúsculas, números y guiones"),
+    .transform((value) => value.toUpperCase())
+    .refine(
+      (value) => /^[A-Z0-9-]+$/.test(value),
+      "El código solo puede contener letras mayúsculas, números y guiones"
+    ),
   name: z
     .string()
+    .trim()
     .min(1, "El nombre es requerido")
     .max(255, "El nombre no puede exceder 255 caracteres"),
   description: z
@@ -79,22 +168,26 @@ export const createProductSchema = z.object({
   weight: z
     .number()
     .min(0, "El peso no puede ser negativo")
-    .max(999999.99, "El peso no puede exceder 999999.99"),
+    .max(999999.99, "El peso no puede exceder 999999.99")
+    .default(0),
   unit: z
     .string()
+    .trim()
     .min(1, "La unidad es requerida")
-    .max(20, "La unidad no puede exceder 20 caracteres"),
+    .max(20, "La unidad no puede exceder 20 caracteres")
+    .default("unidad"),
   categoryId: z
     .string()
     .uuid("Categoría inválida")
     .nullable()
     .optional(),
-  status: z.enum(["ACTIVE", "INACTIVE", "DISCONTINUED"]),
+  status: z.enum(["ACTIVE", "INACTIVE", "DISCONTINUED"]).default("ACTIVE"),
   minStock: z
     .number()
     .int("El stock mínimo debe ser un número entero")
     .min(0, "El stock mínimo no puede ser negativo")
-    .max(999999, "El stock mínimo no puede exceder 999999"),
+    .max(999999, "El stock mínimo no puede exceder 999999")
+    .default(0),
 });
 
 export const updateProductSchema = createProductSchema.partial();
@@ -106,19 +199,25 @@ export const updateProductSchema = createProductSchema.partial();
 export const createWarehouseSchema = z.object({
   code: z
     .string()
+    .trim()
     .min(1, "El código es requerido")
     .max(20, "El código no puede exceder 20 caracteres")
-    .regex(/^[A-Z0-9.]+$/, "El código solo puede contener letras mayúsculas, números y puntos"),
+    .transform((value) => value.toUpperCase())
+    .refine(
+      (value) => /^[A-Z0-9.]+$/.test(value),
+      "El código solo puede contener letras mayúsculas, números y puntos"
+    ),
   name: z
     .string()
+    .trim()
     .min(1, "El nombre es requerido")
     .max(255, "El nombre no puede exceder 255 caracteres"),
   description: z
     .string()
     .max(1000, "La descripción no puede exceder 1000 caracteres")
     .optional(),
-  type: z.enum(["PROPIA", "TERCERO", "CAMPAIGN", "PROGRAM"]),
-  status: z.enum(["ACTIVE", "INACTIVE"]),
+  type: z.enum(["PROPIA", "TERCERO", "CAMPAIGN", "PROGRAM"]).default("PROPIA"),
+  status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
   observations: z
     .string()
     .max(1000, "Las observaciones no pueden exceder 1000 caracteres")
@@ -139,19 +238,20 @@ export const entryItemSchema = z.object({
     .int("La cantidad debe ser un número entero")
     .positive("La cantidad debe ser positiva")
     .max(999999, "La cantidad no puede exceder 999999"),
-  unit: z.string().min(1, "La unidad es requerida"),
-  presentation: z.string().optional(),
+  unit: z.string().min(1, "La unidad es requerida").max(20),
+  presentation: z.string().max(100).optional(),
 });
 
 export const createEntrySchema = z.object({
   format: z.enum(["E1", "E3", "N3", "N5"]),
-  number: z.string().min(1, "El número es requerido"),
+  /** Si se omite, el sistema asigna el consecutivo (ENT-2026-0001). */
+  number: z.string().trim().max(50).optional(),
   date: z.string().min(1, "La fecha es requerida"),
-  nit: z.string().optional(),
-  origin: z.string().optional(),
-  document: z.string().optional(),
-  status: z.enum(["DRAFT", "CONFIRMED", "CANCELLED"]),
-  notes: z.string().optional(),
+  nit: z.string().max(50).optional(),
+  origin: z.string().max(255).optional(),
+  document: z.string().max(100).optional(),
+  status: z.enum(["DRAFT", "CONFIRMED", "CANCELLED"]).default("CONFIRMED"),
+  notes: z.string().max(2000).optional(),
   items: z.array(entryItemSchema).min(1, "Debe tener al menos un item"),
 });
 
@@ -170,12 +270,15 @@ export const orderItemSchema = z.object({
 });
 
 export const createOrderSchema = z.object({
-  number: z.string().min(1, "El número es requerido"),
+  /** Si se omite, el sistema asigna el consecutivo (PED-2026-0001). */
+  number: z.string().trim().max(50).optional(),
   date: z.string().min(1, "La fecha es requerida"),
-  nit: z.string().optional(),
-  destination: z.string().optional(),
-  status: z.enum(["DRAFT", "APPROVED", "INVOICED", "DISPATCHED", "CANCELLED"]),
-  notes: z.string().optional(),
+  nit: z.string().max(50).optional(),
+  destination: z.string().max(255).optional(),
+  status: z.enum(["DRAFT", "APPROVED", "INVOICED", "DISPATCHED", "CANCELLED"]).default(
+    "APPROVED"
+  ),
+  notes: z.string().max(2000).optional(),
   items: z.array(orderItemSchema).min(1, "Debe tener al menos un item"),
 });
 
@@ -185,10 +288,13 @@ export const createOrderSchema = z.object({
 
 export const createInvoiceSchema = z.object({
   format: z.enum(["SF1", "F2"]),
-  number: z.string().min(1, "El número es requerido"),
+  /** Si se omite, el sistema asigna el consecutivo (FAC-2026-0001). */
+  number: z.string().trim().max(50).optional(),
   orderId: z.string().uuid("Pedido inválido"),
   date: z.string().min(1, "La fecha es requerida"),
-  status: z.enum(["DRAFT", "GENERATED", "ASSOCIATED_TO_RECEIPT", "CANCELLED"]),
+  status: z
+    .enum(["DRAFT", "GENERATED", "ASSOCIATED_TO_RECEIPT", "CANCELLED"])
+    .default("GENERATED"),
 });
 
 // ============================================================
@@ -197,10 +303,11 @@ export const createInvoiceSchema = z.object({
 
 export const createReceiptSchema = z.object({
   format: z.enum(["R1", "R2", "R3", "R4"]),
-  number: z.string().min(1, "El número es requerido"),
+  /** Si se omite, el sistema asigna el consecutivo (REC-2026-0001). */
+  number: z.string().trim().max(50).optional(),
   invoiceId: z.string().uuid("Factura inválida"),
   date: z.string().min(1, "La fecha es requerida"),
-  status: z.enum(["DRAFT", "GENERATED", "CANCELLED"]),
+  status: z.enum(["DRAFT", "GENERATED", "CANCELLED"]).default("GENERATED"),
 });
 
 // ============================================================
@@ -208,11 +315,14 @@ export const createReceiptSchema = z.object({
 // ============================================================
 
 export const createDispatchSchema = z.object({
-  number: z.string().min(1, "El número es requerido"),
+  /** Si se omite, el sistema asigna el consecutivo (DES-2026-0001). */
+  number: z.string().trim().max(50).optional(),
   receiptId: z.string().uuid("Recibo inválido"),
   date: z.string().min(1, "La fecha es requerida"),
-  status: z.enum(["PENDING", "PREPARED", "DISPATCHED", "CANCELLED"]),
-  notes: z.string().optional(),
+  status: z
+    .enum(["PENDING", "PREPARED", "DISPATCHED", "CANCELLED"])
+    .default("DISPATCHED"),
+  notes: z.string().max(2000).optional(),
 });
 
 // ============================================================
@@ -221,18 +331,23 @@ export const createDispatchSchema = z.object({
 
 export const auditItemSchema = z.object({
   productId: z.string().uuid("Producto inválido"),
-  systemQuantity: z.number().int().min(0, "La cantidad del sistema no puede ser negativa"),
-  physicalQuantity: z.number().int().min(0, "La cantidad física no puede ser negativa"),
-  difference: z.number().int(),
-  observation: z.string().optional(),
+  /** Conteo físico verificado en bodega. El sistema toma la existencia real. */
+  physicalQuantity: z
+    .number()
+    .int("La cantidad física debe ser un número entero")
+    .min(0, "La cantidad física no puede ser negativa")
+    .max(999999, "La cantidad física no puede exceder 999999"),
+  observation: z.string().max(1000).optional(),
 });
 
 export const createAuditSchema = z.object({
   date: z.string().min(1, "La fecha es requerida"),
   warehouseId: z.string().uuid("Bodega inválida"),
-  responsible: z.string().min(1, "El responsable es requerido"),
-  status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETED", "CANCELLED"]),
-  notes: z.string().optional(),
+  responsible: z.string().trim().min(1, "El responsable es requerido").max(255),
+  status: z
+    .enum(["PENDING", "IN_PROGRESS", "COMPLETED", "CANCELLED"])
+    .default("COMPLETED"),
+  notes: z.string().max(2000).optional(),
   items: z.array(auditItemSchema).min(1, "Debe tener al menos un item"),
 });
 
@@ -241,8 +356,10 @@ export const createAuditSchema = z.object({
 // ============================================================
 
 export type LoginInput = z.infer<typeof loginSchema>;
+export type RegisterInput = z.infer<typeof registerSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
+export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 export type UpdateProductInput = z.infer<typeof updateProductSchema>;
 export type CreateWarehouseInput = z.infer<typeof createWarehouseSchema>;

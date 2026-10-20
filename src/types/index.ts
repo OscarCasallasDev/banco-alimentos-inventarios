@@ -1,30 +1,99 @@
 /**
- * Tipos del dominio — Sistema de Gestión de Inventarios
+ * Tipos públicos de la aplicación — Sistema de Gestión de Inventarios
  * Banco Arquidiocesano de Alimentos de Ibagué
+ *
+ * Reexporta los tipos del dominio y de la base de datos para que el resto
+ * de la aplicación use un único punto de entrada: `@/types`.
  */
 
-export type UserRole = "SUPERADMIN" | "ADMIN" | "RECEPCION" | "DESPACHO" | "CONTABILIDAD";
-export type UserStatus = "ACTIVE" | "INACTIVE" | "SUSPENDED";
-export type ProductStatus = "ACTIVE" | "INACTIVE" | "DISCONTINUED";
-export type WarehouseType = "PROPIA" | "TERCERO" | "CAMPAIGN" | "PROGRAM";
-export type WarehouseStatus = "ACTIVE" | "INACTIVE";
-export type MovementType = "ENTRY" | "EXIT" | "ADJUSTMENT" | "AUDIT";
-export type EntryFormat = "E1" | "E3" | "N3" | "N5";
-export type EntryStatus = "DRAFT" | "CONFIRMED" | "CANCELLED";
-export type OrderStatus = "DRAFT" | "APPROVED" | "INVOICED" | "DISPATCHED" | "CANCELLED";
-export type InvoiceFormat = "SF1" | "F2";
-export type InvoiceStatus = "DRAFT" | "GENERATED" | "ASSOCIATED_TO_RECEIPT" | "CANCELLED";
-export type ReceiptFormat = "R1" | "R2" | "R3" | "R4";
-export type ReceiptStatus = "DRAFT" | "GENERATED" | "CANCELLED";
-export type DispatchStatus = "PENDING" | "PREPARED" | "DISPATCHED" | "CANCELLED";
-export type AuditStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+export type {
+  User,
+  UserRole,
+  UserStatus,
+  Role,
+  Category,
+  Product,
+  ProductStatus,
+  Warehouse,
+  WarehouseType,
+  WarehouseStatus,
+  Inventory,
+  InventoryMovement,
+  MovementType,
+  Entry,
+  EntryFormat,
+  EntryStatus,
+  EntryItem,
+  Order,
+  OrderStatus,
+  OrderItem,
+  Invoice,
+  InvoiceFormat,
+  InvoiceStatus,
+  InvoiceItem,
+  Receipt,
+  ReceiptFormat,
+  ReceiptStatus,
+  Dispatch,
+  DispatchStatus,
+  DispatchItem,
+  Audit,
+  AuditStatus,
+  AuditItem,
+  AuditLog,
+  AuditLogAction,
+  Document,
+  DocumentType,
+} from "./database";
 
-export interface ApiResponse<T = unknown> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-    details?: Record<string, string[]>;
-  };
-}
+export type {
+  ApiResponse,
+  ApiError,
+  PaginationMeta,
+  PaginationParams,
+  ProductQueryParams,
+  MovementQueryParams,
+  InventoryQueryParams,
+  DateRangeFilter,
+  ProductFilter,
+  MovementFilter,
+  LoadingState,
+  AsyncState,
+} from "./api";
+
+export type {
+  CreateUserDTO,
+  UpdateUserDTO,
+  UserResponseDTO,
+  CreateProductDTO,
+  UpdateProductDTO,
+  ProductWithCategory,
+  CreateWarehouseDTO,
+  UpdateWarehouseDTO,
+  InventoryWithDetails,
+  StockValidationResult,
+  CreateEntryDTO,
+  CreateEntryItemDTO,
+  EntryWithItems,
+  CreateOrderDTO,
+  CreateOrderItemDTO,
+  OrderWithItems,
+  CreateInvoiceDTO,
+  InvoiceWithItems,
+  CreateReceiptDTO,
+  CreateDispatchDTO,
+  CreateDispatchItemDTO,
+  DispatchWithItems,
+  CreateAuditDTO,
+  CreateAuditItemDTO,
+  AuditWithItems,
+  MovementWithDetails,
+  DashboardStats,
+  InventoryReportRow,
+  MovementReportRow,
+  AuditReportRow,
+  SiigoIntegrationStatus,
+  SiigoExportResult,
+  SiigoImportResult,
+  SiigoValidationResult,
+} from "./domain";

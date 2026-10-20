@@ -1,53 +1,37 @@
-import { NextResponse } from "next/server";
-import { supabase } from "@/lib/db/supabase-client";
+import { getDb } from "@/lib/db/client";
+import { requireUser } from "@/lib/auth/session";
+import { jsonOk, handleRouteError } from "@/lib/api/response";
+import {
+  createCategory,
+  listCategories,
+} from "@/lib/services/product.service";
+import { createCategorySchema } from "@/lib/validations/schemas";
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
-      .from("categories")
-      .select("*")
-      .order("created_at", { ascending: false });
+    await requireUser();
 
-    if (error) {
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error al obtener categorías" } },
-        { status: 500 }
-      );
-    }
+    const db = getDb();
+    const data = await listCategories(db);
 
-    return NextResponse.json({ success: true, data });
+    return jsonOk(data);
   } catch (error) {
-    console.error("Error obteniendo categorías:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
-    );
+    return handleRouteError(error, "categorias:GET");
   }
 }
 
 export async function POST(request: Request) {
   try {
+    await requireUser();
+
     const body = await request.json();
+    const input = createCategorySchema.parse(body);
 
-    const { data, error } = await supabase
-      .from("categories")
-      .insert(body)
-      .select()
-      .single();
+    const db = getDb();
+    const category = await createCategory(db, input);
 
-    if (error) {
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error creando categoría" } },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ success: true, data }, { status: 201 });
+    return jsonOk(category, 201);
   } catch (error) {
-    console.error("Error creando categoría:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
-    );
+    return handleRouteError(error, "categorias:POST");
   }
 }

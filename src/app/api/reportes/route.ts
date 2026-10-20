@@ -1,29 +1,17 @@
-import { NextResponse } from "next/server";
-import { supabase } from "@/lib/db/supabase-client";
+import { getDb } from "@/lib/db/client";
+import { requireUser } from "@/lib/auth/session";
+import { jsonOk, handleRouteError } from "@/lib/api/response";
+import { getReportSummary } from "@/lib/services/report.service";
 
 export async function GET() {
   try {
-    const [products, inventory, entries, orders] = await Promise.all([
-      supabase.from("products").select("*").limit(100),
-      supabase.from("inventory").select("*, products(name), warehouses(name)").limit(100),
-      supabase.from("entries").select("*").limit(100),
-      supabase.from("orders").select("*").limit(100),
-    ]);
+    await requireUser();
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        products: products.data || [],
-        inventory: inventory.data || [],
-        entries: entries.data || [],
-        orders: orders.data || [],
-      },
-    });
+    const db = getDb();
+    const data = await getReportSummary(db);
+
+    return jsonOk(data);
   } catch (error) {
-    console.error("Error obteniendo reportes:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
-    );
+    return handleRouteError(error, "reportes:GET");
   }
 }

@@ -1,75 +1,57 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import * as XLSX from "xlsx";
+import { getDb } from "@/lib/db/client";
+import { requireUser } from "@/lib/auth/session";
+import { handleRouteError } from "@/lib/api/response";
 import { exportToExcel } from "@/lib/siigo/exporter";
-import type {
-  E1Entry,
-  E3Entry,
-  N3Entry,
-  N5Entry,
-  SF1Invoice,
-  F2Invoice,
-  R1Receipt,
-  R2Receipt,
-  R3Receipt,
-  R4Receipt,
-} from "@/lib/siigo/formats";
+import { buildSiigoPayload, SIIGO_FORMATS } from "@/lib/services/siigo.service";
+import { recordAuditLog } from "@/lib/services/audit-log.service";
 
 const exportSchema = z.object({
-  format: z.enum(["E1", "E3", "N3", "N5", "SF1", "F2", "R1", "R2", "R3", "R4"]),
-  data: z.unknown(),
+  format: z.enum(SIIGO_FORMATS),
+  documentId: z.string().uuid("Documento inválido").optional(),
 });
 
 /**
  * API Route: Exportar a ExcelSiigo
- * Genera un archivo Excel con el formato especificado para Siigo Pyme.
+ *
+ * Genera el archivo Excel con el formato indicado, tomados los datos de la
+ * base de datos del sistema. Si no se indica `documentId`, se exporta el
+ * documento más reciente de ese formato.
  */
 export async function POST(request: Request) {
   try {
+    const user = await requireUser();
+
     const body = await request.json();
-    const { format, data } = exportSchema.parse(body);
+    const { format, documentId } = exportSchema.parse(body);
 
-    // Generar el archivo Excel
-    const wb = exportToExcel(data, format);
+    const db = getDb();
+    const payload = await buildSiigoPayload(db, format, documentId);
 
-    // Convertir a buffer
-    const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    const workbook = exportToExcel(payload, format);
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
 
-    // Generar nombre de archivo
+    await recordAuditLog(db, {
+      userId: user.id,
+      action: "EXPORT",
+      entity: "siigo",
+      entityId: documentId ?? null,
+      details: `Exportación ExcelSiigo formato ${format}`,
+    });
+
     const timestamp = new Date().toISOString().split("T")[0];
     const filename = `Siigo_${format}_${timestamp}`;
 
-    // Retornar el archivo como descarga
     return new NextResponse(buffer, {
       headers: {
-        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "Content-Disposition": `attachment; filename="${filename}.xlsx"`,
       },
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: "VALIDATION_ERROR",
-            message: "Datos inválidos",
-            details: error.flatten().fieldErrors,
-          },
-        },
-        { status: 400 }
-      );
-    }
-    console.error("Error exportando a ExcelSiigo:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: {
-          code: "INTERNAL_ERROR",
-          message: "Error al exportar archivo",
-        },
-      },
-      { status: 500 }
-    );
+    return handleRouteError(error, "siigo:export");
   }
 }

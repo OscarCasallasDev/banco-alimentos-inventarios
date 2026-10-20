@@ -1,72 +1,33 @@
-import { NextResponse } from "next/server";
-import { supabase } from "@/lib/db/supabase-client";
 import { cookies } from "next/headers";
+import { getDb } from "@/lib/db/client";
+import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth/session";
+import { jsonOk, handleRouteError } from "@/lib/api/response";
+import { getUser } from "@/lib/services/user.service";
+import { unauthorizedError } from "@/lib/utils/errors";
 
 /**
- * Obtener información del usuario actual.
- * Lee el user_id de la cookie de sesión y retorna el usuario correspondiente.
+ * Obtiene la información del usuario de la sesión activa.
  */
 export async function GET() {
   try {
     const cookieStore = await cookies();
-    const userId = cookieStore.get("user_id")?.value;
+    const userId = verifySessionToken(
+      cookieStore.get(SESSION_COOKIE_NAME)?.value
+    );
 
     if (!userId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: "UNAUTHORIZED",
-            message: "No autenticado",
-          },
-        },
-        { status: 401 }
-      );
+      throw unauthorizedError("No autenticado");
     }
 
-    const { data: user, error } = await supabase
-      .from("users")
-      .select("id, username, first_name, last_name, role, status, last_login_at, created_at")
-      .eq("id", userId)
-      .single();
+    const db = getDb();
+    const user = await getUser(db, userId);
 
-    if (error || !user) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: "UNAUTHORIZED",
-            message: "Usuario no encontrado",
-          },
-        },
-        { status: 401 }
-      );
+    if (user.status !== "ACTIVE") {
+      throw unauthorizedError("El usuario está inactivo o suspendido");
     }
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        id: user.id,
-        username: user.username,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        role: user.role,
-        status: user.status,
-        lastLoginAt: user.last_login_at,
-        createdAt: user.created_at,
-      },
-    });
+    return jsonOk(user);
   } catch (error) {
-    console.error("Error obteniendo usuario:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: {
-          code: "INTERNAL_ERROR",
-          message: "Error interno del servidor",
-        },
-      },
-      { status: 500 }
-    );
+    return handleRouteError(error, "auth:me");
   }
 }

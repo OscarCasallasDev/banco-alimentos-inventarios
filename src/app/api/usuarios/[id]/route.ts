@@ -1,88 +1,99 @@
-import { NextResponse } from "next/server";
-import { supabase } from "@/lib/db/supabase-client";
+import { getDb, withTransaction } from "@/lib/db/client";
+import { requireUser } from "@/lib/auth/session";
+import { jsonOk, handleRouteError } from "@/lib/api/response";
+import {
+  deactivateUser,
+  getUser,
+  updateUser,
+} from "@/lib/services/user.service";
+import { recordAuditLog } from "@/lib/services/audit-log.service";
+import { updateUserSchema } from "@/lib/validations/schemas";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    await requireUser();
+
     const { id } = await params;
-    const { data, error } = await supabase
-      .from("users")
-      .select("*")
-      .eq("id", id)
-      .single();
+    const db = getDb();
+    const user = await getUser(db, id);
 
-    if (error) {
-      if (error.code === "PGRST116") {
-        return NextResponse.json(
-          { success: false, error: { code: "NOT_FOUND", message: "usuario no encontrado" } },
-          { status: 404 }
-        );
-      }
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error de base de datos" } },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ success: true, data });
+    return jsonOk(user);
   } catch (error) {
-    console.error("Error obteniendo usuario:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
-    );
+    return handleRouteError(error, "usuarios:GET:id");
   }
 }
 
-export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const currentUser = await requireUser();
+
     const { id } = await params;
     const body = await request.json();
+    const input = updateUserSchema.parse(body);
 
-    const { data, error } = await supabase
-      .from("users")
-      .update(body)
-      .eq("id", id)
-      .select()
-      .single();
+    const updated = await withTransaction(async (tx) => {
+      const user = await updateUser(tx, id, input);
 
-    if (error) {
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error actualizando usuario" } },
-        { status: 500 }
-      );
-    }
+      await recordAuditLog(tx, {
+        userId: currentUser.id,
+        action: "USER_UPDATE",
+        entity: "users",
+        entityId: id,
+        details: `Usuario ${user.username} actualizado`,
+      });
 
-    return NextResponse.json({ success: true, data });
+      return user;
+    });
+
+    return jsonOk(updated);
   } catch (error) {
-    console.error("Error actualizando usuario:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
-    );
+    return handleRouteError(error, "usuarios:PUT");
   }
 }
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+/**
+ * Baja lógica del usuario (regla 4: no se eliminan datos históricos).
+ */
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const { id } = await params;
-    const { error } = await supabase
-      .from("users")
-      .delete()
-      .eq("id", id);
+    const currentUser = await requireUser();
 
-    if (error) {
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error eliminando usuario" } },
-        { status: 500 }
-      );
+    const { id } = await params;
+
+    if (currentUser.id === id) {
+      throw new Error("No puedes desactivar tu propio usuario");
     }
 
-    return NextResponse.json({ success: true, message: "usuario eliminado correctamente" });
+    const user = await withTransaction(async (tx) => {
+      const deactivated = await deactivateUser(tx, id);
+
+      await recordAuditLog(tx, {
+        userId: currentUser.id,
+        action: "USER_DEACTIVATE",
+        entity: "users",
+        entityId: id,
+        details: `Usuario ${deactivated.username} desactivado`,
+      });
+
+      return deactivated;
+    });
+
+    return jsonOk({
+      id: user.id,
+      username: user.username,
+      status: user.status,
+      message: "El usuario se desactivó. Su historial se conserva.",
+    });
   } catch (error) {
-    console.error("Error eliminando usuario:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
-    );
+    return handleRouteError(error, "usuarios:DELETE");
   }
 }

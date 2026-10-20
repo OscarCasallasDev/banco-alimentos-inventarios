@@ -13,7 +13,6 @@ import {
   decimal,
   date,
   timestamp,
-  boolean,
   inet,
   uniqueIndex,
   index,
@@ -122,6 +121,9 @@ export const auditLogActionEnum = pgEnum("audit_log_action", [
   "PRODUCT_CREATE",
   "PRODUCT_UPDATE",
   "PRODUCT_DEACTIVATE",
+  "WAREHOUSE_CREATE",
+  "WAREHOUSE_UPDATE",
+  "WAREHOUSE_DEACTIVATE",
   "ENTRY_CREATE",
   "ENTRY_CONFIRM",
   "EXIT_CREATE",
@@ -157,7 +159,7 @@ export const users = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     username: varchar("username", { length: 100 }).notNull().unique(),
-    email: varchar("email", { length: 255 }).notNull().unique(),
+    email: varchar("email", { length: 255 }).notNull(),
     passwordHash: text("password_hash").notNull(),
     firstName: varchar("first_name", { length: 100 }).notNull(),
     lastName: varchar("last_name", { length: 100 }).notNull(),
@@ -169,7 +171,7 @@ export const users = pgTable(
   },
   (table) => [
     index("idx_users_username").on(table.username),
-    index("idx_users_email").on(table.email),
+    uniqueIndex("idx_users_email").on(table.email),
     index("idx_users_role").on(table.role),
     index("idx_users_status").on(table.status),
   ]
@@ -204,7 +206,9 @@ export const products = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
     presentation: varchar("presentation", { length: 100 }),
-    weight: decimal("weight", { precision: 10, scale: 2 }).notNull().default("0"),
+    weight: decimal("weight", { precision: 10, scale: 2, mode: "number" })
+      .notNull()
+      .default(0),
     unit: varchar("unit", { length: 20 }).notNull().default("unidad"),
     categoryId: uuid("category_id").references(() => categories.id),
     status: productStatusEnum("status").notNull().default("ACTIVE"),

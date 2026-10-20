@@ -69,8 +69,17 @@ export function conflictError(message: string): ApplicationError {
   return new ApplicationError("CONFLICT", message);
 }
 
-export function insufficientStockError(): ApplicationError {
-  return new ApplicationError("INSUFFICIENT_STOCK", "Stock insuficiente");
+export function insufficientStockError(
+  message = "Stock insuficiente en la bodega seleccionada"
+): ApplicationError {
+  return new ApplicationError("INSUFFICIENT_STOCK", message);
+}
+
+/**
+ * Violación de una regla de negocio (no es un error técnico).
+ */
+export function businessRuleError(message: string): ApplicationError {
+  return new ApplicationError("VALIDATION_ERROR", message);
 }
 
 export function invalidCredentialsError(): ApplicationError {

@@ -1,91 +1,49 @@
-import { NextResponse } from "next/server";
-import { z } from "zod";
-import { supabase } from "@/lib/db/supabase-client";
-
-const warehouseSchema = z.object({
-  code: z.string().min(1, "El código es requerido").max(50),
-  name: z.string().min(1, "El nombre es requerido").max(255),
-  description: z.string().optional(),
-  type: z.enum(["PROPIA", "TERCERO", "CAMPAIGN", "PROGRAM"]),
-  status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
-  observations: z.string().optional(),
-});
+import { getDb, withTransaction } from "@/lib/db/client";
+import { requireUser } from "@/lib/auth/session";
+import { jsonOk, handleRouteError } from "@/lib/api/response";
+import {
+  createWarehouse,
+  listWarehouses,
+} from "@/lib/services/warehouse.service";
+import { recordAuditLog } from "@/lib/services/audit-log.service";
+import { createWarehouseSchema } from "@/lib/validations/schemas";
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
-      .from("warehouses")
-      .select("*")
-      .order("created_at", { ascending: false });
+    await requireUser();
 
-    if (error) {
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error al obtener bodegas" } },
-        { status: 500 }
-      );
-    }
+    const db = getDb();
+    const data = await listWarehouses(db);
 
-    return NextResponse.json({ success: true, data });
+    return jsonOk(data);
   } catch (error) {
-    console.error("Error obteniendo bodegas:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
-    );
+    return handleRouteError(error, "bodegas:GET");
   }
 }
 
 export async function POST(request: Request) {
   try {
+    const user = await requireUser();
+
     const body = await request.json();
-    const data = warehouseSchema.parse(body);
+    const input = createWarehouseSchema.parse(body);
 
-    // Verificar si el código ya existe
-    const { data: existing } = await supabase
-      .from("warehouses")
-      .select("id")
-      .eq("code", data.code)
-      .limit(1);
+    const warehouse = await withTransaction(async (tx) => {
+      const created = await createWarehouse(tx, input);
 
-    if (existing && existing.length > 0) {
-      return NextResponse.json(
-        { success: false, error: { code: "CODE_EXISTS", message: "El código de la bodega ya existe" } },
-        { status: 409 }
-      );
-    }
+      await recordAuditLog(tx, {
+        userId: user.id,
+        action: "WAREHOUSE_CREATE",
+        entity: "warehouses",
+        entityId: created.id,
+        details: `Bodega ${created.code} — ${created.name}`,
+      });
 
-    const { data: newWarehouse, error } = await supabase
-      .from("warehouses")
-      .insert({
-        code: data.code,
-        name: data.name,
-        description: data.description || null,
-        type: data.type,
-        status: data.status || "ACTIVE",
-        observations: data.observations || null,
-      })
-      .select()
-      .single();
+      return created;
+    });
 
-    if (error) {
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error creando bodega" } },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ success: true, data: newWarehouse }, { status: 201 });
+    return jsonOk(warehouse, 201);
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, error: { code: "VALIDATION_ERROR", message: "Datos inválidos", details: error.flatten().fieldErrors } },
-        { status: 400 }
-      );
-    }
-    console.error("Error creando bodega:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
-    );
+    return handleRouteError(error, "bodegas:POST");
   }
 }

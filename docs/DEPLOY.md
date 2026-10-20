@@ -77,9 +77,9 @@ En Supabase, ir a **Settings > API** y copiar:
 ### 2.1 En desarrollo local (.env.local)
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://hszylkcojdjnbjatuhnv.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_674Wkrhp-3VOXOxmOA_zAg_G6QiQ1w4
-DATABASE_URL=postgresql://postgres.hszylkcojdjnbjatuhnv:postgres@aws-0-us-east-1.pooler.supabase.com:5432/postgres
+NEXT_PUBLIC_SUPABASE_URL=https://[PROJECT_REF].supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_[TU_CLAVE_PUBLICA]
+DATABASE_URL=postgresql://postgres.[PROJECT_REF]:[TU_CONTRASENA]@aws-0-[REGION].pooler.supabase.com:5432/postgres
 ```
 
 ### 2.2 En Vercel

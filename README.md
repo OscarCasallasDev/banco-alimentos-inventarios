@@ -56,12 +56,11 @@ npm install
 cp .env.example .env.local
 # Editar .env.local con tus credenciales de Supabase
 
-# 3. Ejecutar migraciones (crear tablas)
-npx drizzle-kit push
+# 3. Verificar la conexión (ajusta DATABASE_URL si hace falta)
+npm run db:check
 
-# 4. Ejecutar seed (crear usuario admin y datos demo)
-# Conectar a tu base de datos Supabase y ejecutar:
-# drizzle/seed.sql
+# 4. Crear tablas y cargar los datos demo (incluye el usuario admin)
+npm run db:setup
 
 # 5. Iniciar desarrollo
 npm run dev
@@ -75,20 +74,43 @@ Crea un archivo `.env.local` con las siguientes variables:
 
 ```env
 # Connection string de Supabase PostgreSQL
+# Directo (requiere IPv6):
 DATABASE_URL="postgresql://postgres:[PASSWORD]@db.[PROJECT_REF].supabase.co:5432/postgres"
+# Pooler (recomendado, funciona en redes sin IPv6):
+# DATABASE_URL="postgresql://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres"
 
 # Entorno
 NODE_ENV="development"
 
-# Secreto para sesiones (genera uno con: openssl rand -hex 32)
-SESSION_SECRET="tu-secreto-seguro-de-32-caracteres"
+# Secreto para firmar las cookies de sesión (mínimo 32 caracteres)
+# Genera uno con: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+SESSION_SECRET="tu-secreto-seguro-de-64-caracteres"
 ```
 
 **¿Cómo obtener DATABASE_URL?**
 1. Ve a [Supabase Dashboard](https://supabase.com/dashboard)
 2. Selecciona tu proyecto
 3. Ve a Settings → Database
-4. Copia el "Connection string" (modo Transaction)
+4. Copia el "Connection string"
+5. Ejecuta `npm run db:check`: el script prueba la conexión directa y el
+   *pooler* en varias regiones, y deja en `.env.local` la que funcione.
+
+---
+
+## Comandos
+
+| Comando | Función |
+|---|---|
+| `npm run dev` | Servidor de desarrollo |
+| `npm run build` | Compilación de producción |
+| `npm run typecheck` | TypeScript estricto |
+| `npm run lint` | ESLint |
+| `npm run test:run` | Pruebas unitarias |
+| `npm run test:e2e` | Prueba end-to-end de todos los módulos |
+| `npm run check:ui` | Verificación del render de todas las páginas |
+| `npm run db:check` | Verifica la conexión a Supabase |
+| `npm run db:setup` | Aplica migraciones y carga la semilla |
+| `npm run db:setup:reset` | Reinicia la base de datos y recarga la semilla |
 
 ---
 
@@ -106,8 +128,8 @@ SESSION_SECRET="tu-secreto-seguro-de-32-caracteres"
 src/
 ├── app/                    # Next.js App Router
 │   ├── (protected)/        # Rutas protegidas (14 páginas)
-│   ├── api/                # API Routes (20 endpoints)
-│   │   ├── auth/           # Login, logout, me
+│   ├── api/                # API Routes (26 endpoints)
+│   │   ├── auth/           # Login, logout, me, register
 │   │   ├── productos/      # CRUD productos
 │   │   ├── bodegas/        # CRUD bodegas
 │   │   ├── entradas/       # Gestión de entradas
@@ -120,22 +142,29 @@ src/
 │   │   ├── reportes/       # Reportes
 │   │   ├── usuarios/       # CRUD usuarios
 │   │   ├── categorias/     # CRUD categorías
+│   │   ├── configuracion/  # Estado del sistema
 │   │   ├── dashboard/      # Estadísticas
 │   │   └── siigo/          # Integración Siigo
 │   ├── login/              # Página de login
 │   ├── layout.tsx          # Layout raíz
 │   └── page.tsx            # Página principal
-├── components/             # Componentes React (por crear)
+├── components/             # Componentes React
+│   ├── layout/             # Sidebar, Header, ProtectedLayout
+│   ├── forms/              # FormField
+│   └── ui/                 # Toast
 ├── lib/
-│   ├── db/                 # Schema Drizzle + cliente
+│   ├── db/                 # Schema Drizzle + cliente + conexión
+│   ├── services/           # Lógica de negocio (14 servicios)
+│   ├── api/                # Respuestas y manejo de errores de la API
+│   ├── auth/               # Sesión firmada + hash de contraseñas
 │   ├── siigo/              # Formatos + exportador Excel
-│   ├── validations/        # Schemas Zod
-│   ├── utils/              # Utilidades (errores, confirmaciones)
+│   ├── validations/        # Schemas Zod (fuente única)
+│   ├── utils/              # Utilidades (errores, números, fechas)
 │   └── __tests__/          # Tests
-├── types/                  # Tipos TypeScript
-├── hooks/                  # Custom hooks (por crear)
-└── middleware.ts           # Protección de rutas
+├── types/                  # Tipos TypeScript (derivados del schema)
+└── proxy.ts                # Protección de rutas (convención Next.js 16)
 drizzle/                    # Migraciones SQL + seed
+scripts/                    # Utilidades de base de datos y pruebas
 docs/                       # Documentación
 ```
 
@@ -153,8 +182,8 @@ docs/                       # Documentación
 | FASE 5 | ✅ Completado | Inventario + Entradas |
 | FASE 6 | ✅ Completado | Salidas (Pedido → Factura → Recibo → Despacho) |
 | FASE 7 | ✅ Completado | Auditoría + Reportes |
-| FASE 8 | ⚠️ Demo | Integración Siigo (export Excel, PUSH pendiente) |
-| FASE 9 | ⚠️ Parcial | Pruebas (solo validaciones unitarias) |
+| FASE 8 | ✅ Implementada | Integración Siigo (plantilla PENDIENTE de validación) |
+| FASE 9 | ✅ Completado | Pruebas unitarias, end-to-end y de interfaz |
 | FASE 10 | ⏳ Pendiente | Deploy |
 
 ---

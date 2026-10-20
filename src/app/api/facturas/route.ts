@@ -1,53 +1,35 @@
-import { NextResponse } from "next/server";
-import { supabase } from "@/lib/db/supabase-client";
+import { getDb, withTransaction } from "@/lib/db/client";
+import { requireUser } from "@/lib/auth/session";
+import { jsonOk, handleRouteError } from "@/lib/api/response";
+import { createInvoice, listInvoices } from "@/lib/services/invoice.service";
+import { createInvoiceSchema } from "@/lib/validations/schemas";
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
-      .from("invoices")
-      .select("*")
-      .order("created_at", { ascending: false });
+    await requireUser();
 
-    if (error) {
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error al obtener facturas" } },
-        { status: 500 }
-      );
-    }
+    const db = getDb();
+    const data = await listInvoices(db);
 
-    return NextResponse.json({ success: true, data });
+    return jsonOk(data);
   } catch (error) {
-    console.error("Error obteniendo facturas:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
-    );
+    return handleRouteError(error, "facturas:GET");
   }
 }
 
 export async function POST(request: Request) {
   try {
+    const user = await requireUser();
+
     const body = await request.json();
+    const input = createInvoiceSchema.parse(body);
 
-    const { data, error } = await supabase
-      .from("invoices")
-      .insert(body)
-      .select()
-      .single();
-
-    if (error) {
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error creando factura" } },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ success: true, data }, { status: 201 });
-  } catch (error) {
-    console.error("Error creando factura:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
+    const invoice = await withTransaction(async (tx) =>
+      createInvoice(tx, input, user.id)
     );
+
+    return jsonOk(invoice, 201);
+  } catch (error) {
+    return handleRouteError(error, "facturas:POST");
   }
 }

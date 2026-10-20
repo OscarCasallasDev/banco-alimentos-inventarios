@@ -22,12 +22,38 @@ Toda la lógica de integración debe estar aislada en un servicio independiente 
 
 | Componente | Estado | Descripción |
 |---|---|---|
-| SiigoIntegrationService | **DEMO** | Interfaz simulada, no conecta con Siigo real |
-| Exportar a Excel | **DEMO** | Genera archivo Excel compatible (estructura pendiente) |
-| Importar desde Excel | **DEMO** | Lee archivo Excel (estructura pendiente) |
-| PUSH a Siigo | **PENDIENTE** | Requiere plantilla y comando validado |
-| GET desde Siigo | **PENDIENTE** | Requiere plantilla y comando validado |
+| Exportar a Excel | **DEMO** | Genera el archivo `.xlsx` con la estructura de cada formato, tomando los datos **reales** del sistema (entradas, facturas y recibos). La plantilla está pendiente de validación con el Banco. |
+| Importar desde Excel | **PENDIENTE** | Requiere la plantilla oficial de ExcelSiigo |
+| PUSH a Siigo | **PENDIENTE** | Requiere plantilla y comando validados |
+| GET desde Siigo | **PENDIENTE** | Requiere plantilla y comando validados |
 | Componente local/puente | **PENDIENTE** | Requiere acceso al equipo del Banco |
+
+### Cómo funciona la exportación
+
+```
+POST /api/siigo/export
+  { "format": "E1" }                    → exporta la entrada más reciente
+  { "format": "E1", "documentId": "…" } → exporta un documento concreto
+```
+
+1. `src/lib/services/siigo.service.ts` arma la estructura del formato con los
+   datos de la base de datos (productos, bodegas, cantidades, NIT, destinos).
+2. `src/lib/siigo/exporter.ts` genera el libro Excel con dos hojas:
+   **Encabezado** y **Items**.
+3. El archivo se descarga al equipo del Banco, que lo abre en ExcelSiigo y
+   ejecuta el **PUSH** hacia Siigo Pyme.
+
+### Campos que dependen de Siigo Pyme
+
+Estos valores solo existen en Siigo Pyme y quedan vacíos a la espera de que
+el Banco defina el tratamiento:
+
+| Formato | Campo |
+|---|---|
+| N5 | `cuenta` contable, `debito`, `credito`, `centroCosto` |
+| SF1 / F2 | `precioUnitario`, `descuento`, `iva` |
+| N3 / R2 / R4 | `tipoAjuste`, `causa`, `motivo` |
+| R3 | `bodegaOrigen`, `bodegaDestino` |
 
 ---
 

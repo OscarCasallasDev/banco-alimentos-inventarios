@@ -1,53 +1,37 @@
-import { NextResponse } from "next/server";
-import { supabase } from "@/lib/db/supabase-client";
+import { getDb, withTransaction } from "@/lib/db/client";
+import { requireUser } from "@/lib/auth/session";
+import { jsonOk, handleRouteError } from "@/lib/api/response";
+import { createAudit, listAudits } from "@/lib/services/audit.service";
+import { createAuditSchema } from "@/lib/validations/schemas";
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
-      .from("audits")
-      .select("*")
-      .order("created_at", { ascending: false });
+    await requireUser();
 
-    if (error) {
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error al obtener auditorías" } },
-        { status: 500 }
-      );
-    }
+    const db = getDb();
+    const data = await listAudits(db);
 
-    return NextResponse.json({ success: true, data });
+    return jsonOk(data);
   } catch (error) {
-    console.error("Error obteniendo auditorías:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
-    );
+    return handleRouteError(error, "auditoria:GET");
   }
 }
 
 export async function POST(request: Request) {
   try {
+    const user = await requireUser();
+
     const body = await request.json();
+    const input = createAuditSchema.parse(body);
 
-    const { data, error } = await supabase
-      .from("audits")
-      .insert(body)
-      .select()
-      .single();
-
-    if (error) {
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error creando auditoría" } },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ success: true, data }, { status: 201 });
-  } catch (error) {
-    console.error("Error creando auditoría:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
+    // La auditoría compara el conteo físico contra la existencia real del
+    // sistema y, al completarse, ajusta el inventario.
+    const audit = await withTransaction(async (tx) =>
+      createAudit(tx, input, user.id)
     );
+
+    return jsonOk(audit, 201);
+  } catch (error) {
+    return handleRouteError(error, "auditoria:POST");
   }
 }

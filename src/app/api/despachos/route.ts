@@ -1,53 +1,40 @@
-import { NextResponse } from "next/server";
-import { supabase } from "@/lib/db/supabase-client";
+import { getDb, withTransaction } from "@/lib/db/client";
+import { requireUser } from "@/lib/auth/session";
+import { jsonOk, handleRouteError } from "@/lib/api/response";
+import {
+  createDispatch,
+  listDispatches,
+} from "@/lib/services/dispatch.service";
+import { createDispatchSchema } from "@/lib/validations/schemas";
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
-      .from("dispatches")
-      .select("*")
-      .order("created_at", { ascending: false });
+    await requireUser();
 
-    if (error) {
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error al obtener despachos" } },
-        { status: 500 }
-      );
-    }
+    const db = getDb();
+    const data = await listDispatches(db);
 
-    return NextResponse.json({ success: true, data });
+    return jsonOk(data);
   } catch (error) {
-    console.error("Error obteniendo despachos:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
-    );
+    return handleRouteError(error, "despachos:GET");
   }
 }
 
 export async function POST(request: Request) {
   try {
+    const user = await requireUser();
+
     const body = await request.json();
+    const input = createDispatchSchema.parse(body);
 
-    const { data, error } = await supabase
-      .from("dispatches")
-      .insert(body)
-      .select()
-      .single();
-
-    if (error) {
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error creando despacho" } },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ success: true, data }, { status: 201 });
-  } catch (error) {
-    console.error("Error creando despacho:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
+    // Regla 7: el despacho descuenta el inventario dentro de la misma
+    // transacción que crea el documento.
+    const dispatch = await withTransaction(async (tx) =>
+      createDispatch(tx, input, user.id)
     );
+
+    return jsonOk(dispatch, 201);
+  } catch (error) {
+    return handleRouteError(error, "despachos:POST");
   }
 }

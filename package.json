@@ -10,7 +10,13 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "test:e2e": "node scripts/e2e-test.mjs",
+    "check:ui": "node scripts/ui-check.mjs",
+    "db:check": "node scripts/db-check-connection.mjs",
+    "db:setup": "node scripts/db-setup.mjs",
+    "db:setup:reset": "node scripts/db-setup.mjs --reset",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

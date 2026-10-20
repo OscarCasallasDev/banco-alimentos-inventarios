@@ -11,6 +11,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/Toast";
 
 interface WarehouseItem {
   id: string;
@@ -48,6 +49,7 @@ const typeLabels: Record<string, string> = {
 };
 
 export default function BodegasPage() {
+  const { showToast } = useToast();
   const [warehouses, setWarehouses] = useState<WarehouseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -56,6 +58,7 @@ export default function BodegasPage() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetchWarehouses();
@@ -68,15 +71,40 @@ export default function BodegasPage() {
       if (data.success) setWarehouses(data.data);
     } catch (err) {
       console.error(err);
+      showToast("error", "Error al cargar bodegas", "No se pudo conectar con el servidor");
     } finally {
       setLoading(false);
     }
+  }
+
+  function validateForm(): boolean {
+    const errors: Record<string, string> = {};
+
+    if (!form.code.trim()) {
+      errors.code = "El código es obligatorio";
+    } else if (!/^[A-Z0-9-.]+$/.test(form.code)) {
+      errors.code = "El código solo puede contener letras mayúsculas, números, guiones y puntos";
+    } else if (form.code.length < 2) {
+      errors.code = "El código debe tener al menos 2 caracteres";
+    }
+
+    if (!form.name.trim()) {
+      errors.name = "El nombre es obligatorio";
+    } else if (form.name.trim().length < 3) {
+      errors.name = "El nombre debe tener al menos 3 caracteres";
+    } else if (form.name.trim().length > 100) {
+      errors.name = "El nombre no puede exceder 100 caracteres";
+    }
+
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
   }
 
   function openCreate() {
     setForm(emptyForm);
     setEditingId(null);
     setError("");
+    setFieldErrors({});
     setShowModal(true);
   }
 
@@ -91,11 +119,18 @@ export default function BodegasPage() {
     });
     setEditingId(warehouse.id);
     setError("");
+    setFieldErrors({});
     setShowModal(true);
   }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
+
+    if (!validateForm()) {
+      showToast("error", "Datos inválidos", "Por favor corrige los campos marcados en rojo");
+      return;
+    }
+
     setSaving(true);
     setError("");
 
@@ -112,27 +147,38 @@ export default function BodegasPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error?.message || "Error al guardar");
+        const errorMsg = data.error?.message || "Error al guardar";
+        setError(errorMsg);
+        showToast("error", "Error al guardar", errorMsg);
         return;
       }
 
+      showToast("success", editingId ? "Bodega actualizada" : "Bodega creada", `La bodega "${form.name}" se guardó correctamente`);
       setShowModal(false);
       fetchWarehouses();
     } catch {
-      setError("Error de conexión");
+      setError("Error de conexión. Verifica tu internet e intenta nuevamente.");
+      showToast("error", "Error de conexión", "Verifica tu internet e intenta nuevamente");
     } finally {
       setSaving(false);
     }
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("¿Estás seguro de eliminar esta bodega?")) return;
+    if (!confirm("¿Estás seguro de desactivar esta bodega? Su historial se conserva y dejará de admitir movimientos.")) return;
 
     try {
       const res = await fetch(`/api/bodegas/${id}`, { method: "DELETE" });
-      if (res.ok) fetchWarehouses();
+      if (res.ok) {
+        showToast("success", "Bodega desactivada", "La bodega ya no admite movimientos. Su historial se conserva.");
+        fetchWarehouses();
+      } else {
+        const data = await res.json();
+        showToast("error", "Error al desactivar", data.error?.message || "No se pudo desactivar la bodega");
+      }
     } catch (err) {
       console.error(err);
+      showToast("error", "Error de conexión", "No se pudo conectar con el servidor");
     }
   }
 
@@ -263,31 +309,54 @@ export default function BodegasPage() {
             <form onSubmit={handleSave} className="p-6 space-y-4">
               {error && (
                 <div className="flex items-center gap-2 bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm">
-                  <AlertCircle className="w-4 h-4" />
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
                   {error}
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Código *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Código <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
                     value={form.code}
                     onChange={(e) => setForm({ ...form, code: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    className={cn(
+                      "w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500",
+                      fieldErrors.code ? "border-red-500 bg-red-50" : "border-gray-300"
+                    )}
+                    placeholder="Ej: 1.1"
                     required
                   />
+                  {fieldErrors.code && (
+                    <p className="mt-1 text-xs text-red-600">{fieldErrors.code}</p>
+                  )}
+                  {!fieldErrors.code && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Formato sugerido: X.Y (ej: 1.1, 2.3)
+                    </p>
+                  )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nombre <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    className={cn(
+                      "w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500",
+                      fieldErrors.name ? "border-red-500 bg-red-50" : "border-gray-300"
+                    )}
+                    placeholder="Ej: Bodega Principal"
                     required
                   />
+                  {fieldErrors.name && (
+                    <p className="mt-1 text-xs text-red-600">{fieldErrors.name}</p>
+                  )}
                 </div>
               </div>
 
@@ -298,6 +367,7 @@ export default function BodegasPage() {
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                   rows={2}
+                  placeholder="Descripción de la bodega..."
                 />
               </div>
 
@@ -335,6 +405,7 @@ export default function BodegasPage() {
                   onChange={(e) => setForm({ ...form, observations: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                   rows={2}
+                  placeholder="Observaciones adicionales..."
                 />
               </div>
 

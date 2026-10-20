@@ -185,8 +185,8 @@ src/
 
 | Variable | Valor |
 |----------|-------|
-| NEXT_PUBLIC_SUPABASE_URL | https://hszylkcojdjnbjatuhnv.supabase.co |
-| NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY | sb_publishable_674Wkrhp-3VOXOxmOA_zAg_G6QiQ1w4 |
+| NEXT_PUBLIC_SUPABASE_URL | https://[PROJECT_REF].supabase.co |
+| NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY | sb_publishable_[TU_CLAVE_PUBLICA] |
 
 ---
 

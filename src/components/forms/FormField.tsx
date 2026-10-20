@@ -1,14 +1,14 @@
 "use client";
 
 import { AlertCircle } from "lucide-react";
-import { cn } from "@/lib/utils";
+import type { ReactNode } from "react";
 
 interface FormFieldProps {
   label: string;
   required?: boolean;
   error?: string;
   hint?: string;
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
 }
 

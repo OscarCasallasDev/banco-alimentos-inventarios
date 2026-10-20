@@ -1,104 +1,52 @@
-import { NextResponse } from "next/server";
-import { z } from "zod";
-import { supabase } from "@/lib/db/supabase-client";
-import { createHash, timingSafeEqual, randomBytes } from "crypto";
-
-const loginSchema = z.object({
-  username: z.string().min(1, "El usuario es requerido"),
-  password: z.string().min(1, "La contraseña es requerida"),
-});
-
-function hashPassword(password: string): string {
-  return createHash("sha256").update(password).digest("hex");
-}
+import { getDb } from "@/lib/db/client";
+import { verifyPassword } from "@/lib/auth/password";
+import { buildSessionCookie } from "@/lib/auth/session";
+import { jsonOk, handleRouteError } from "@/lib/api/response";
+import { getUserByUsername, touchLastLogin } from "@/lib/services/user.service";
+import { recordAuditLog } from "@/lib/services/audit-log.service";
+import { loginSchema } from "@/lib/validations/schemas";
+import { invalidCredentialsError, unauthorizedError } from "@/lib/utils/errors";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { username, password } = loginSchema.parse(body);
 
-    // Buscar usuario por username
-    const { data: users, error } = await supabase
-      .from("users")
-      .select("*")
-      .eq("username", username)
-      .limit(1);
+    const db = getDb();
+    const user = await getUserByUsername(db, username);
 
-    if (error) {
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error de base de datos" } },
-        { status: 500 }
-      );
+    if (!user || !verifyPassword(password, user.passwordHash)) {
+      throw invalidCredentialsError();
     }
 
-    if (!users || users.length === 0) {
-      return NextResponse.json(
-        { success: false, error: { code: "INVALID_CREDENTIALS", message: "Credenciales inválidas" } },
-        { status: 401 }
-      );
-    }
-
-    const user = users[0];
-
-    // Verificar contraseña
-    const hashedInput = hashPassword(password);
-    const storedHash = Buffer.from(user.password_hash, "hex");
-    const inputHash = Buffer.from(hashedInput, "hex");
-
-    if (storedHash.length !== inputHash.length || !timingSafeEqual(storedHash, inputHash)) {
-      return NextResponse.json(
-        { success: false, error: { code: "INVALID_CREDENTIALS", message: "Credenciales inválidas" } },
-        { status: 401 }
-      );
-    }
-
-    // Verificar estado del usuario
     if (user.status !== "ACTIVE") {
-      return NextResponse.json(
-        { success: false, error: { code: "UNAUTHORIZED", message: "Usuario inactivo" } },
-        { status: 403 }
-      );
+      throw unauthorizedError("El usuario está inactivo o suspendido");
     }
 
-    // Actualizar último login
-    await supabase
-      .from("users")
-      .update({ last_login_at: new Date().toISOString() })
-      .eq("id", user.id);
+    await touchLastLogin(db, user.id);
 
-    // Crear token de sesión
-    const sessionToken = randomBytes(32).toString("hex");
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 24);
-
-    const response = NextResponse.json({
-      success: true,
-      data: {
-        id: user.id,
-        username: user.username,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        role: user.role,
-        status: user.status,
-      },
+    await recordAuditLog(db, {
+      userId: user.id,
+      action: "LOGIN",
+      entity: "users",
+      entityId: user.id,
+      details: `Inicio de sesión de ${user.username}`,
     });
 
-    const cookieOptions = `HttpOnly; Path=/; SameSite=Lax; Expires=${expiresAt.toUTCString()}`;
-    response.headers.append("Set-Cookie", `session_token=${sessionToken}; ${cookieOptions}`);
-    response.headers.append("Set-Cookie", `user_id=${user.id}; ${cookieOptions}`);
+    const cookie = buildSessionCookie(user.id);
+    const response = jsonOk({
+      id: user.id,
+      username: user.username,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      status: user.status,
+    });
+
+    response.cookies.set(cookie);
 
     return response;
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, error: { code: "VALIDATION_ERROR", message: "Datos inválidos" } },
-        { status: 400 }
-      );
-    }
-    console.error("Error en login:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
-    );
+    return handleRouteError(error, "auth:login");
   }
 }

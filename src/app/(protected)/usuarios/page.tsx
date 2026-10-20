@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 interface User {
   id: string;
   username: string;
+  email: string;
   firstName: string;
   lastName: string;
   role: "SUPERADMIN" | "ADMIN" | "RECEPCION" | "DESPACHO" | "CONTABILIDAD";
@@ -25,6 +26,7 @@ const roleLabels: Record<string, string> = {
 
 const emptyForm: {
   username: string;
+  email: string;
   firstName: string;
   lastName: string;
   password: string;
@@ -32,6 +34,7 @@ const emptyForm: {
   status: "ACTIVE" | "INACTIVE" | "SUSPENDED";
 } = {
   username: "",
+  email: "",
   firstName: "",
   lastName: "",
   password: "",
@@ -75,6 +78,7 @@ export default function UsuariosPage() {
   function openEdit(user: User) {
     setForm({
       username: user.username,
+      email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
       password: "",
@@ -266,6 +270,18 @@ export default function UsuariosPage() {
                   onChange={(e) => setForm({ ...form, username: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                   required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico *</label>
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  required
+                  placeholder="usuario@bancoalimentos.org"
                 />
               </div>
 

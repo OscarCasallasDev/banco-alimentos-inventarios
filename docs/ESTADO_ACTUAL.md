@@ -1,159 +1,155 @@
 # Estado Actual del Proyecto
 
-**Última actualización:** 2026-09-28
+**Última actualización:** 2026-10-20
 
 ---
 
 ## Resumen Ejecutivo
 
-El proyecto tiene una **base sólida** con todas las tablas, API routes y páginas principales implementadas. Sin embargo, hay **problemas críticos de autenticación** que impiden el acceso al sistema, y varias funcionalidades pendientes de implementar.
+El sistema está **conectado y funcional de extremo a extremo** contra la base de
+datos real de Supabase. Todos los módulos (catálogo, inventario, entradas,
+flujo de salida, auditoría, reportes, dashboard, usuarios e integración
+Siigo) están implementados, probados y verificados con una suite end-to-end
+de **60 pruebas** que se ejecuta contra la aplicación en ejecución.
 
 ---
 
-## ✅ Lo que YA está implementado
+## ✅ Estado por capa
 
-### Base de datos (COMPLETO)
-- 18 tablas con Drizzle ORM
-- 14 ENUM types
-- Migraciones SQL (0000, 0001)
-- Seed data con productos, bodegas, documentos demo
-- Relaciones y foreign keys
+### Base de datos — COMPLETO Y CONECTADO
+- 20 tablas de negocio + tabla de control de migraciones (`_migrations`)
+- 16 tipos ENUM
+- Migraciones `0000` … `0003` aplicadas y registradas
+- Seed completo y coherente (productos, bodegas, inventario, documentos y su detalle)
+- Script de instalación idempotente: `npm run db:setup`
 
-### API Routes (20 rutas)
-- ✅ Autenticación (login, logout, me)
-- ✅ Productos CRUD completo
-- ✅ Bodegas CRUD completo
-- ✅ Categorías CRUD
-- ✅ Usuarios CRUD
-- ✅ Inventario (listado)
-- ✅ Entradas (crear + listar)
-- ✅ Pedidos (crear + listar)
-- ✅ Facturas (crear + listar)
-- ✅ Recibos (crear + listar)
-- ✅ Despachos (crear + listar)
-- ✅ Auditoría (crear + listar)
-- ✅ Dashboard stats
-- ✅ Reportes
-- ✅ Integración Siigo (export Excel)
+### Capa de acceso a datos — COMPLETA
+- **Drizzle ORM** sobre `postgres.js` (única capa de acceso a datos)
+- Conexión directa o *pooler* de Supabase (se detecta sola)
+- Transacciones reales para las operaciones que mueven inventario
+- Convenciones unificadas: la base usa `snake_case`, la aplicación `camelCase`
 
-### Frontend (14 páginas)
-- ✅ Dashboard con estadísticas
-- ✅ Productos (CRUD con modal)
-- ✅ Bodegas (CRUD)
-- ✅ Inventario (listado)
-- ✅ Entradas, Salidas, Pedidos, Facturas, Recibos
-- ✅ Auditoría
-- ✅ Reportes
-- ✅ Integración Siigo (interfaz demo)
-- ✅ Usuarios (CRUD)
-- ✅ Configuración
-- ✅ Layout responsive con sidebar
+### Autenticación — COMPLETA
+- Cookie `HttpOnly` firmada con HMAC-SHA256 (no falsificable)
+- `src/proxy.ts` protege páginas y APIs (401 en JSON para las APIs)
+- Validación de sesión en el servidor en el layout protegido
+- Contraseñas con SHA-256 (deuda técnica documentada)
 
-### Validaciones
-- ✅ Schemas Zod para todas las entidades
-- ✅ Manejo de errores centralizado
-- ✅ Tests de validaciones
+### API — COMPLETA (26 rutas)
+| Módulo | Rutas | Estado |
+|---|---|---|
+| Autenticación | `login`, `logout`, `me`, `register` | ✅ |
+| Productos | `GET/POST /api/productos`, `GET/PUT/DELETE /api/productos/[id]` | ✅ |
+| Bodegas | `GET/POST /api/bodegas`, `GET/PUT/DELETE /api/bodegas/[id]` | ✅ |
+| Categorías | `GET/POST /api/categorias` | ✅ |
+| Inventario | `GET /api/inventario` | ✅ |
+| Entradas | `GET/POST /api/entradas`, `POST /api/entradas/[id]/confirmar` | ✅ |
+| Pedidos | `GET/POST /api/pedidos` | ✅ |
+| Facturas | `GET/POST /api/facturas` | ✅ |
+| Recibos | `GET/POST /api/recibos` | ✅ |
+| Despachos | `GET/POST /api/despachos` | ✅ |
+| Auditoría | `GET/POST /api/auditoria` | ✅ |
+| Dashboard | `GET /api/dashboard` | ✅ |
+| Reportes | `GET /api/reportes` | ✅ |
+| Usuarios | `GET/POST /api/usuarios`, `GET/PUT/DELETE /api/usuarios/[id]` | ✅ |
+| Configuración | `GET /api/configuracion` | ✅ |
+| Siigo | `POST /api/siigo/export` | ✅ DEMO |
 
-### Integración Siigo (DEMO)
-- ✅ Formatos definidos (E1, E3, N3, N5, SF1, F2, R1-R4)
-- ✅ Exportador Excel funcional
-- ✅ Tests del exportador
+Todas las rutas: validación Zod con schemas compartidos, sesión obligatoria,
+manejo centralizado de errores y bitácora de auditoría.
 
----
+### Frontend — COMPLETO (14 páginas)
+Dashboard, Entradas, Pedidos, Facturas, Recibos, Despachos, Auditoría,
+Inventario, Productos, Bodegas, Reportes, Usuarios, Integración Siigo y
+Configuración. Las 14 renderizan correctamente y la redirección sin sesión
+funciona.
 
-## ❌ Problemas CRÍTICOS (que impiden usar el sistema)
+### Reglas de negocio — IMPLEMENTADAS Y VERIFICADAS
+1. No se aceptan cantidades cero ni negativas.
+2. Toda entrada confirmada suma al inventario.
+3. Un despacho por encima de la existencia se rechaza y **no** altera el stock.
+4. Cada recibo genera un único despacho (no se puede descontar dos veces).
+5. Las entradas y auditorías en DRAFT se confirman con un endpoint dedicado.
+6. La auditoría toma la existencia **real** del sistema, no la que envía el cliente.
+7. Productos, bodegas y usuarios se desactivan; nunca se borra su historial.
+8. Todo movimiento queda registrado en `inventory_movements` con su saldo.
+9. Todo documento queda registrado en `documents` y en `audit_logs`.
 
-### 1. Autenticación rota ⚠️ PRIORIDAD MÁXIMA
-- **Problema:** No hay archivo `.env` con `DATABASE_URL`
-- **Consecuencia:** La app no puede conectar a la base de datos
-- **Solución:** Crear `.env.local` con las credenciales de Supabase
-
-### 2. Seed con errores
-- **Problema:** El seed.sql referencia `users.email` que ya no existe
-- **Consecuencia:** No se puede ejecutar el seed para crear el usuario admin
-- **Solución:** Corregido en seed.sql (usar `username` en lugar de `email`)
-
-### 3. Sin middleware de protección
-- **Problema:** Las rutas no están protegidas del lado del servidor
-- **Consecuencia:** Cualquiera puede acceder a las API sin autenticarse
-- **Solución:** Creado `src/middleware.ts`
-
-### 4. Sesión no validada
-- **Problema:** `/api/auth/me` estaba hardcodeado
-- **Consecuencia:** No importa quién inicie sesión, siempre retorna admin
-- **Solución:** Corregido para leer la cookie `user_id`
-
-### 5. Logout no limpia cookies
-- **Problema:** El endpoint de logout no hacía nada
-- **Consecuencia:** La sesión persiste después de cerrar sesión
-- **Solución:** Corregido para eliminar cookies
+### Pruebas — AUTOMATIZADAS
+| Suite | Comando | Resultado |
+|---|---|---|
+| Unitarias (validaciones + exportador Siigo) | `npm run test:run` | 34 ✅ |
+| End-to-end (todos los módulos por HTTP) | `npm run test:e2e` | 60 ✅ |
+| Interfaz (render de las 14 páginas) | `npm run check:ui` | 15 ✅ |
+| Tipos | `npm run typecheck` | ✅ |
+| Lint | `npm run lint` | 0 errores ✅ |
 
 ---
 
-## 🔧 Mejoras necesarias (por prioridad)
+## 🔧 Pendientes (por prioridad)
 
 ### Alta prioridad
-1. **Configurar base de datos** - Crear `.env.local` con credenciales reales
-2. **Ejecutar migraciones y seed** - Para crear las tablas y el usuario admin
-3. **Verificar login** - Probar que admin/admin123 funciona
-4. **Agregar usuario_id real a las API** - Actualmente usa un UUID hardcodeado
+1. **Rotar las claves de Supabase**: la clave secreta estuvo hardcodeada en
+   scripts antiguos que ya están en el historial de git. Genera una nueva en
+   *Supabase Dashboard → Project Settings → API* y actualiza `.env.local`.
+2. **Validar los formatos Siigo** con el Banco (ver más abajo).
+3. **Reglas de RLS** en Supabase si se decide exponer el acceso directo desde
+   el cliente. Hoy la aplicación accede con el rol de servicio y toda la
+   validación vive en el servidor.
 
 ### Media prioridad
-5. **Paginación en listados** - Las API retornan todos los registros
-6. **Búsqueda y filtros** - Las API no soportan query params
-7. **Logging de auditoría** - La tabla `audit_logs` existe pero no se llena
-8. **Manejo de errores en frontend** - Mostrar errores al usuario
-9. **Estados de carga** - Skeleton loaders en las páginas
-10. **Confirmaciones de acciones** - Para operaciones destructivas
+4. **Paginación y filtros** en los listados (hoy devuelven todo).
+5. **Migrar el hash de contraseñas** a bcrypt/argon2 o Supabase Auth.
+6. **Rate limiting** en el endpoint de login.
+7. **Impresión/PDF** de los soportes físicos.
+8. **Alertas automáticas** de stock bajo.
 
 ### Baja prioridad
-11. **Tests de integración** - Probar flujos completos
-12. **Tests E2E** - Con Playwright o Cypress
-13. **Componentes reutilizables** - La carpeta `components/` está vacía
-14. **Custom hooks** - La carpeta `hooks/` está vacía
-15. **Notificaciones toast** - Feedback visual al usuario
-16. **Exportar a PDF** - Documentos imprimibles
-17. **Notificaciones por email** - Alertas de stock bajo
-18. **Respaldo automático** - Backup de base de datos
+9. Migrar las páginas a React Query (hoy usan `fetch` + `useState`).
+10. Componentes reutilizables de formulario (`FormField` ya existe, falta Adoption).
+11. Exportación de reportes a Excel/PDF.
+12. Respaldo automático de la base de datos.
 
 ---
 
 ## 📋 Pendientes de validación con el Banco
 
-Estos puntos requieren información del Banco de Alimentos:
-
-- [ ] Significado exacto de formatos E1/E3/N3/N5
-- [ ] Diferencia funcional SF1/F2
-- [ ] Relación R1/R2/R3/R4 con SF1/F2
+- [ ] Significado exacto de los formatos E1/E3/N3/N5
+- [ ] Diferencia funcional entre SF1 y F2
+- [ ] Relación de R1/R2/R3/R4 con SF1/F2
 - [ ] Plantillas ExcelSiigo (GET/PUSH)
-- [ ] Nombres definitivos de bodegas virtuales
-- [ ] Formato físico de soportes
+- [ ] Nombres definitivos de las bodegas virtuales
+- [ ] Formato físico de los soportes
+- [ ] Cuenta contable y centro de costo para el formato N5
+- [ ] Precio unitario de los productos (hoy vive en Siigo Pyme)
 
 ---
 
 ## 🚀 Inicio rápido
 
 ```bash
-# 1. Instalar dependencias
 npm install
+cp .env.example .env.local     # y completar con los datos de Supabase
 
-# 2. Configurar variables de entorno
-cp .env.example .env.local
-# Editar .env.local con tus credenciales de Supabase
-
-# 3. Ejecutar migraciones
-npx drizzle-kit push
-
-# 4. Ejecutar seed (crear usuario admin)
-# Conectar a la base de datos y ejecutar drizzle/seed.sql
-
-# 5. Iniciar desarrollo
-npm run dev
-
-# 6. Abrir http://localhost:3000
-# Usuario: admin
-# Contraseña: admin123
+npm run db:check               # verifica la conexión y ajusta DATABASE_URL
+npm run db:setup               # aplica migraciones y carga la semilla
+npm run dev                    # http://localhost:3000
 ```
+
+**Usuario:** `admin` · **Contraseña:** `admin123`
+
+Comandos de verificación:
+
+```bash
+npm run typecheck   # TypeScript estricto
+npm run lint        # ESLint
+npm run test:run    # pruebas unitarias
+npm run test:e2e    # prueba end-to-end de todos los módulos
+npm run check:ui    # render de todas las páginas
+```
+
+Para dejar la base de datos como recién salida de la semilla:
+`npm run db:setup:reset`
 
 ---
 
@@ -164,30 +160,31 @@ npm run dev
 | FASE 0 | Análisis del entorno | ✅ Completado |
 | FASE 1 | Arquitectura + Scaffold | ✅ Completado |
 | FASE 2 | Base de datos (schema + migraciones + seed) | ✅ Completado |
-| FASE 3 | Autenticación + Layout | ⚠️ Parcial (login roto) |
+| FASE 3 | Autenticación + Layout | ✅ Completado |
 | FASE 4 | Productos + Bodegas (CRUD) | ✅ Completado |
 | FASE 5 | Inventario + Entradas | ✅ Completado |
 | FASE 6 | Salidas (Pedido → Factura → Recibo → Despacho) | ✅ Completado |
 | FASE 7 | Auditoría + Reportes | ✅ Completado |
-| FASE 8 | Integración Siigo (DEMO) | ⚠️ Demo only |
-| FASE 9 | Pruebas | ⚠️ Solo validaciones |
-| FASE 10 | Deploy | ⏳ Pendiente |
+| FASE 8 | Integración Siigo (DEMO) | ✅ Implementada (plantilla PENDIENTE) |
+| FASE 9 | Pruebas | ✅ Unitarias + E2E + UI |
+| FASE 10 | Deploy | ⏳ Pendiente de rotar claves y configurar Vercel |
 
 ---
 
 ## 🔐 Notas de seguridad
 
-- **NUNCA** subir `.env.local` al repositorio
-- **NUNCA** exponer `service_role_key` de Supabase
-- Las contraseñas usan SHA-256 (demo) - en producción usar bcrypt
-- No hay rate limiting en login (vulnerable a fuerza bruta)
-- No hay CSRF protection
-- No hay RLS policies en Supabase
+- **NUNCA** subir `.env.local` al repositorio (ya está en `.gitignore`).
+- **NUNCA** exponer la clave secreta de Supabase: solo se usa en el servidor.
+- Los scripts de `scripts/` leen las credenciales del `.env.local`; no hay
+  secretos en el código.
+- Las contraseñas usan SHA-256 por compatibilidad con la semilla. Migrar a
+  bcrypt/argon2 antes de producción.
+- La sesión viaja en cookie `HttpOnly` firmada (no falsificable desde el cliente).
+- No hay rate limiting en el login ni protección CSRF.
 
 ---
 
 ## 📞 Soporte
 
-Para dudas o problemas, contactar a:
 - **Desarrollador:** Oscar Daniel Casallas Lozano
 - **Programa:** Paz y Región 2026B — Universidad de Ibagué

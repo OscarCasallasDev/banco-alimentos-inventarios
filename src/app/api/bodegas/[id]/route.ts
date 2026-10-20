@@ -1,88 +1,96 @@
-import { NextResponse } from "next/server";
-import { supabase } from "@/lib/db/supabase-client";
+import { getDb, withTransaction } from "@/lib/db/client";
+import { requireUser } from "@/lib/auth/session";
+import { jsonOk, handleRouteError } from "@/lib/api/response";
+import {
+  deactivateWarehouse,
+  getWarehouse,
+  updateWarehouse,
+} from "@/lib/services/warehouse.service";
+import { recordAuditLog } from "@/lib/services/audit-log.service";
+import { updateWarehouseSchema } from "@/lib/validations/schemas";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    await requireUser();
+
     const { id } = await params;
-    const { data, error } = await supabase
-      .from("warehouses")
-      .select("*")
-      .eq("id", id)
-      .single();
+    const db = getDb();
+    const warehouse = await getWarehouse(db, id);
 
-    if (error) {
-      if (error.code === "PGRST116") {
-        return NextResponse.json(
-          { success: false, error: { code: "NOT_FOUND", message: "bodega no encontrado" } },
-          { status: 404 }
-        );
-      }
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error de base de datos" } },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ success: true, data });
+    return jsonOk(warehouse);
   } catch (error) {
-    console.error("Error obteniendo bodega:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
-    );
+    return handleRouteError(error, "bodegas:GET:id");
   }
 }
 
-export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const user = await requireUser();
+
     const { id } = await params;
     const body = await request.json();
+    const input = updateWarehouseSchema.parse(body);
 
-    const { data, error } = await supabase
-      .from("warehouses")
-      .update(body)
-      .eq("id", id)
-      .select()
-      .single();
+    const warehouse = await withTransaction(async (tx) => {
+      const updated = await updateWarehouse(tx, id, input);
 
-    if (error) {
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error actualizando bodega" } },
-        { status: 500 }
-      );
-    }
+      await recordAuditLog(tx, {
+        userId: user.id,
+        action: "WAREHOUSE_UPDATE",
+        entity: "warehouses",
+        entityId: id,
+        details: `Bodega ${updated.code} actualizada`,
+      });
 
-    return NextResponse.json({ success: true, data });
+      return updated;
+    });
+
+    return jsonOk(warehouse);
   } catch (error) {
-    console.error("Error actualizando bodega:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
-    );
+    return handleRouteError(error, "bodegas:PUT");
   }
 }
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+/**
+ * Baja lógica de la bodega (regla 4: no se eliminan datos históricos).
+ */
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const user = await requireUser();
+
     const { id } = await params;
-    const { error } = await supabase
-      .from("warehouses")
-      .delete()
-      .eq("id", id);
 
-    if (error) {
-      return NextResponse.json(
-        { success: false, error: { code: "DB_ERROR", message: "Error eliminando bodega" } },
-        { status: 500 }
-      );
-    }
+    const warehouse = await withTransaction(async (tx) => {
+      const deactivated = await deactivateWarehouse(tx, id);
 
-    return NextResponse.json({ success: true, message: "bodega eliminado correctamente" });
+      await recordAuditLog(tx, {
+        userId: user.id,
+        action: "WAREHOUSE_DEACTIVATE",
+        entity: "warehouses",
+        entityId: id,
+        details: `Bodega ${deactivated.code} desactivada`,
+      });
+
+      return deactivated;
+    });
+
+    return jsonOk({
+      id: warehouse.id,
+      code: warehouse.code,
+      name: warehouse.name,
+      status: warehouse.status,
+      message: "La bodega se desactivó. Su historial se conserva.",
+    });
   } catch (error) {
-    console.error("Error eliminando bodega:", error);
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message: "Error interno" } },
-      { status: 500 }
-    );
+    return handleRouteError(error, "bodegas:DELETE");
   }
 }

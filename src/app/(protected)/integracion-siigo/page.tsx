@@ -2,28 +2,33 @@
 
 import { useState } from "react";
 import {
-  Link2,
   AlertCircle,
   CheckCircle,
   Clock,
   FileText,
   Download,
-  Send,
   Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/**
+ * Integración con Siigo Pyme mediante archivos planos (ExcelSiigo).
+ *
+ * El endpoint `/api/siigo/export` toma los datos reales de la base de datos
+ * (entradas, facturas y recibos) y arma el archivo con la estructura de cada
+ * formato. La estructura definitiva está PENDIENTE de validación con el Banco.
+ */
 const integrationStatus = [
-  { name: "Formato E1", description: "Entrada de mercancía", status: "PENDING", notes: "Pendiente de validación con el Banco" },
-  { name: "Formato E3", description: "Entrada por donación", status: "PENDING", notes: "Pendiente de validación con el Banco" },
-  { name: "Formato N3", description: "Nota de ajuste", status: "PENDING", notes: "Pendiente de validación con el Banco" },
-  { name: "Formato N5", description: "Nota de contabilización", status: "PENDING", notes: "Pendiente de validación con el Banco" },
-  { name: "Formato SF1", description: "Factura de venta", status: "PENDING", notes: "Pendiente de validación con el Banco" },
-  { name: "Formato F2", description: "Factura simplificada", status: "PENDING", notes: "Pendiente de validación con el Banco" },
-  { name: "Formato R1", description: "Recibo de entrega", status: "PENDING", notes: "Pendiente de validación con el Banco" },
-  { name: "Formato R2", description: "Recibo de devolución", status: "PENDING", notes: "Pendiente de validación con el Banco" },
-  { name: "Formato R3", description: "Recibo de traslado", status: "PENDING", notes: "Pendiente de validación con el Banco" },
-  { name: "Formato R4", description: "Recibo de ajuste", status: "PENDING", notes: "Pendiente de validación con el Banco" },
+  { format: "E1", name: "Formato E1", description: "Entrada de mercancía", status: "DEMO", notes: "Exporta la entrada más reciente del sistema" },
+  { format: "E3", name: "Formato E3", description: "Entrada por donación", status: "DEMO", notes: "Exporta la entrada más reciente del sistema" },
+  { format: "N3", name: "Formato N3", description: "Nota de ajuste", status: "DEMO", notes: "Plantilla pendiente de validación con el Banco" },
+  { format: "N5", name: "Formato N5", description: "Nota de contabilización", status: "DEMO", notes: "Plantilla pendiente de validación con el Banco" },
+  { format: "SF1", name: "Formato SF1", description: "Factura de venta", status: "DEMO", notes: "Exporta la factura más reciente del sistema" },
+  { format: "F2", name: "Formato F2", description: "Factura simplificada", status: "DEMO", notes: "Exporta la factura más reciente del sistema" },
+  { format: "R1", name: "Formato R1", description: "Recibo de entrega", status: "DEMO", notes: "Exporta el recibo más reciente del sistema" },
+  { format: "R2", name: "Formato R2", description: "Recibo de devolución", status: "DEMO", notes: "Exporta el recibo más reciente del sistema" },
+  { format: "R3", name: "Formato R3", description: "Recibo de traslado", status: "DEMO", notes: "Plantilla pendiente de validación con el Banco" },
+  { format: "R4", name: "Formato R4", description: "Recibo de ajuste", status: "DEMO", notes: "Plantilla pendiente de validación con el Banco" },
 ];
 
 const statusConfig: Record<string, { icon: typeof Clock; color: string; label: string }> = {
@@ -32,149 +37,33 @@ const statusConfig: Record<string, { icon: typeof Clock; color: string; label: s
   PENDING: { icon: Clock, color: "bg-yellow-100 text-yellow-800", label: "Pendiente" },
 };
 
-// Datos de ejemplo para cada formato
-const sampleData: Record<string, unknown> = {
-  E1: {
-    formato: "E1",
-    numero: "ENT-2026-0001",
-    fecha: "28/09/2026",
-    nit: "900.123.456-7",
-    origen: "Donación Empresa Local",
-    documento: "FAC-2026-001",
-    estado: "CONFIRMADO",
-    notas: "Entrada de prueba",
-    items: [
-      { producto: "GRN-001", bodega: "1.1", cantidad: 100, unidad: "kg", presentacion: "Bolsa 500g" },
-      { producto: "GRN-002", bodega: "1.1", cantidad: 50, unidad: "kg", presentacion: "Bolsa 500g" },
-    ],
-  },
-  E3: {
-    formato: "E3",
-    numero: "DON-2026-0001",
-    fecha: "28/09/2026",
-    nit: "800.987.654-3",
-    donante: "Fundación XYZ",
-    documento: "DON-2026-001",
-    estado: "CONFIRMADO",
-    notas: "Donación de prueba",
-    items: [
-      { producto: "LAC-001", bodega: "1.1", cantidad: 200, unidad: "L", presentacion: "Caja 1L" },
-    ],
-  },
-  N3: {
-    formato: "N3",
-    numero: "AJU-2026-0001",
-    fecha: "28/09/2026",
-    bodega: "1.1",
-    tipoAjuste: "FALTANTE",
-    estado: "CONFIRMADO",
-    notas: "Ajuste por faltante",
-    items: [
-      { producto: "GRN-001", cantidad: 5, unidad: "kg", causa: "Merma por almacenamiento" },
-    ],
-  },
-  N5: {
-    formato: "N5",
-    numero: "CON-2026-0001",
-    fecha: "28/09/2026",
-    concepto: "Ajuste contable de inventario",
-    estado: "CONFIRMADO",
-    notas: "Contabilización de prueba",
-    items: [
-      { cuenta: "140505", debito: 100000, credito: 0, nit: "900.123.456-7", centroCosto: "001" },
-    ],
-  },
-  SF1: {
-    formato: "SF1",
-    numero: "FAC-2026-0001",
-    fecha: "28/09/2026",
-    nit: "800.987.654-3",
-    cliente: "Comunidad Rural El Salado",
-    pedido: "PED-2026-0001",
-    estado: "GENERADA",
-    items: [
-      { producto: "GRN-001", cantidad: 50, unidad: "kg", precioUnitario: 2500, descuento: 0, iva: 0 },
-    ],
-  },
-  F2: {
-    formato: "F2",
-    numero: "FAC-2026-0002",
-    fecha: "28/09/2026",
-    nit: "800.987.654-3",
-    cliente: "Comunidad Rural El Salado",
-    estado: "GENERADA",
-    items: [
-      { producto: "LAC-001", cantidad: 100, unidad: "L", precioUnitario: 3500 },
-    ],
-  },
-  R1: {
-    formato: "R1",
-    numero: "REC-2026-0001",
-    fecha: "28/09/2026",
-    factura: "FAC-2026-0001",
-    nit: "800.987.654-3",
-    receptor: "Juan Pérez",
-    estado: "GENERADO",
-    items: [
-      { producto: "GRN-001", cantidad: 50, unidad: "kg", bodega: "1.1" },
-    ],
-  },
-  R2: {
-    formato: "R2",
-    numero: "DEV-2026-0001",
-    fecha: "28/09/2026",
-    factura: "FAC-2026-0001",
-    nit: "800.987.654-3",
-    motivo: "Producto dañado",
-    estado: "GENERADO",
-    items: [
-      { producto: "GRN-001", cantidad: 5, unidad: "kg", bodega: "1.1", causa: "Empaque dañado" },
-    ],
-  },
-  R3: {
-    formato: "R3",
-    numero: "TRA-2026-0001",
-    fecha: "28/09/2026",
-    bodegaOrigen: "1.1",
-    bodegaDestino: "4.1",
-    estado: "GENERADO",
-    items: [
-      { producto: "GRN-001", cantidad: 100, unidad: "kg" },
-    ],
-  },
-  R4: {
-    formato: "R4",
-    numero: "AJU-2026-0002",
-    fecha: "28/09/2026",
-    bodega: "1.1",
-    tipoAjuste: "SOBRANTE",
-    estado: "GENERADO",
-    items: [
-      { producto: "GRN-001", cantidad: 2, unidad: "kg", causa: "Sobrante en conteo" },
-    ],
-  },
-};
-
 export default function IntegracionSiigoPage() {
   const [exporting, setExporting] = useState<string | null>(null);
   const [exportSuccess, setExportSuccess] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const counters = integrationStatus.reduce(
+    (acc, item) => ({ ...acc, [item.status]: acc[item.status] + 1 }),
+    { REAL: 0, DEMO: 0, PENDING: 0 } as Record<string, number>
+  );
 
   async function handleExport(format: string) {
     setExporting(format);
     setExportSuccess(null);
+    setExportError(null);
 
     try {
       const res = await fetch("/api/siigo/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          format,
-          data: sampleData[format],
-        }),
+        body: JSON.stringify({ format }),
       });
 
       if (!res.ok) {
-        throw new Error("Error al exportar");
+        const payload = await res.json().catch(() => null);
+        throw new Error(
+          payload?.error?.message ?? "No se pudo generar el archivo"
+        );
       }
 
       // Descargar el archivo
@@ -191,7 +80,9 @@ export default function IntegracionSiigoPage() {
       setExportSuccess(format);
       setTimeout(() => setExportSuccess(null), 3000);
     } catch (error) {
-      console.error("Error exportando:", error);
+      setExportError(
+        error instanceof Error ? error.message : "Error al exportar"
+      );
     } finally {
       setExporting(null);
     }
@@ -223,6 +114,13 @@ export default function IntegracionSiigoPage() {
         </div>
       </div>
 
+      {exportError && (
+        <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {exportError}
+        </div>
+      )}
+
       {/* Status cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-5">
@@ -231,7 +129,7 @@ export default function IntegracionSiigoPage() {
               <CheckCircle className="w-5 h-5 text-green-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900">0</p>
+              <p className="text-2xl font-bold text-gray-900">{counters.REAL}</p>
               <p className="text-sm text-gray-600">Reales</p>
             </div>
           </div>
@@ -242,7 +140,7 @@ export default function IntegracionSiigoPage() {
               <CheckCircle className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900">0</p>
+              <p className="text-2xl font-bold text-gray-900">{counters.DEMO}</p>
               <p className="text-sm text-gray-600">Demo</p>
             </div>
           </div>
@@ -253,7 +151,7 @@ export default function IntegracionSiigoPage() {
               <Clock className="w-5 h-5 text-yellow-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900">10</p>
+              <p className="text-2xl font-bold text-gray-900">{counters.PENDING}</p>
               <p className="text-sm text-gray-600">Pendientes</p>
             </div>
           </div>
@@ -281,7 +179,7 @@ export default function IntegracionSiigoPage() {
                 const config = statusConfig[item.status];
                 const Icon = config.icon;
                 return (
-                  <tr key={item.name} className="border-b border-gray-100 hover:bg-gray-50">
+                  <tr key={item.format} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2">
                         <FileText className="w-4 h-4 text-gray-400" />
@@ -299,18 +197,18 @@ export default function IntegracionSiigoPage() {
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button
-                          onClick={() => handleExport(item.name)}
-                          disabled={exporting === item.name}
+                          onClick={() => handleExport(item.format)}
+                          disabled={exporting === item.format}
                           className="inline-flex items-center gap-1 px-3 py-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-xs font-medium disabled:opacity-50"
                         >
-                          {exporting === item.name ? (
+                          {exporting === item.format ? (
                             <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />
-                          ) : exportSuccess === item.name ? (
+                          ) : exportSuccess === item.format ? (
                             <CheckCircle className="w-3 h-3" />
                           ) : (
                             <Download className="w-3 h-3" />
                           )}
-                          {exporting === item.name ? "Generando..." : exportSuccess === item.name ? "¡Listo!" : "Exportar"}
+                          {exporting === item.format ? "Generando..." : exportSuccess === item.format ? "¡Listo!" : "Exportar"}
                         </button>
                       </div>
                     </td>

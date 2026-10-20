@@ -48,6 +48,7 @@ describe("Create User Schema", () => {
   it("debe validar un usuario correcto", () => {
     const result = createUserSchema.safeParse({
       username: "testuser",
+      email: "testuser@bancoalimentos.org",
       firstName: "Juan",
       lastName: "Pérez",
       password: "password123",
@@ -57,9 +58,22 @@ describe("Create User Schema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("debe exigir el correo electrónico", () => {
+    const result = createUserSchema.safeParse({
+      username: "testuser",
+      firstName: "Juan",
+      lastName: "Pérez",
+      password: "password123",
+      role: "ADMIN",
+      status: "ACTIVE",
+    });
+    expect(result.success).toBe(false);
+  });
+
   it("debe rechazar un usuario con caracteres inválidos", () => {
     const result = createUserSchema.safeParse({
       username: "test@user!",
+      email: "testuser@bancoalimentos.org",
       firstName: "Juan",
       lastName: "Pérez",
       password: "password123",
@@ -72,6 +86,7 @@ describe("Create User Schema", () => {
   it("debe rechazar una contraseña muy corta", () => {
     const result = createUserSchema.safeParse({
       username: "testuser",
+      email: "testuser@bancoalimentos.org",
       firstName: "Juan",
       lastName: "Pérez",
       password: "123",
@@ -95,9 +110,24 @@ describe("Create Product Schema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("debe rechazar un código con minúsculas", () => {
+  it("debe normalizar el código a mayúsculas", () => {
     const result = createProductSchema.safeParse({
       code: "grn-001",
+      name: "Arroz",
+      weight: 0.5,
+      unit: "kg",
+      minStock: 50,
+      status: "ACTIVE",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.code).toBe("GRN-001");
+    }
+  });
+
+  it("debe rechazar un código con caracteres inválidos", () => {
+    const result = createProductSchema.safeParse({
+      code: "grn 001!",
       name: "Arroz",
       weight: 0.5,
       unit: "kg",

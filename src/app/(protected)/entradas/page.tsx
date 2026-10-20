@@ -315,8 +315,7 @@ export default function EntradasPage() {
                     value={form.number}
                     onChange={(e) => setForm({ ...form, number: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="Ej: ENT-2026-0001"
-                    required
+                    placeholder="Automático (ej: ENT-2026-0001)"
                   />
                 </div>
                 <div>
