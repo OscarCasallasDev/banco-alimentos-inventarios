@@ -102,12 +102,25 @@ async function main() {
     process.exit(1);
   }
 
-  const best = working[0];
-  if (best.url !== databaseUrl) {
-    writeEnvValue("DATABASE_URL", best.url);
-    logOk(`DATABASE_URL actualizada en .env.local → ${best.label}`);
+  // La principal es la más estable que funciona (pooler).
+  const principal =
+    working.find((candidate) => candidate.stable) ?? working[0];
+
+  const respaldos = working
+    .filter((candidate) => candidate.url !== principal.url)
+    .map((candidate) => candidate.url);
+
+  writeEnvValue("DATABASE_URL", principal.url);
+  logOk(`DATABASE_URL → ${principal.label}`);
+
+  if (respaldos.length > 0) {
+    writeEnvValue("DATABASE_FALLBACK_URLS", respaldos.join(","));
+    logInfo(
+      `${respaldos.length} conexión(es) de respaldo configurada(s) en DATABASE_FALLBACK_URLS`
+    );
   } else {
-    logOk("DATABASE_URL actual ya funciona.");
+    writeEnvValue("DATABASE_FALLBACK_URLS", "");
+    logWarn("No hay conexiones de respaldo disponibles.");
   }
 
   logInfo(`Conexiones disponibles: ${working.length}`);

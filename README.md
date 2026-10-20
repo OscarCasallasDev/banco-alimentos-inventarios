@@ -74,10 +74,13 @@ Crea un archivo `.env.local` con las siguientes variables:
 
 ```env
 # Connection string de Supabase PostgreSQL
-# Directo (requiere IPv6):
-DATABASE_URL="postgresql://postgres:[PASSWORD]@db.[PROJECT_REF].supabase.co:5432/postgres"
-# Pooler (recomendado, funciona en redes sin IPv6):
-# DATABASE_URL="postgresql://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres"
+# IMPORTANTE: usa el POOLER. El host directo (db.[PROJECT_REF].supabase.co)
+# resuelve por DNS de forma intermitente y provoca "getaddrinfo ENOTFOUND".
+DATABASE_URL="postgresql://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres"
+
+# Conexiones de respaldo (opcional). Si la principal falla por un problema
+# de red o DNS, la aplicación reintenta sola con estas.
+DATABASE_FALLBACK_URLS="postgresql://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres"
 
 # Entorno
 NODE_ENV="development"
@@ -90,9 +93,8 @@ SESSION_SECRET="tu-secreto-seguro-de-64-caracteres"
 **¿Cómo obtener DATABASE_URL?**
 1. Ve a [Supabase Dashboard](https://supabase.com/dashboard)
 2. Selecciona tu proyecto
-3. Ve a Settings → Database
-4. Copia el "Connection string"
-5. Ejecuta `npm run db:check`: el script prueba la conexión directa y el
+3. Ve a Settings → Database → Connection string → **Session pooler**
+4. Ejecuta `npm run db:check`: el script prueba la conexión directa y el
    *pooler* en varias regiones, y deja en `.env.local` la que funcione.
 
 ---
@@ -110,6 +112,7 @@ SESSION_SECRET="tu-secreto-seguro-de-64-caracteres"
 | `npm run verify` | **Verificación integral**: conexión + esquema + un test por módulo, dejando los datos visibles en Supabase |
 | `npm run verify:server` | Lo mismo, pero levanta el servidor de desarrollo él mismo |
 | `npm run check:modulos` | Verifica los 14 módulos (página + datos) como los ves en el navegador |
+| `npm run test:conexion` | Comprueba la conexión a Supabase y el failover automático |
 | `npm run check:ui` | Verificación del render de todas las páginas |
 | `npm run db:check` | Verifica la conexión a Supabase |
 | `npm run db:setup` | Aplica migraciones y carga la semilla |

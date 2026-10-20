@@ -101,6 +101,33 @@ modo que la misma función se puede usar dentro o fuera de una transacción.
 - **Transacciones**: `withTransaction()` para las operaciones críticas
 - **Tipos**: `src/types/database.ts` se deriva del schema (fuente única)
 
+### 3.5 Resiliencia de la conexión
+
+El host directo de Supabase (`db.<ref>.supabase.co`) resuelve por DNS de forma
+**intermitente**: cuando su DNS falla, toda consulta muere con
+`getaddrinfo ENOTFOUND`. El *pooler* (`aws-0-<region>.pooler.supabase.com`)
+tiene direcciones fijas y es estable.
+
+Por eso la capa de datos:
+
+| Mecanismo | Descripción |
+|---|---|
+| `DATABASE_URL` | Conexión **principal**: siempre el pooler |
+| `DATABASE_FALLBACK_URLS` | Conexiones de **respaldo**, separadas por coma |
+| Failover automático | Ante un error de red, la consulta se reintenta con la siguiente candidata |
+| `isConnectionError()` | Distingue un fallo de red de un error de SQL (revisando la cadena de `cause`) |
+| Respuesta 503 | Si ninguna conexión responde, la API devuelve `DATABASE_UNAVAILABLE` con un mensaje accionable |
+
+El failover se implementa en `src/lib/db/client.ts` interceptando las
+consultas de postgres.js (`unsafe`, template y `values()`), de modo que
+**ninguna ruta de la aplicación** queda sin protección.
+
+Para reconfigurar la conexión tras un problema:
+
+```bash
+npm run db:check    # prueba todas las variantes y deja la que funciona
+```
+
 ---
 
 ## 4. CONVENCIONES

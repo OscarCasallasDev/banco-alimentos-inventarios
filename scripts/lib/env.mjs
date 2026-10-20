@@ -53,13 +53,21 @@ export function writeEnvValue(key, value, file = ".env.local") {
 }
 
 /**
- * Extrae el `project_ref` de Supabase de una URL de conexión o del propio
- * nombre del host. Ej: `db.abcdefghijklmnopqrst.supabase.co` → `abcdefghijklmnopqrst`
+ * Extrae el `project_ref` de Supabase de una URL de conexión.
+ *
+ * Aparece en el host (db.<ref>.supabase.co) o en el usuario de la URL del
+ * pooler (postgres.<ref>:contraseña@...).
  */
 export function extractProjectRef(url) {
   if (!url) return null;
-  const match = /([a-z]{20})\.supabase\.co/i.exec(url);
-  return match ? match[1] : null;
+
+  const hostMatch = /([a-z]{20})\.supabase\.co/i.exec(url);
+  if (hostMatch) return hostMatch[1];
+
+  const userMatch = /postgres\.([a-z]{20})[:@]/i.exec(url);
+  if (userMatch) return userMatch[1];
+
+  return null;
 }
 
 /**
@@ -77,46 +85,72 @@ export function extractPassword(url) {
 
 /**
  * Construye las URLs candidatas de conexión para un proyecto de Supabase.
- * Se prueban en orden porque en redes sin IPv6 el host directo no resuelve.
+ *
+ * El POOLER se prueba primero porque tiene direcciones fijas y es estable;
+ * el host directo se deja como último recurso porque su resolución DNS es
+ * intermitente.
  */
 export function buildConnectionCandidates(databaseUrl, regions = []) {
   const candidates = [];
-
-  if (databaseUrl) {
-    candidates.push({ label: "Conexión directa (URL configurada)", url: databaseUrl });
-  }
-
   const projectRef = extractProjectRef(databaseUrl);
   const password = extractPassword(databaseUrl);
 
-  if (!projectRef || !password) return candidates;
-
   const defaultRegions = [
-    "us-east-1",
     "us-west-2",
+    "us-east-1",
     "us-central-1",
     "sa-east-1",
     "eu-west-1",
     ...regions,
   ];
 
-  for (const region of defaultRegions) {
-    const host = `aws-0-${region}.pooler.supabase.com`;
+  if (projectRef && password) {
+    for (const region of defaultRegions) {
+      const host = `aws-0-${region}.pooler.supabase.com`;
+
+      candidates.push({
+        label: `Pooler sesión (${region}:5432)`,
+        url: `postgresql://postgres.${projectRef}:${encodeURIComponent(
+          password
+        )}@${host}:5432/postgres`,
+        stable: true,
+      });
+
+      candidates.push({
+        label: `Pooler transacción (${region}:6543)`,
+        url: `postgresql://postgres.${projectRef}:${encodeURIComponent(
+          password
+        )}@${host}:6543/postgres`,
+        stable: true,
+      });
+    }
+
+    // La conexión directa se construye siempre desde el project_ref, para no
+    // repetir la URL del pooler cuando ya está configurada.
+    const directUrl = `postgresql://postgres:${encodeURIComponent(
+      password
+    )}@db.${projectRef}.supabase.co:5432/postgres`;
+
     candidates.push({
-      label: `Pooler sesión (${region}:5432)`,
-      url: `postgresql://postgres.${projectRef}:${encodeURIComponent(
-        password
-      )}@${host}:5432/postgres`,
+      label: "Conexión directa (último recurso)",
+      url: directUrl,
+      stable: false,
     });
+  } else if (databaseUrl) {
     candidates.push({
-      label: `Pooler transacción (${region}:6543)`,
-      url: `postgresql://postgres.${projectRef}:${encodeURIComponent(
-        password
-      )}@${host}:6543/postgres`,
+      label: "Conexión directa (URL configurada)",
+      url: databaseUrl,
+      stable: false,
     });
   }
 
-  return candidates;
+  // Se eliminan duplicados conservando el orden.
+  const seen = new Set();
+  return candidates.filter((candidate) => {
+    if (seen.has(candidate.url)) return false;
+    seen.add(candidate.url);
+    return true;
+  });
 }
 
 /**

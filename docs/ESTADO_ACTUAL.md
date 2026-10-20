@@ -23,6 +23,25 @@ de **60 pruebas** que se ejecuta contra la aplicación en ejecución.
 - Seed completo y coherente (productos, bodegas, inventario, documentos y su detalle)
 - Script de instalación idempotente: `npm run db:setup`
 
+### Conexión a Supabase — RESILIENTE
+El host directo de Supabase (`db.<ref>.supabase.co`) resuelve por DNS de forma
+intermitente y provocaba la caída del sistema con `getaddrinfo ENOTFOUND`.
+La conexión quedó así:
+
+| Variable | Valor |
+|---|---|
+| `DATABASE_URL` | Pooler de Supabase (modo sesión, 5432) — estable, IP fija |
+| `DATABASE_FALLBACK_URLS` | Pooler en modo transacción (6543) y conexión directa |
+
+Además, la capa de datos **cambia de conexión sola** si una falla (failover
+automático) y, si ninguna responde, la aplicación muestra un mensaje
+accionable en vez de reventar con un "Runtime Error".
+
+Comprobado con `npm run test:conexion` en las dos situaciones:
+- Principal rota con respaldo válido → la aplicación se recupera sola.
+- Principal y respaldo rotos → mensaje accionable y API con 503
+  `DATABASE_UNAVAILABLE`.
+
 ### Capa de acceso a datos — COMPLETA
 - **Drizzle ORM** sobre `postgres.js` (única capa de acceso a datos)
 - Conexión directa o *pooler* de Supabase (se detecta sola)
@@ -80,7 +99,9 @@ funciona.
 |---|---|---|
 | Unitarias (validaciones + exportador Siigo) | `npm run test:run` | 34 ✅ |
 | End-to-end (todos los módulos por HTTP) | `npm run test:e2e` | 60 ✅ |
-| Verificación integral (conexión + esquema + un test por módulo + lectura directa de la BD) | `npm run verify` | ✅ |
+| Verificación integral (conexión + esquema + un test por módulo + lectura directa de la BD) | `npm run verify` | 46 ✅ |
+| Módulos (página + datos, como en el navegador) | `npm run check:modulos` | 51 ✅ |
+| Conexión y failover (principal rota → recuperación automática) | `npm run test:conexion` | ✅ |
 | Interfaz (render de las 14 páginas) | `npm run check:ui` | 15 ✅ |
 | Tipos | `npm run typecheck` | ✅ |
 | Lint | `npm run lint` | 0 errores ✅ |
@@ -164,6 +185,8 @@ npm run lint        # ESLint
 npm run test:run    # pruebas unitarias
 npm run test:e2e    # prueba end-to-end de todos los módulos
 npm run check:ui    # render de todas las páginas
+npm run check:modulos  # cada módulo: página + datos (como en el navegador)
+npm run test:conexion  # comprueba la conexión y el failover
 ```
 
 Para dejar la base de datos como recién salida de la semilla:

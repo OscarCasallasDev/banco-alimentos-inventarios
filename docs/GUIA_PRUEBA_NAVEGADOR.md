@@ -260,6 +260,9 @@ Si el estado dice **Sin conexión**, ejecuta `npm run db:check`.
 |---|---|---|
 | "A tree hydrated but some attributes…" | Extensión cz-shortcut | Desactívala para `localhost` y recarga con `Ctrl+Shift+R` |
 | "No se pudo conectar con el servidor" | Base de datos caída o sin credenciales | `npm run db:check` y revisa `.env.local` |
+| "getaddrinfo ENOTFOUND db.…supabase.co" | El DNS del host directo falló | La app reintenta sola con el pooler. Si persiste: `npm run db:check` |
+| "Sin conexión con la base de datos" (pantalla con botón *Reintentar*) | Ninguna de las conexiones respondió | `npm run db:check` y revisa tu internet |
+| "Runtime Error / Server" con `Failed query` | Fallo de red en una consulta | `npm run db:check`; la app ya reintenta con la conexión de respaldo |
 | Pantalla en blanco tras el login | Extensión rompiendo la hidratación | Desactívala (ver 0.1) |
 | "Credenciales inválidas" | La semilla no está cargada | `npm run db:setup` |
 | Faltan tablas | Migraciones sin aplicar | `npm run db:setup` |

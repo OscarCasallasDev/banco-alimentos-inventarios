@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { ApplicationError, handleApiError } from "@/lib/utils/errors";
+import { isConnectionError } from "@/lib/utils/connection";
 import type { ApiError, ApiResponse } from "@/types/api";
 
 /**
@@ -95,6 +96,16 @@ export function handleRouteError(error: unknown, context: string): NextResponse 
   if (error instanceof ApplicationError) {
     const { status, body } = handleApiError(error);
     return jsonError(body.code, body.message, status, body.details);
+  }
+
+  // Sin conexión con la base de datos: mensaje accionable para el usuario.
+  if (isConnectionError(error)) {
+    console.error(`[${context}] Sin conexión con la base de datos:`, error);
+    return jsonError(
+      "DATABASE_UNAVAILABLE",
+      "No hay conexión con la base de datos. Ejecuta «npm run db:check» y reintenta.",
+      503
+    );
   }
 
   const databaseError = error as { code?: string; message?: string };

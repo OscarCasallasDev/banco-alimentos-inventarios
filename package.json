@@ -16,6 +16,7 @@
     "verify:server": "node scripts/verify-system.mjs --server",
     "check:ui": "node scripts/ui-check.mjs",
     "check:modulos": "node scripts/browser-check.mjs",
+    "test:conexion": "node scripts/failover-test.mjs",
     "db:check": "node scripts/db-check-connection.mjs",
     "db:setup": "node scripts/db-setup.mjs",
     "db:setup:reset": "node scripts/db-setup.mjs --reset",
