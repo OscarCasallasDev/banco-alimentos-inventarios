@@ -730,10 +730,10 @@ async function verifyInDatabase(sql) {
     {
       table: "audits",
       label: "auditorías",
-      query: `select * from "audits" where "responsible" = $1`,
+      query: `select *, "date"::text as fecha_texto from "audits" where "responsible" = $1`,
       params: [`${RUN_ID} Verificador`],
       expect: (rows) => rows.length === 1 && rows[0].status === "COMPLETED",
-      detail: (rows) => `${rows[0]?.status} · ${rows[0]?.date}`,
+      detail: (rows) => `${rows[0]?.status} · ${rows[0]?.fecha_texto}`,
     },
     {
       table: "audit_items",
