@@ -12,6 +12,8 @@
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
     "test:e2e": "node scripts/e2e-test.mjs",
+    "verify": "node scripts/verify-system.mjs",
+    "verify:server": "node scripts/verify-system.mjs --server",
     "check:ui": "node scripts/ui-check.mjs",
     "db:check": "node scripts/db-check-connection.mjs",
     "db:setup": "node scripts/db-setup.mjs",

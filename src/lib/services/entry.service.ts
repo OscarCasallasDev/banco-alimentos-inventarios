@@ -16,6 +16,7 @@ import { desc, eq, like, sql } from "drizzle-orm";
 import { entries, entryItems, users, warehouses } from "@/lib/db/schema";
 import type { DbExecutor } from "@/lib/db/client";
 import { conflictError, notFoundError } from "@/lib/utils/errors";
+import { parseDocumentDate, toIsoDate } from "@/lib/utils";
 import { DOCUMENT_PREFIX, formatDocumentNumber } from "@/lib/utils/numbers";
 import type { CreateEntryInput } from "@/lib/validations/schemas";
 import {
@@ -104,7 +105,7 @@ export async function createEntry(
   input: CreateEntryInput,
   userId: string
 ) {
-  const entryDate = new Date(input.date);
+  const entryDate = parseDocumentDate(input.date);
 
   const number = input.number?.trim()
     ? input.number.trim()
@@ -134,7 +135,7 @@ export async function createEntry(
     .values({
       format: input.format,
       number,
-      date: entryDate.toISOString().slice(0, 10),
+      date: toIsoDate(input.date),
       nit: input.nit || null,
       origin: input.origin || null,
       document: input.document || null,

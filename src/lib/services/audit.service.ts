@@ -14,6 +14,7 @@ import { desc, eq } from "drizzle-orm";
 import { auditItems, audits, users, warehouses } from "@/lib/db/schema";
 import type { DbExecutor } from "@/lib/db/client";
 import { notFoundError } from "@/lib/utils/errors";
+import { parseDocumentDate, toIsoDate } from "@/lib/utils";
 import type { CreateAuditInput } from "@/lib/validations/schemas";
 import { adjustStockToPhysical, getStock } from "./inventory.service";
 import { recordAuditLog } from "./audit-log.service";
@@ -82,7 +83,7 @@ export async function createAudit(
   input: CreateAuditInput,
   userId: string
 ) {
-  const auditDate = new Date(input.date);
+  const auditDate = parseDocumentDate(input.date);
 
   const [warehouse] = await executor
     .select({
@@ -101,7 +102,7 @@ export async function createAudit(
   const [audit] = await executor
     .insert(audits)
     .values({
-      date: auditDate.toISOString().slice(0, 10),
+      date: toIsoDate(input.date),
       warehouseId: input.warehouseId,
       responsible: input.responsible,
       status: input.status,

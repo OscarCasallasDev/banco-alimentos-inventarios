@@ -107,10 +107,47 @@ SESSION_SECRET="tu-secreto-seguro-de-64-caracteres"
 | `npm run lint` | ESLint |
 | `npm run test:run` | Pruebas unitarias |
 | `npm run test:e2e` | Prueba end-to-end de todos los módulos |
+| `npm run verify` | **Verificación integral**: conexión + esquema + un test por módulo, dejando los datos visibles en Supabase |
+| `npm run verify:server` | Lo mismo, pero levanta el servidor de desarrollo él mismo |
 | `npm run check:ui` | Verificación del render de todas las páginas |
 | `npm run db:check` | Verifica la conexión a Supabase |
 | `npm run db:setup` | Aplica migraciones y carga la semilla |
 | `npm run db:setup:reset` | Reinicia la base de datos y recarga la semilla |
+
+---
+
+## Verificar que todo está conectado (y ver los datos en Supabase)
+
+```bash
+npm run verify
+```
+
+Este script:
+
+1. Verifica la **conexión real** a Supabase (host, base, versión, latencia) y
+   confirma una **escritura** efectiva en la base.
+2. Revisa el **esquema**: 20 tablas, 17 enums, índices y claves foráneas.
+3. Ejecuta **una prueba por cada módulo** a través de la API real: usuarios,
+   categorías, bodegas, productos, entradas, pedidos, facturas, recibos,
+   despachos, auditoría, inventario, dashboard, reportes, Siigo y configuración.
+4. Vuelve a leer la base de datos **directamente** y confirma que cada dato
+   quedó escrito con el valor esperado (cantidades, estados, saldos).
+5. Te dice **exactamente dónde y cómo ver esos datos en Supabase**.
+
+Los datos que crea se quedan en la base con el prefijo `PRUEBA-AAAAMMDD-HHMM`
+para que puedas encontrarlos en el *Table Editor* de Supabase:
+
+```sql
+-- filtro en el Table Editor
+code ilike "PRUEBA-20261020-1430%"
+```
+
+Además hay dos archivos SQL listos para pegar en el **SQL Editor** de Supabase:
+
+| Archivo | Para qué sirve |
+|---|---|
+| `scripts/supabase-verificar.sql` | Informe completo de los datos de la corrida (por módulo, con movimientos y conciliaciones) |
+| `scripts/supabase-limpiar.sql` | Borra **solo** los datos de prueba (por prefijo), sin tocar los datos reales del Banco |
 
 ---
 

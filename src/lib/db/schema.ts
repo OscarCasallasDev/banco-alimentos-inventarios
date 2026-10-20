@@ -311,7 +311,7 @@ export const entries = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     format: entryFormatEnum("format").notNull(),
     number: varchar("number", { length: 50 }).notNull(),
-    date: date("date").notNull(),
+    date: date("date", { mode: "string" }).notNull(),
     nit: varchar("nit", { length: 50 }),
     origin: varchar("origin", { length: 255 }),
     document: varchar("document", { length: 100 }),
@@ -363,7 +363,7 @@ export const orders = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     number: varchar("number", { length: 50 }).notNull(),
-    date: date("date").notNull(),
+    date: date("date", { mode: "string" }).notNull(),
     nit: varchar("nit", { length: 50 }),
     destination: varchar("destination", { length: 255 }),
     status: orderStatusEnum("status").notNull().default("DRAFT"),
@@ -416,7 +416,7 @@ export const invoices = pgTable(
     orderId: uuid("order_id")
       .notNull()
       .references(() => orders.id),
-    date: date("date").notNull(),
+    date: date("date", { mode: "string" }).notNull(),
     status: invoiceStatusEnum("status").notNull().default("DRAFT"),
     userId: uuid("user_id")
       .notNull()
@@ -463,7 +463,7 @@ export const receipts = pgTable(
     invoiceId: uuid("invoice_id")
       .notNull()
       .references(() => invoices.id),
-    date: date("date").notNull(),
+    date: date("date", { mode: "string" }).notNull(),
     status: receiptStatusEnum("status").notNull().default("DRAFT"),
     userId: uuid("user_id")
       .notNull()
@@ -488,7 +488,7 @@ export const dispatches = pgTable(
     receiptId: uuid("receipt_id")
       .notNull()
       .references(() => receipts.id),
-    date: date("date").notNull(),
+    date: date("date", { mode: "string" }).notNull(),
     status: dispatchStatusEnum("status").notNull().default("PENDING"),
     userId: uuid("user_id")
       .notNull()
@@ -534,7 +534,7 @@ export const audits = pgTable(
   "audits",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    date: date("date").notNull(),
+    date: date("date", { mode: "string" }).notNull(),
     warehouseId: uuid("warehouse_id")
       .notNull()
       .references(() => warehouses.id),

@@ -9,7 +9,7 @@ import {
   AlertCircle,
   Trash2,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatDateOnly } from "@/lib/utils";
 
 interface Audit {
   id: string;
@@ -230,7 +230,7 @@ export default function AuditoriaPage() {
                 filtered.map((audit) => (
                   <tr key={audit.id} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="py-3 px-4 text-gray-600">
-                      {new Date(audit.date).toLocaleDateString("es-CO")}
+                      {formatDateOnly(audit.date)}
                     </td>
                     <td className="py-3 px-4 text-gray-900">{audit.warehouseName || "—"}</td>
                     <td className="py-3 px-4 text-gray-600">{audit.responsible}</td>

@@ -7,7 +7,7 @@ import {
   TrendingUp,
   TrendingDown,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatDateOnly } from "@/lib/utils";
 
 interface ReportData {
   inventoryByWarehouse: Array<{
@@ -176,7 +176,7 @@ export default function ReportesPage() {
                     </span>
                   </td>
                   <td className="py-2 px-3 text-gray-600">
-                    {new Date(movement.date).toLocaleDateString("es-CO")}
+                    {formatDateOnly(movement.date)}
                   </td>
                   <td className="py-2 px-3">
                     <span className={cn(

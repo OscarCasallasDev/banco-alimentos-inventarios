@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { FileText, Plus, Search, X, AlertCircle } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatDateOnly } from "@/lib/utils";
 
 interface Invoice {
   id: string;
@@ -180,7 +180,7 @@ export default function FacturasPage() {
                       </span>
                     </td>
                     <td className="py-3 px-4 text-gray-600">
-                      {new Date(invoice.date).toLocaleDateString("es-CO")}
+                      {formatDateOnly(invoice.date)}
                     </td>
                     <td className="py-3 px-4">
                       <span className={cn("inline-flex items-center px-2 py-1 rounded-full text-xs font-medium", statusColors[invoice.status])}>

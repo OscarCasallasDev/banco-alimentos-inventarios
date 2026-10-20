@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ArrowUpFromLine, Plus, Search, X, AlertCircle } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatDateOnly } from "@/lib/utils";
 
 interface Dispatch {
   id: string;
@@ -170,7 +170,7 @@ export default function SalidasPage() {
                   <tr key={dispatch.id} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="py-3 px-4 font-mono text-gray-900">{dispatch.number}</td>
                     <td className="py-3 px-4 text-gray-600">
-                      {new Date(dispatch.date).toLocaleDateString("es-CO")}
+                      {formatDateOnly(dispatch.date)}
                     </td>
                     <td className="py-3 px-4">
                       <span className={cn("inline-flex items-center px-2 py-1 rounded-full text-xs font-medium", statusColors[dispatch.status])}>

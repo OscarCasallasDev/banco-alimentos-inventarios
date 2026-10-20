@@ -10,6 +10,7 @@ import { desc, eq, like } from "drizzle-orm";
 import { orderItems, orders, users } from "@/lib/db/schema";
 import type { DbExecutor } from "@/lib/db/client";
 import { conflictError, notFoundError } from "@/lib/utils/errors";
+import { parseDocumentDate, toIsoDate } from "@/lib/utils";
 import { DOCUMENT_PREFIX, formatDocumentNumber } from "@/lib/utils/numbers";
 import type { CreateOrderInput } from "@/lib/validations/schemas";
 import {
@@ -103,7 +104,7 @@ export async function createOrder(
   input: CreateOrderInput,
   userId: string
 ) {
-  const orderDate = new Date(input.date);
+  const orderDate = parseDocumentDate(input.date);
 
   const number = input.number?.trim()
     ? input.number.trim()
@@ -128,7 +129,7 @@ export async function createOrder(
     .insert(orders)
     .values({
       number,
-      date: orderDate.toISOString().slice(0, 10),
+      date: toIsoDate(input.date),
       nit: input.nit || null,
       destination: input.destination || null,
       status: input.status,

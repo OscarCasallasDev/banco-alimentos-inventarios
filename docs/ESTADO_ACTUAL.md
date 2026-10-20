@@ -80,9 +80,27 @@ funciona.
 |---|---|---|
 | Unitarias (validaciones + exportador Siigo) | `npm run test:run` | 34 ✅ |
 | End-to-end (todos los módulos por HTTP) | `npm run test:e2e` | 60 ✅ |
+| Verificación integral (conexión + esquema + un test por módulo + lectura directa de la BD) | `npm run verify` | ✅ |
 | Interfaz (render de las 14 páginas) | `npm run check:ui` | 15 ✅ |
 | Tipos | `npm run typecheck` | ✅ |
 | Lint | `npm run lint` | 0 errores ✅ |
+
+### Verificación de conexión y de datos en Supabase
+
+`npm run verify` es la herramienta para demostrar en una demostración que el
+sistema está realmente conectado:
+
+1. **Conexión**: TCP + autenticación + consulta, con host, versión de
+   PostgreSQL y latencia. Confirma además una escritura real.
+2. **Esquema**: 20 tablas, 17 enums, 75 índices y 31 claves foráneas.
+3. **Un test por módulo** a través de la API real (no consultas directas), lo
+   que demuestra que toda la cadena —interfaz → ruta → servicio → base— funciona.
+4. **Lectura directa** de la base para confirmar el valor escrito (cantidades,
+   estados, saldos y diferencias de auditoría).
+5. **Instrucciones** de dónde ver cada dato en el dashboard de Supabase.
+
+Los datos quedan marcados con el prefijo `PRUEBA-AAAAMMDD-HHMM` y se limpian
+con `scripts/supabase-limpiar.sql` (solo toca ese prefijo).
 
 ---
 

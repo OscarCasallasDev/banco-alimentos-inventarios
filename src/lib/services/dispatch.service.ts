@@ -22,6 +22,7 @@ import {
 } from "@/lib/db/schema";
 import type { DbExecutor } from "@/lib/db/client";
 import { conflictError, notFoundError } from "@/lib/utils/errors";
+import { parseDocumentDate, toIsoDate } from "@/lib/utils";
 import { DOCUMENT_PREFIX, formatDocumentNumber } from "@/lib/utils/numbers";
 import type { CreateDispatchInput } from "@/lib/validations/schemas";
 import { applyStockMovement } from "./inventory.service";
@@ -182,7 +183,7 @@ export async function createDispatch(
   input: CreateDispatchInput,
   userId: string
 ) {
-  const dispatchDate = new Date(input.date);
+  const dispatchDate = parseDocumentDate(input.date);
 
   // Cada recibo genera un único despacho: sin esta validación el stock
   // podría descontarse más de una vez por la misma salida.
@@ -219,7 +220,7 @@ export async function createDispatch(
     .values({
       number,
       receiptId: input.receiptId,
-      date: dispatchDate.toISOString().slice(0, 10),
+      date: toIsoDate(input.date),
       status: input.status,
       userId,
       notes: input.notes || null,

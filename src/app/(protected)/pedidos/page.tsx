@@ -9,7 +9,7 @@ import {
   AlertCircle,
   Trash2,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatDateOnly } from "@/lib/utils";
 
 interface Order {
   id: string;
@@ -225,7 +225,7 @@ export default function PedidosPage() {
                   <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="py-3 px-4 font-mono text-gray-900">{order.number}</td>
                     <td className="py-3 px-4 text-gray-600">
-                      {new Date(order.date).toLocaleDateString("es-CO")}
+                      {formatDateOnly(order.date)}
                     </td>
                     <td className="py-3 px-4 text-gray-600">{order.destination || "—"}</td>
                     <td className="py-3 px-4">

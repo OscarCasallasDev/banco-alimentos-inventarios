@@ -10,6 +10,7 @@ import { desc, eq, like } from "drizzle-orm";
 import { invoices, receipts, users } from "@/lib/db/schema";
 import type { DbExecutor } from "@/lib/db/client";
 import { conflictError, notFoundError } from "@/lib/utils/errors";
+import { parseDocumentDate, toIsoDate } from "@/lib/utils";
 import { DOCUMENT_PREFIX, formatDocumentNumber } from "@/lib/utils/numbers";
 import type { CreateReceiptInput } from "@/lib/validations/schemas";
 import { createDocument } from "./document.service";
@@ -87,7 +88,7 @@ export async function createReceipt(
   input: CreateReceiptInput,
   userId: string
 ) {
-  const receiptDate = new Date(input.date);
+  const receiptDate = parseDocumentDate(input.date);
 
   const [invoice] = await executor
     .select()
@@ -123,7 +124,7 @@ export async function createReceipt(
       format: input.format,
       number,
       invoiceId: invoice.id,
-      date: receiptDate.toISOString().slice(0, 10),
+      date: toIsoDate(input.date),
       status: input.status,
       userId,
     })
