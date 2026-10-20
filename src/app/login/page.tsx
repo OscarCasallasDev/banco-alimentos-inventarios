@@ -1,16 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Lock, User, Mail, Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react";
 
 type View = "login" | "register";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [view, setView] = useState<View>("login");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+
+  // Si ya hay una sesión activa, se va directo al panel principal.
+  useEffect(() => {
+    let active = true;
+
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data?.success) {
+          router.replace("/dashboard");
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      active = false;
+    };
+  }, [router]);
 
   // Login form
   const [loginUsername, setLoginUsername] = useState("");
@@ -43,7 +63,10 @@ export default function LoginPage() {
         return;
       }
 
-      window.location.href = "/dashboard";
+      // Navegación desde el cliente: evita recargar toda la página y
+      // garantiza que el layout protegido valide la sesión en el servidor.
+      router.replace("/dashboard");
+      router.refresh();
     } catch {
       setError("Error de conexión. Verifica tu internet e intenta nuevamente.");
     } finally {

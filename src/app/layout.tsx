@@ -19,8 +19,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es">
-      <body className={`${inter.variable} font-sans`}>{children}</body>
+    <html lang="es" suppressHydrationWarning>
+      {/*
+        `suppressHydrationWarning` evita que React marque error de
+        hidratación cuando una extensión del navegador (por ejemplo
+        cz-shortcut, que añade `cz-shortcut-listen`) inyecta atributos
+        en el <body> antes de que cargue React. El atributo lo agrega la
+        extensión, no la aplicación.
+      */}
+      <body
+        suppressHydrationWarning
+        className={`${inter.variable} font-sans`}
+      >
+        {children}
+      </body>
     </html>
   );
 }

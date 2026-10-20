@@ -2,12 +2,14 @@
 
 import { Menu, Bell, User, LogOut, ChevronDown } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 
 interface HeaderProps {
   onMenuClick: () => void;
 }
 
 export default function Header({ onMenuClick }: HeaderProps) {
+  const router = useRouter();
   const [userName, setUserName] = useState("");
   const [userRole, setUserRole] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -38,7 +40,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
   async function handleLogout() {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
-      window.location.href = "/login";
+      router.replace("/login");
+      router.refresh();
     } catch (error) {
       console.error("Error al cerrar sesión:", error);
     }

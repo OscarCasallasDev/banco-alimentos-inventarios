@@ -109,6 +109,7 @@ SESSION_SECRET="tu-secreto-seguro-de-64-caracteres"
 | `npm run test:e2e` | Prueba end-to-end de todos los módulos |
 | `npm run verify` | **Verificación integral**: conexión + esquema + un test por módulo, dejando los datos visibles en Supabase |
 | `npm run verify:server` | Lo mismo, pero levanta el servidor de desarrollo él mismo |
+| `npm run check:modulos` | Verifica los 14 módulos (página + datos) como los ves en el navegador |
 | `npm run check:ui` | Verificación del render de todas las páginas |
 | `npm run db:check` | Verifica la conexión a Supabase |
 | `npm run db:setup` | Aplica migraciones y carga la semilla |
@@ -227,6 +228,7 @@ docs/                       # Documentación
 
 ## Documentación
 
+- [Guía de prueba en el navegador](./docs/GUIA_PRUEBA_NAVEGADOR.md) ← **empieza por aquí para revisar el sistema**
 - [Arquitectura](./docs/ARQUITECTURA.md)
 - [Modelo de Datos](./docs/MODELO_DATOS.md)
 - [Integración Siigo](./docs/INTEGRACION_SIIGO.md)
