@@ -3,7 +3,7 @@
  * Comprueba que cada página protegida se renderiza sin errores.
  */
 
-const BASE_URL = process.argv[2] ?? "http://localhost:3100";
+const BASE_URL = process.argv[2] ?? "http://localhost:3000";
 
 /**
  * Las páginas client-side muestran un spinner durante la carga inicial,
