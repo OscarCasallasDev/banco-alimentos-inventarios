@@ -12,7 +12,7 @@ const BASE_URL = process.argv[2] ?? "http://localhost:3000";
  */
 const pages = [
   { path: "/dashboard", expect: ["animate-spin"], note: "carga por API" },
-  { path: "/entradas", expect: ["Nueva Entrada", "Entradas", "Formato"] },
+  { path: "/entradas", expect: ["Nueva Entrada", "Entradas", "Tipo de entrada"] },
   { path: "/pedidos", expect: ["Pedidos", "Destino", "Nuevo Pedido"] },
   { path: "/facturas", expect: ["Facturas", "Pedido", "Nueva Factura"] },
   { path: "/recibos", expect: ["Recibos", "Factura"] },
