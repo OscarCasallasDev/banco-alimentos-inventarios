@@ -11,6 +11,7 @@ import {
   text,
   integer,
   decimal,
+  numeric,
   date,
   timestamp,
   inet,
@@ -148,6 +149,14 @@ export const documentTypeEnum = pgEnum("document_type", [
   "DISPATCH",
 ]);
 
+export const thirdPartyTypeEnum = pgEnum("third_party_type", [
+  "CLIENTE",
+  "PROVEEDOR",
+  "DONANTE",
+  "PARROQUIA",
+  "OTROS",
+]);
+
 // ============================================================
 // TABLAS
 // ============================================================
@@ -256,7 +265,7 @@ export const inventory = pgTable(
     warehouseId: uuid("warehouse_id")
       .notNull()
       .references(() => warehouses.id),
-    quantity: integer("quantity").notNull().default(0),
+    quantity: numeric("quantity", { precision: 14, scale: 3, mode: "number" }).notNull().default(0),
     lastMovementAt: timestamp("last_movement_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -284,8 +293,8 @@ export const inventoryMovements = pgTable(
     warehouseId: uuid("warehouse_id")
       .notNull()
       .references(() => warehouses.id),
-    quantity: integer("quantity").notNull(),
-    balanceAfter: integer("balance_after").notNull(),
+    quantity: numeric("quantity", { precision: 14, scale: 3, mode: "number" }).notNull(),
+    balanceAfter: numeric("balance_after", { precision: 14, scale: 3, mode: "number" }).notNull(),
     documentId: uuid("document_id"),
     documentType: varchar("document_type", { length: 50 }),
     userId: uuid("user_id")
@@ -320,6 +329,14 @@ export const entries = pgTable(
       .notNull()
       .references(() => users.id),
     notes: text("notes"),
+    /** Entidad que entrega los productos (proveedor, donante, cliente…). */
+    thirdPartyId: uuid("third_party_id").references(() => thirdParties.id),
+    /** Centro de costo del documento. */
+    costCenterId: uuid("cost_center_id").references(() => costCenters.id),
+    /** Orden de compra asociada (vacía si no aplica). */
+    purchaseOrder: varchar("purchase_order", { length: 50 }),
+    /** Número de vendedor del documento. */
+    sellerNumber: integer("seller_number").notNull().default(1),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -327,6 +344,7 @@ export const entries = pgTable(
     index("idx_entries_date").on(table.date),
     index("idx_entries_status").on(table.status),
     index("idx_entries_user").on(table.userId),
+    index("idx_entries_third_party").on(table.thirdPartyId),
   ]
 );
 
@@ -345,16 +363,131 @@ export const entryItems = pgTable(
     warehouseId: uuid("warehouse_id")
       .notNull()
       .references(() => warehouses.id),
-    quantity: integer("quantity").notNull(),
+    quantity: numeric("quantity", { precision: 14, scale: 3, mode: "number" }).notNull(),
     unit: varchar("unit", { length: 20 }).notNull(),
     presentation: varchar("presentation", { length: 100 }),
+    /** Número de línea del producto dentro de la entrada. */
+    sequence: integer("sequence").notNull().default(1),
+    /** Descripción del producto tal como se imprimió (CD, nombre, presentación). */
+    description: text("description"),
+    /** NIT de la entidad que entrega el producto en el momento del registro. */
+    nit: varchar("nit", { length: 50 }),
+    /** Centro de costo de la línea. */
+    costCenterId: uuid("cost_center_id").references(() => costCenters.id),
+    /** Ubicación dentro de la bodega. */
+    location: varchar("location", { length: 50 }),
+    /** Valor monetario de la línea. */
+    value: numeric("value", { precision: 14, scale: 2, mode: "number" })
+      .notNull()
+      .default(0),
+    /** Indicador débito/crédito del movimiento. */
+    debitCredit: numeric("debit_credit", { precision: 14, scale: 2, mode: "number" })
+      .notNull()
+      .default(0),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => [
     index("idx_entry_items_entry").on(table.entryId),
     index("idx_entry_items_product").on(table.productId),
+    index("idx_entry_items_sequence").on(table.entryId, table.sequence),
   ]
 );
+
+// ---------- entry_item_lots ----------
+
+export const entryItemLots = pgTable(
+  "entry_item_lots",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    entryItemId: uuid("entry_item_id")
+      .notNull()
+      .references(() => entryItems.id, { onDelete: "cascade" }),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id),
+    /** Código del lote. */
+    code: varchar("code", { length: 50 }),
+    /** Denominación del lote (por ejemplo "Lotes Inicial"). */
+    description: varchar("description", { length: 100 }),
+    /** Fecha de vencimiento del lote. */
+    expirationDate: date("expiration_date", { mode: "string" }),
+    quantity: numeric("quantity", { precision: 14, scale: 3, mode: "number" })
+      .notNull()
+      .default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_entry_item_lots_item").on(table.entryItemId),
+    index("idx_entry_item_lots_product").on(table.productId),
+    index("idx_entry_item_lots_expiration").on(table.expirationDate),
+  ]
+);
+
+// ---------- third_parties (entidades que entregan productos) ----------
+
+export const thirdParties = pgTable(
+  "third_parties",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    /** NIT o cédula de la entidad. */
+    nit: varchar("nit", { length: 50 }).notNull(),
+    /** Sucursal (casi siempre "001"). */
+    branch: varchar("branch", { length: 10 }).notNull().default(""),
+    /** Razón social o nombre. */
+    name: varchar("name", { length: 255 }).notNull(),
+    type: thirdPartyTypeEnum("type").notNull().default("CLIENTE"),
+    address: text("address"),
+    phone: varchar("phone", { length: 50 }),
+    city: varchar("city", { length: 100 }),
+    status: varchar("status", { length: 20 }).notNull().default("ACTIVE"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("idx_third_parties_nit_branch").on(table.nit, table.branch),
+    index("idx_third_parties_name").on(table.name),
+    index("idx_third_parties_type").on(table.type),
+  ]
+);
+
+// ---------- cost_centers ----------
+
+export const costCenters = pgTable(
+  "cost_centers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    code: varchar("code", { length: 50 }).notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    status: varchar("status", { length: 20 }).notNull().default("ACTIVE"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("idx_cost_centers_code").on(table.code)]
+);
+
+// ---------- units (catálogo de unidades de medida) ----------
+
+export const units = pgTable(
+  "units",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    code: varchar("code", { length: 20 }).notNull(),
+    name: varchar("name", { length: 50 }).notNull(),
+    status: varchar("status", { length: 20 }).notNull().default("ACTIVE"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("idx_units_code").on(table.code)]
+);
+
+// ---------- document_sequences (consecutivo atómico por tipo) ----------
+
+export const documentSequences = pgTable("document_sequences", {
+  type: varchar("type", { length: 20 }).primaryKey(),
+  /** Último consecutivo asignado para este tipo de documento. */
+  lastNumber: integer("last_number").notNull().default(0),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
 
 // ---------- orders ----------
 
@@ -396,7 +529,7 @@ export const orderItems = pgTable(
     warehouseId: uuid("warehouse_id")
       .notNull()
       .references(() => warehouses.id),
-    quantity: integer("quantity").notNull(),
+    quantity: numeric("quantity", { precision: 14, scale: 3, mode: "number" }).notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => [
@@ -443,7 +576,7 @@ export const invoiceItems = pgTable(
     productId: uuid("product_id")
       .notNull()
       .references(() => products.id),
-    quantity: integer("quantity").notNull(),
+    quantity: numeric("quantity", { precision: 14, scale: 3, mode: "number" }).notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => [
@@ -519,7 +652,7 @@ export const dispatchItems = pgTable(
     warehouseId: uuid("warehouse_id")
       .notNull()
       .references(() => warehouses.id),
-    quantity: integer("quantity").notNull(),
+    quantity: numeric("quantity", { precision: 14, scale: 3, mode: "number" }).notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => [
@@ -566,9 +699,9 @@ export const auditItems = pgTable(
     productId: uuid("product_id")
       .notNull()
       .references(() => products.id),
-    systemQuantity: integer("system_quantity").notNull(),
-    physicalQuantity: integer("physical_quantity").notNull(),
-    difference: integer("difference").notNull(),
+    systemQuantity: numeric("system_quantity", { precision: 14, scale: 3, mode: "number" }).notNull(),
+    physicalQuantity: numeric("physical_quantity", { precision: 14, scale: 3, mode: "number" }).notNull(),
+    difference: numeric("difference", { precision: 14, scale: 3, mode: "number" }).notNull(),
     observation: text("observation"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },

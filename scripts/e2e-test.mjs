@@ -262,7 +262,11 @@ async function run() {
     },
   });
   assert(entry.ok && !!entry.data?.data?.id, "Crea una entrada", JSON.stringify(entry.data));
-  assert(!!entry.data?.data?.number?.startsWith("ENT-"), "La entrada recibe número consecutivo automático", entry.data?.data?.number);
+  assert(
+    /^E-\d{3}-\d+$/.test(entry.data?.data?.number ?? ""),
+    "La entrada recibe número consecutivo automático con el código documental",
+    entry.data?.data?.number
+  );
   assert(entry.data?.data?.items?.length === 1, "La entrada guarda sus ítems");
 
   const afterEntry = await api("/api/inventario");

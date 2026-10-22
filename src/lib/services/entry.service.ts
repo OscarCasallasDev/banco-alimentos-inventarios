@@ -3,21 +3,34 @@
  * Banco Arquidiocesano de Alimentos de Ibagué
  *
  * Flujo de una entrada:
- *   1. Se valida el documento y sus ítems.
- *   2. Se guarda la cabecera (`entries`) y el detalle (`entry_items`).
- *   3. Si la entrada queda CONFIRMADA, se actualiza el inventario y se
+ *   1. Se valida el documento y sus ítems (Zod).
+ *   2. Se resuelve la entidad que entrega los productos (tercero).
+ *   3. Se asigna el código documental (consecutivo atómico por tipo).
+ *   4. Se guarda la cabecera (`entries`) y el detalle (`entry_items`).
+ *   5. Se guardan los lotes y vencimientos (`entry_item_lots`).
+ *   6. Si la entrada queda CONFIRMADA, se actualiza el inventario y se
  *      registra el movimiento (regla 6: toda entrada afecta el inventario).
- *   4. Se registra el soporte documental y la bitácora de auditoría.
+ *   7. Se registra el soporte documental y la bitácora de auditoría.
  *
- * Todo el proceso ocurre dentro de una única transacción.
+ * Todo el proceso ocurre dentro de una única transacción: si algo falla,
+ * no queda una entrada guardada a medias ni inventario descuadrado.
  */
 
-import { desc, eq, like, sql } from "drizzle-orm";
-import { entries, entryItems, users, warehouses } from "@/lib/db/schema";
+import { desc, eq } from "drizzle-orm";
+import {
+  costCenters,
+  entries,
+  entryItemLots,
+  entryItems,
+  products,
+  thirdParties,
+  users,
+  warehouses,
+} from "@/lib/db/schema";
 import type { DbExecutor } from "@/lib/db/client";
-import { conflictError, notFoundError } from "@/lib/utils/errors";
+import { businessRuleError, conflictError, notFoundError } from "@/lib/utils/errors";
 import { parseDocumentDate, toIsoDate } from "@/lib/utils";
-import { DOCUMENT_PREFIX, formatDocumentNumber } from "@/lib/utils/numbers";
+import { getEntryType, type EntryTypeCode } from "@/lib/entries/entry-types";
 import type { CreateEntryInput } from "@/lib/validations/schemas";
 import {
   applyStockMovement,
@@ -26,9 +39,11 @@ import {
 } from "./inventory.service";
 import { createDocument } from "./document.service";
 import { recordAuditLog } from "./audit-log.service";
+import { nextEntryDocumentCode } from "./sequence.service";
+import { assertActiveThirdParty } from "./third-party.service";
 
 /**
- * Lista las entradas con su usuario y bodega de origen.
+ * Lista las entradas con su usuario, entidad y bodega.
  */
 export async function listEntries(executor: DbExecutor) {
   return executor
@@ -43,6 +58,12 @@ export async function listEntries(executor: DbExecutor) {
       status: entries.status,
       userId: entries.userId,
       notes: entries.notes,
+      thirdPartyId: entries.thirdPartyId,
+      thirdPartyName: thirdParties.name,
+      costCenterId: entries.costCenterId,
+      costCenterCode: costCenters.code,
+      purchaseOrder: entries.purchaseOrder,
+      sellerNumber: entries.sellerNumber,
       createdAt: entries.createdAt,
       updatedAt: entries.updatedAt,
       userName: users.firstName,
@@ -50,16 +71,39 @@ export async function listEntries(executor: DbExecutor) {
     })
     .from(entries)
     .innerJoin(users, eq(entries.userId, users.id))
+    .leftJoin(thirdParties, eq(entries.thirdPartyId, thirdParties.id))
+    .leftJoin(costCenters, eq(entries.costCenterId, costCenters.id))
     .orderBy(desc(entries.createdAt));
 }
 
 /**
- * Obtiene una entrada con su detalle.
+ * Obtiene una entrada con su detalle y sus lotes, lista para el comprobante.
  */
 export async function getEntry(executor: DbExecutor, id: string) {
   const [entry] = await executor
-    .select()
+    .select({
+      id: entries.id,
+      format: entries.format,
+      number: entries.number,
+      date: entries.date,
+      nit: entries.nit,
+      origin: entries.origin,
+      document: entries.document,
+      status: entries.status,
+      userId: entries.userId,
+      notes: entries.notes,
+      thirdPartyId: entries.thirdPartyId,
+      costCenterId: entries.costCenterId,
+      purchaseOrder: entries.purchaseOrder,
+      sellerNumber: entries.sellerNumber,
+      createdAt: entries.createdAt,
+      updatedAt: entries.updatedAt,
+      userName: users.firstName,
+      userLastName: users.lastName,
+    })
     .from(entries)
+    .innerJoin(users, eq(entries.userId, users.id))
+    .leftJoin(thirdParties, eq(entries.thirdPartyId, thirdParties.id))
     .where(eq(entries.id, id))
     .limit(1);
 
@@ -67,34 +111,77 @@ export async function getEntry(executor: DbExecutor, id: string) {
     throw notFoundError("Entrada");
   }
 
-  const items = await executor
-    .select()
+  const itemRows = await executor
+    .select({
+      id: entryItems.id,
+      entryId: entryItems.entryId,
+      productId: entryItems.productId,
+      warehouseId: entryItems.warehouseId,
+      quantity: entryItems.quantity,
+      unit: entryItems.unit,
+      presentation: entryItems.presentation,
+      sequence: entryItems.sequence,
+      description: entryItems.description,
+      nit: entryItems.nit,
+      costCenterId: entryItems.costCenterId,
+      location: entryItems.location,
+      value: entryItems.value,
+      debitCredit: entryItems.debitCredit,
+      productCode: products.code,
+      productName: products.name,
+      warehouseCode: warehouses.code,
+      warehouseName: warehouses.name,
+      costCenterCode: costCenters.code,
+    })
     .from(entryItems)
-    .where(eq(entryItems.entryId, id));
+    .innerJoin(products, eq(entryItems.productId, products.id))
+    .innerJoin(warehouses, eq(entryItems.warehouseId, warehouses.id))
+    .leftJoin(costCenters, eq(entryItems.costCenterId, costCenters.id))
+    .where(eq(entryItems.entryId, id))
+    .orderBy(entryItems.sequence);
 
-  return { ...entry, items };
-}
+  const lots = await executor
+    .select({
+      id: entryItemLots.id,
+      entryItemId: entryItemLots.entryItemId,
+      productId: entryItemLots.productId,
+      code: entryItemLots.code,
+      description: entryItemLots.description,
+      expirationDate: entryItemLots.expirationDate,
+      quantity: entryItemLots.quantity,
+    })
+    .from(entryItemLots)
+    .innerJoin(entryItems, eq(entryItemLots.entryItemId, entryItems.id))
+    .where(eq(entryItems.entryId, id))
+    .orderBy(entryItemLots.createdAt);
 
-/**
- * Calcula el siguiente consecutivo disponible para el año indicado.
- */
-async function nextEntryNumber(
-  executor: DbExecutor,
-  date: Date
-): Promise<string> {
-  const year = date.getFullYear();
-  const rows = await executor
-    .select({ number: entries.number })
-    .from(entries)
-    .where(like(entries.number, `${DOCUMENT_PREFIX.ENTRY}-${year}-%`));
+  const thirdPartyRows = entry.thirdPartyId
+    ? await executor
+        .select({
+          id: thirdParties.id,
+          nit: thirdParties.nit,
+          branch: thirdParties.branch,
+          name: thirdParties.name,
+          type: thirdParties.type,
+          address: thirdParties.address,
+          phone: thirdParties.phone,
+          city: thirdParties.city,
+        })
+        .from(thirdParties)
+        .where(eq(thirdParties.id, entry.thirdPartyId))
+        .limit(1)
+    : [];
 
-  const sequence =
-    rows.reduce((max, row) => {
-      const value = Number(row.number.split("-").pop());
-      return Number.isFinite(value) && value > max ? value : max;
-    }, 0) + 1;
+  const thirdParty = thirdPartyRows[0] ?? null;
 
-  return formatDocumentNumber(DOCUMENT_PREFIX.ENTRY, date, sequence);
+  return {
+    ...entry,
+    thirdParty: thirdParty ?? null,
+    items: itemRows.map((item) => ({
+      ...item,
+      lots: lots.filter((lot) => lot.entryItemId === item.id),
+    })),
+  };
 }
 
 /**
@@ -106,10 +193,22 @@ export async function createEntry(
   userId: string
 ) {
   const entryDate = parseDocumentDate(input.date);
+  const entryType = getEntryType(input.format);
 
+  // --- Entidad que entrega los productos ---
+  const thirdParty = input.thirdPartyId
+    ? await assertActiveThirdParty(executor, input.thirdPartyId)
+    : null;
+
+  const nit = input.nit?.trim() || thirdParty?.nit || null;
+  const origin = input.origin?.trim() || thirdParty?.name || null;
+
+  // --- Número del documento ---
+  // Si el usuario no escribe uno, se asigna el consecutivo del tipo.
+  // El contador es atómico: dos usuarios simultáneos no repiten número.
   const number = input.number?.trim()
     ? input.number.trim()
-    : await nextEntryNumber(executor, entryDate);
+    : await nextEntryDocumentCode(executor, input.format as EntryTypeCode);
 
   const duplicate = await executor
     .select({ id: entries.id })
@@ -121,40 +220,84 @@ export async function createEntry(
     throw conflictError(`Ya existe una entrada con el número ${number}`);
   }
 
-  // Regla 2: no se permiten cantidades cero ni negativas (validado por Zod).
-  // Regla 1: toda entrada debe referenciar productos y bodegas válidos.
-  const referencedWarehouses = new Set<string>();
-  for (const item of input.items) {
+  // --- Validación de productos, bodegas y lotes ---
+  for (const [index, item] of input.items.entries()) {
     await assertActiveProduct(executor, item.productId);
     await assertActiveWarehouse(executor, item.warehouseId);
-    referencedWarehouses.add(item.warehouseId);
+
+    // Si la línea tiene lotes, sus cantidades deben sumar la cantidad total.
+    if (item.lots.length > 0) {
+      const lotTotal = item.lots.reduce((sum, lot) => sum + lot.quantity, 0);
+      const difference = Math.abs(lotTotal - item.quantity);
+
+      if (difference > 0.001) {
+        throw businessRuleError(
+          `El producto de la línea ${index + 1} tiene lotes por ${lotTotal} y una cantidad de ${item.quantity}. ` +
+            "Las cantidades por lote deben coincidir con la cantidad total."
+        );
+      }
+    }
   }
 
+  // --- Cabecera ---
   const [entry] = await executor
     .insert(entries)
     .values({
       format: input.format,
       number,
       date: toIsoDate(input.date),
-      nit: input.nit || null,
-      origin: input.origin || null,
+      nit,
+      origin,
       document: input.document || null,
       status: input.status,
       userId,
       notes: input.notes || null,
+      thirdPartyId: thirdParty?.id ?? null,
+      costCenterId: input.costCenterId ?? null,
+      purchaseOrder: input.purchaseOrder?.trim() || null,
+      sellerNumber: input.sellerNumber,
     })
     .returning();
 
-  await executor.insert(entryItems).values(
-    input.items.map((item) => ({
-      entryId: entry.id,
-      productId: item.productId,
-      warehouseId: item.warehouseId,
-      quantity: item.quantity,
-      unit: item.unit,
-      presentation: item.presentation || null,
-    }))
-  );
+  // --- Detalle ---
+  const insertedItems = [];
+
+  for (const [index, item] of input.items.entries()) {
+    const [inserted] = await executor
+      .insert(entryItems)
+      .values({
+        entryId: entry.id,
+        productId: item.productId,
+        warehouseId: item.warehouseId,
+        quantity: item.quantity,
+        unit: item.unit,
+        presentation: item.presentation || null,
+        sequence: index + 1,
+        description: item.description || null,
+        nit,
+        costCenterId: item.costCenterId ?? input.costCenterId ?? null,
+        location: item.location || null,
+        value: item.value,
+        debitCredit: item.debitCredit,
+      })
+      .returning();
+
+    insertedItems.push({ ...inserted, lots: item.lots });
+
+    // --- Lotes y vencimientos ---
+    if (item.lots.length > 0) {
+      await executor.insert(entryItemLots).values(
+        item.lots.map((lot) => ({
+          entryItemId: inserted.id,
+          productId: item.productId,
+          code: lot.code || null,
+          description: lot.description || null,
+          expirationDate: lot.expirationDate || null,
+          quantity: lot.quantity,
+        }))
+      );
+    }
+  }
 
   // Regla 6: toda entrada confirmada afecta el inventario.
   if (input.status === "CONFIRMED") {
@@ -167,7 +310,7 @@ export async function createEntry(
         documentId: entry.id,
         documentType: "ENTRY",
         userId,
-        notes: `Entrada ${number} (${input.format})`,
+        notes: `Entrada ${number} (${entryType.documentCode})`,
       });
     }
   }
@@ -187,12 +330,7 @@ export async function createEntry(
     details: `Entrada ${number} con ${input.items.length} item(s)`,
   });
 
-  const items = await executor
-    .select()
-    .from(entryItems)
-    .where(eq(entryItems.entryId, entry.id));
-
-  return { ...entry, items };
+  return { ...entry, items: insertedItems };
 }
 
 /**
@@ -258,11 +396,11 @@ export async function confirmEntry(
 }
 
 /**
- * Bodegas en las que se movementsó stock en una entrada (para el dashboard).
+ * Bodegas activas, para el desplegable del formulario.
  */
 export async function listEntryWarehouses(executor: DbExecutor) {
   return executor
-    .select({ id: warehouses.id, name: warehouses.name, code: warehouses.code })
+    .select({ id: warehouses.id, name: warehouses.name, code: warehouses.code, type: warehouses.type })
     .from(warehouses)
-    .where(sql`${warehouses.status} = 'ACTIVE'`);
+    .where(eq(warehouses.status, "ACTIVE"));
 }

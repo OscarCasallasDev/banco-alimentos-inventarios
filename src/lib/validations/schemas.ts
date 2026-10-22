@@ -230,29 +230,115 @@ export const updateWarehouseSchema = createWarehouseSchema.partial();
 // ENTRADAS
 // ============================================================
 
+// ============================================================
+// ENTRADAS
+// ============================================================
+
+/**
+ * Lote de un producto dentro de una entrada.
+ */
+export const entryLotSchema = z.object({
+  /** Código del lote. */
+  code: z.string().trim().max(50).optional(),
+  /** Denominación del lote (por ejemplo "Lotes Inicial"). */
+  description: z.string().trim().max(100).optional(),
+  /** Fecha de vencimiento (AAAA-MM-DD). */
+  expirationDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "La fecha de vencimiento no es válida")
+    .optional(),
+  /** Cantidad del producto contenida en este lote. */
+  quantity: z
+    .number()
+    .positive("La cantidad del lote debe ser mayor que cero")
+    .max(999999, "La cantidad del lote no puede exceder 999999"),
+});
+
 export const entryItemSchema = z.object({
   productId: z.string().uuid("Producto inválido"),
   warehouseId: z.string().uuid("Bodega inválida"),
   quantity: z
     .number()
-    .int("La cantidad debe ser un número entero")
-    .positive("La cantidad debe ser positiva")
+    .positive("La cantidad debe ser mayor que cero")
     .max(999999, "La cantidad no puede exceder 999999"),
   unit: z.string().min(1, "La unidad es requerida").max(20),
   presentation: z.string().max(100).optional(),
+  /** Descripción del producto para el comprobante (CD, nombre, presentación). */
+  description: z.string().max(500).optional(),
+  /** Centro de costo de la línea. */
+  costCenterId: z.string().uuid("Centro de costo inválido").nullable().optional(),
+  /** Ubicación dentro de la bodega. */
+  location: z.string().trim().max(50).optional(),
+  /** Valor monetario de la línea (puede ser 0). */
+  value: z
+    .number()
+    .min(0, "El valor no puede ser negativo")
+    .max(999999999, "El valor es demasiado grande")
+    .default(0),
+  /** Indicador débito/crédito del movimiento. */
+  debitCredit: z
+    .number()
+    .min(0, "El valor débito/crédito no puede ser negativo")
+    .max(999999999, "El valor es demasiado grande")
+    .default(0),
+  /** Lotes del producto en esta línea. */
+  lots: z.array(entryLotSchema).default([]),
 });
 
 export const createEntrySchema = z.object({
   format: z.enum(["E1", "E3", "N3", "N5"]),
-  /** Si se omite, el sistema asigna el consecutivo (ENT-2026-0001). */
+  /** Si se omite, el sistema asigna el consecutivo (E-003-28). */
   number: z.string().trim().max(50).optional(),
   date: z.string().min(1, "La fecha es requerida"),
-  nit: z.string().max(50).optional(),
+  /** Entidad que entrega los productos. */
+  thirdPartyId: z.string().uuid("Tercero inválido").optional(),
+  nit: z.string().trim().max(50).optional(),
   origin: z.string().max(255).optional(),
   document: z.string().max(100).optional(),
+  /** Centro de costo del documento. */
+  costCenterId: z.string().uuid("Centro de costo inválido").nullable().optional(),
+  /** Orden de compra asociada (vacía si no aplica). */
+  purchaseOrder: z.string().trim().max(50).optional(),
+  /** Número de vendedor del documento. */
+  sellerNumber: z
+    .number()
+    .int("El número de vendedor debe ser un entero")
+    .min(1, "El número de vendedor debe ser mayor que cero")
+    .max(9999, "El número de vendedor es demasiado grande")
+    .default(1),
   status: z.enum(["DRAFT", "CONFIRMED", "CANCELLED"]).default("CONFIRMED"),
   notes: z.string().max(2000).optional(),
   items: z.array(entryItemSchema).min(1, "Debe tener al menos un item"),
+});
+
+// ============================================================
+// TERCEROS
+// ============================================================
+
+export const thirdPartyTypeSchema = z.enum([
+  "CLIENTE",
+  "PROVEEDOR",
+  "DONANTE",
+  "PARROQUIA",
+  "OTROS",
+]);
+
+export const createThirdPartySchema = z.object({
+  nit: z
+    .string()
+    .trim()
+    .min(1, "El NIT o cédula es requerido")
+    .max(50, "El NIT no puede exceder 50 caracteres"),
+  branch: z.string().trim().max(10).optional(),
+  name: z
+    .string()
+    .trim()
+    .min(1, "La razón social es requerida")
+    .max(255, "La razón social no puede exceder 255 caracteres"),
+  type: thirdPartyTypeSchema.default("CLIENTE"),
+  address: z.string().trim().max(255).optional(),
+  phone: z.string().trim().max(50).optional(),
+  city: z.string().trim().max(100).optional(),
 });
 
 // ============================================================
@@ -365,6 +451,9 @@ export type UpdateProductInput = z.infer<typeof updateProductSchema>;
 export type CreateWarehouseInput = z.infer<typeof createWarehouseSchema>;
 export type UpdateWarehouseInput = z.infer<typeof updateWarehouseSchema>;
 export type CreateEntryInput = z.infer<typeof createEntrySchema>;
+export type EntryItemInput = z.infer<typeof entryItemSchema>;
+export type EntryLotInput = z.infer<typeof entryLotSchema>;
+export type CreateThirdPartyInput = z.infer<typeof createThirdPartySchema>;
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 export type CreateInvoiceInput = z.infer<typeof createInvoiceSchema>;
 export type CreateReceiptInput = z.infer<typeof createReceiptSchema>;

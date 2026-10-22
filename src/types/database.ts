@@ -18,6 +18,7 @@ import {
   documentTypeEnum,
   entryFormatEnum,
   entryStatusEnum,
+  thirdPartyTypeEnum,
   invoiceFormatEnum,
   invoiceStatusEnum,
   movementTypeEnum,
@@ -72,6 +73,7 @@ export type DispatchStatus = (typeof dispatchStatusEnum.enumValues)[number];
 export type AuditStatus = (typeof auditStatusEnum.enumValues)[number];
 export type AuditLogAction = (typeof auditLogActionEnum.enumValues)[number];
 export type DocumentType = (typeof documentTypeEnum.enumValues)[number];
+export type ThirdPartyType = (typeof thirdPartyTypeEnum.enumValues)[number];
 
 // ============================================================
 // FILAS DE LAS TABLAS

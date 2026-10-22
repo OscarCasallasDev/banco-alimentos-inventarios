@@ -12,8 +12,8 @@
 // ============================================================
 
 /**
- * E1 - Entrada de mercancía
- * Se usa para registrar ingresos de productos al inventario
+ * E1 - Entrada por donación
+ * Se usa para registrar ingresos de productos donados por un tercero
  */
 export interface E1Entry {
   // Encabezado
@@ -39,8 +39,8 @@ export interface E1Item {
 }
 
 /**
- * E3 - Entrada por donación
- * Se usa para registrar productos recibidos por donación
+ * E3 - Entrada de productos otros (producción propia)
+ * Se usa para registrar productos elaborados por el Banco o clasificados como propios
  */
 export interface E3Entry {
   formato: "E3";

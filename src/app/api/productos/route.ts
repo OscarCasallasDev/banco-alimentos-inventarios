@@ -4,16 +4,22 @@ import { jsonOk, handleRouteError } from "@/lib/api/response";
 import {
   createProduct,
   listProducts,
+  searchProducts,
 } from "@/lib/services/product.service";
 import { recordAuditLog } from "@/lib/services/audit-log.service";
 import { createProductSchema } from "@/lib/validations/schemas";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     await requireUser();
 
+    const { searchParams } = new URL(request.url);
+    const search = searchParams.get("search")?.trim();
+
     const db = getDb();
-    const data = await listProducts(db);
+    const data = search
+      ? await searchProducts(db, search)
+      : await listProducts(db);
 
     return jsonOk(data);
   } catch (error) {

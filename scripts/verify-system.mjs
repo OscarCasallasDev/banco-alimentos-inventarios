@@ -657,8 +657,11 @@ async function verifyInDatabase(sql) {
       label: "inventario",
       query: `select * from "inventory" where "product_id" = $1`,
       params: [created.productoAlto?.id],
-      expect: (rows) => rows.length === 1 && rows[0].quantity === 190,
-      detail: (rows) => `existencia ${rows[0]?.quantity} (200 − 50 + 40 ajuste)`,
+      // Existencia real al auditar: 200 (entrada) − 50 (despacho) = 150
+      // El conteo físico fue 190 → diferencia +40 y el stock queda en 190.
+      expect: (rows) => rows.length === 1 && Number(rows[0].quantity) === 190,
+      detail: (rows) =>
+        `existencia ${rows[0]?.quantity} (200 − 50 + 40 ajuste)`,
     },
     {
       table: "inventory_movements",
@@ -668,7 +671,7 @@ async function verifyInDatabase(sql) {
       expect: (rows) => rows.length === 3,
       detail: (rows) =>
         rows
-          .map((r) => `${r.type} ${r.quantity > 0 ? "+" : ""}${r.quantity}`)
+          .map((r) => `${r.type} ${Number(r.quantity) > 0 ? "+" : ""}${Number(r.quantity)}`)
           .join(", "),
     },
     {
@@ -742,9 +745,9 @@ async function verifyInDatabase(sql) {
       params: [created.auditoria?.id],
       // Existencia real al auditar: 200 (entrada) − 50 (despacho) = 150
       // El conteo físico fue 190 → diferencia +40 y el stock queda en 190.
-      expect: (rows) => rows.length === 1 && rows[0].difference === 40,
+      expect: (rows) => rows.length === 1 && Number(rows[0].difference) === 40,
       detail: (rows) =>
-        `sistema ${rows[0]?.system_quantity} · físico ${rows[0]?.physical_quantity} · dif +${rows[0]?.difference}`,
+        `sistema ${rows[0]?.system_quantity} · físico ${rows[0]?.physical_quantity} · dif +${Number(rows[0]?.difference)}`,
     },
     {
       table: "documents",

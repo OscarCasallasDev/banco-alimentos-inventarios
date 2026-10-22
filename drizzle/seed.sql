@@ -121,22 +121,55 @@ SELECT
   NOW() - INTERVAL '7 days'
 FROM inventory i;
 
--- ---------- ENTRADA DEMO ----------
+-- ---------- UNIDADES DE MEDIDA ----------
+-- Catálogo derivado de las unidades y presentaciones que ya usa el
+-- catálogo de productos (kg, L, g y "unidad" por defecto del schema).
 
-INSERT INTO entries (id, format, number, date, nit, origin, document, status, user_id, notes, created_at)
+INSERT INTO units (id, code, name, status) VALUES
+  (gen_random_uuid(), 'g',  'GRAMOS',    'ACTIVE'),
+  (gen_random_uuid(), 'kg', 'KILOGRAMOS','ACTIVE'),
+  (gen_random_uuid(), 'L',  'LITROS',    'ACTIVE'),
+  (gen_random_uuid(), 'unidad', 'UNIDADES', 'ACTIVE');
+
+-- ---------- CENTROS DE COSTO ----------
+-- El catálogo se carga con los valores reales del Banco. Se deja vacío
+-- a propósito: el campo puede quedar en blanco en el comprobante.
+
+-- ---------- TERCEROS (DATOS DEMO) ----------
+-- Entidades que entregan productos. Sustituir por el registro real.
+
+INSERT INTO third_parties (id, nit, branch, name, type, address, phone, city, status) VALUES
+  (gen_random_uuid(), '222.222.222', '001', 'CANTIDAD MENORES', 'CLIENTE',
+   'CR 4 ESTADIO 23 44', '2624927', 'IBAGUÉ - TOLIMA', 'ACTIVE'),
+  (gen_random_uuid(), '900.123.456-7', '001', 'DONACIÓN EMPRESA LOCAL', 'DONANTE',
+   'CR 5 ESTADIO 10 20', '2624927', 'IBAGUÉ - TOLIMA', 'ACTIVE'),
+  (gen_random_uuid(), '811.009.111-2', '001', 'PASTORAL SOCIAL', 'PARROQUIA',
+   'CR 6 ESTADIO 15 30', '5151727', 'IBAGUÉ - TOLIMA', 'ACTIVE');
+
+-- ---------- ENTRADA DEMO ----------
+-- Número con el código documental nuevo: E-001-1 (tipo E1, consecutivo 1).
+
+INSERT INTO entries (id, format, number, date, nit, origin, document, status, user_id, notes, third_party_id, purchase_order, seller_number, created_at)
 VALUES (
   gen_random_uuid(),
   'E1',
-  'ENT-2026-0001',
+  'E-001-1',
   CURRENT_DATE - INTERVAL '7 days',
   '900.123.456-7',
-  'Donación Empresa Local',
+  'DONACIÓN EMPRESA LOCAL',
   'FAC-2026-001',
   'CONFIRMED',
   (SELECT id FROM users WHERE username = 'admin'),
   'Entrada DEMO de arroz y frijol',
+  (SELECT id FROM third_parties WHERE nit = '900.123.456-7' AND branch = '001'),
+  NULL,
+  1,
   NOW() - INTERVAL '7 days'
 );
+
+-- Consecutivo del tipo E1: la siguiente entrada E1 automática será E-001-2.
+INSERT INTO document_sequences (type, last_number) VALUES ('E1', 1)
+ON CONFLICT (type) DO UPDATE SET last_number = 1;
 
 -- ---------- PEDIDO DEMO ----------
 
@@ -224,7 +257,7 @@ VALUES
 -- DETALLE DE DOCUMENTOS (trazabilidad del flujo)
 -- ============================================================
 
-INSERT INTO entry_items (id, entry_id, product_id, warehouse_id, quantity, unit, presentation)
+INSERT INTO entry_items (id, entry_id, product_id, warehouse_id, quantity, unit, presentation, sequence, description, nit, value, debit_credit)
 SELECT
   gen_random_uuid(),
   e.id,
@@ -232,11 +265,16 @@ SELECT
   w.id,
   CASE p.code WHEN 'GRN-001' THEN 150 WHEN 'GRN-002' THEN 80 END,
   p.unit,
-  p.presentation
+  p.presentation,
+  CASE p.code WHEN 'GRN-001' THEN 1 ELSE 2 END,
+  p.name || CASE WHEN p.presentation IS NOT NULL THEN ' ' || p.presentation ELSE '' END,
+  e.nit,
+  0,
+  0
 FROM entries e
 CROSS JOIN products p
 CROSS JOIN warehouses w
-WHERE e.number = 'ENT-2026-0001' AND p.code IN ('GRN-001', 'GRN-002') AND w.code = '1.1';
+WHERE e.number = 'E-001-1' AND p.code IN ('GRN-001', 'GRN-002') AND w.code = '1.1';
 
 INSERT INTO order_items (id, order_id, product_id, warehouse_id, quantity)
 SELECT

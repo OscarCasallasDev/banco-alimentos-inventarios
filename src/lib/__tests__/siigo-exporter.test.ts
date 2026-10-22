@@ -162,7 +162,7 @@ const r4Data: R4Receipt = {
 };
 
 describe("Exportador ExcelSiigo", () => {
-  describe("E1 - Entrada de mercancía", () => {
+  describe("E1 - Entrada por donación", () => {
     it("debe generar un archivo Excel válido", () => {
       const wb = exportE1ToExcel(e1Data);
       expect(wb).toBeDefined();
@@ -179,7 +179,7 @@ describe("Exportador ExcelSiigo", () => {
     });
   });
 
-  describe("E3 - Entrada por donación", () => {
+  describe("E3 - Entrada de productos otros", () => {
     it("debe generar un archivo Excel válido", () => {
       const wb = exportE3ToExcel(e3Data);
       expect(wb).toBeDefined();

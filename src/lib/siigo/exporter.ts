@@ -22,7 +22,7 @@ import type {
 } from "./formats";
 
 // ============================================================
-// E1 - Entrada de mercancía
+// E1 - Entrada por donación
 // ============================================================
 
 export function exportE1ToExcel(entry: E1Entry): XLSX.WorkBook {
@@ -60,7 +60,7 @@ export function exportE1ToExcel(entry: E1Entry): XLSX.WorkBook {
 }
 
 // ============================================================
-// E3 - Entrada por donación
+// E3 - Entrada de productos otros (producción propia)
 // ============================================================
 
 export function exportE3ToExcel(entry: E3Entry): XLSX.WorkBook {

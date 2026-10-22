@@ -16,6 +16,7 @@ import {
   createReceiptSchema,
   createDispatchSchema,
   createAuditSchema,
+  createThirdPartySchema,
 } from "@/lib/validations/schemas";
 
 describe("Login Schema", () => {
@@ -213,6 +214,158 @@ describe("Create Entry Schema", () => {
           unit: "kg",
         },
       ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("debe rechazar una cantidad de cero", () => {
+    const result = createEntrySchema.safeParse({
+      format: "E1",
+      date: "2026-09-28",
+      items: [
+        {
+          productId: "123e4567-e89b-12d3-a456-426614174000",
+          warehouseId: "123e4567-e89b-12d3-a456-426614174001",
+          quantity: 0,
+          unit: "kg",
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("debe aceptar cantidades con decimales", () => {
+    const result = createEntrySchema.safeParse({
+      format: "E3",
+      date: "2026-09-28",
+      items: [
+        {
+          productId: "123e4567-e89b-12d3-a456-426614174000",
+          warehouseId: "123e4567-e89b-12d3-a456-426614174001",
+          quantity: 7.5,
+          unit: "kg",
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("debe aceptar los datos del comprobante (entidad, orden de compra y lotes)", () => {
+    const result = createEntrySchema.safeParse({
+      format: "E3",
+      date: "2026-09-28",
+      thirdPartyId: "123e4567-e89b-12d3-a456-426614174002",
+      nit: "222.222.222",
+      origin: "CANTIDAD MENORES",
+      costCenterId: null,
+      purchaseOrder: "OC-2026-0001",
+      sellerNumber: 1,
+      items: [
+        {
+          productId: "123e4567-e89b-12d3-a456-426614174000",
+          warehouseId: "123e4567-e89b-12d3-a456-426614174001",
+          quantity: 150,
+          unit: "kg",
+          description: "CD 6020 PAN DE SOYA X 250 GR PR",
+          location: "2",
+          value: 0,
+          debitCredit: 0,
+          lots: [
+            {
+              code: "9999999999",
+              description: "Lotes Inicial",
+              expirationDate: "2026-09-05",
+              quantity: 150,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.items[0].lots[0].expirationDate).toBe("2026-09-05");
+      expect(result.data.items[0].value).toBe(0);
+      expect(result.data.purchaseOrder).toBe("OC-2026-0001");
+    }
+  });
+
+  it("debe rechazar un lote con cantidad cero", () => {
+    const result = createEntrySchema.safeParse({
+      format: "E1",
+      date: "2026-09-28",
+      items: [
+        {
+          productId: "123e4567-e89b-12d3-a456-426614174000",
+          warehouseId: "123e4567-e89b-12d3-a456-426614174001",
+          quantity: 10,
+          unit: "kg",
+          lots: [{ code: "L1", quantity: 0 }],
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("debe rechazar una fecha de vencimiento con formato inválido", () => {
+    const result = createEntrySchema.safeParse({
+      format: "E1",
+      date: "2026-09-28",
+      items: [
+        {
+          productId: "123e4567-e89b-12d3-a456-426614174000",
+          warehouseId: "123e4567-e89b-12d3-a456-426614174001",
+          quantity: 10,
+          unit: "kg",
+          lots: [
+            { code: "L1", expirationDate: "05/09/2026", quantity: 10 },
+          ],
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("debe rechazar un valor monetario negativo", () => {
+    const result = createEntrySchema.safeParse({
+      format: "E1",
+      date: "2026-09-28",
+      items: [
+        {
+          productId: "123e4567-e89b-12d3-a456-426614174000",
+          warehouseId: "123e4567-e89b-12d3-a456-426614174001",
+          quantity: 10,
+          unit: "kg",
+          value: -5,
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("Create Third Party Schema", () => {
+  it("debe validar un tercero correcto", () => {
+    const result = createThirdPartySchema.safeParse({
+      nit: "222.222.222",
+      branch: "001",
+      name: "CANTIDAD MENORES",
+      type: "CLIENTE",
+      city: "IBAGUÉ - TOLIMA",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("debe exigir el NIT", () => {
+    const result = createThirdPartySchema.safeParse({
+      name: "CANTIDAD MENORES",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("debe exigir la razón social", () => {
+    const result = createThirdPartySchema.safeParse({
+      nit: "222.222.222",
     });
     expect(result.success).toBe(false);
   });

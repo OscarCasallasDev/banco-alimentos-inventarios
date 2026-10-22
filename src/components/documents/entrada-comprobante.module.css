@@ -1,0 +1,223 @@
+/*
+ * Comprobante de entrada — estilos de impresión
+ * Sistema de Gestión de Inventarios
+ * Banco Arquidiocesano de Alimentos de Ibagué
+ *
+ * Area de impresión: media hoja carta (21,59 cm x 13,97 cm),
+ * equivalente a una hoja tamaño carta dividida horizontalmente en dos.
+ */
+
+@page {
+  size: 21.59cm 13.97cm;
+  margin: 0.4cm;
+}
+
+.comprobante {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 8.5pt;
+  line-height: 1.25;
+  color: #000;
+  background: #fff;
+  width: 100%;
+}
+
+/* ---------------- Encabezado ---------------- */
+
+.encabezado {
+  display: grid;
+  grid-template-columns: 15% 52% 33%;
+  align-items: start;
+  border-bottom: 1px solid #000;
+  padding-bottom: 3px;
+}
+
+.logoZona {
+  display: flex;
+  justify-content: flex-start;
+  padding-top: 2px;
+}
+
+.logoMarco {
+  width: 46px;
+  height: 28px;
+  overflow: hidden;
+}
+
+.logo {
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+  object-position: 50% 0;
+}
+
+.institucion {
+  text-align: center;
+  line-height: 1.2;
+}
+
+.institucionNombre {
+  font-size: 10pt;
+  font-weight: 700;
+  letter-spacing: 0.2pt;
+}
+
+.institucionDato {
+  font-size: 7.5pt;
+  font-weight: 400;
+}
+
+.documentoZona {
+  text-align: right;
+  line-height: 1.25;
+}
+
+.documentoTitulo {
+  font-size: 9.5pt;
+  font-weight: 700;
+  letter-spacing: 0.2pt;
+}
+
+.documentoCodigo {
+  font-size: 9.5pt;
+  font-weight: 700;
+  letter-spacing: 0.6pt;
+}
+
+/* ---------------- Entidad que entrega ---------------- */
+
+.entidadBloque {
+  display: grid;
+  grid-template-columns: 46% 26% 28%;
+  gap: 8px;
+  border-bottom: 1px solid #000;
+  padding: 3px 0;
+  font-size: 8pt;
+}
+
+.entidadColumna {
+  min-width: 0;
+}
+
+.entidadDocumento {
+  text-align: right;
+}
+
+.etiqueta {
+  font-weight: 700;
+}
+
+/* ---------------- Tablas ---------------- */
+
+.tabla {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 8pt;
+}
+
+.tabla th,
+.tabla td {
+  border: 1px solid #000;
+  padding: 1.5px 3px;
+  vertical-align: top;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.tabla th {
+  font-weight: 700;
+  text-align: left;
+  background: #fff;
+}
+
+.numero {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.colCodigo {
+  width: 13%;
+}
+
+.colDescripcion {
+  width: 39%;
+}
+
+.colCosto {
+  width: 9%;
+}
+
+.colBodega {
+  width: 8%;
+}
+
+.colCantidad {
+  width: 12%;
+}
+
+.colUnidad {
+  width: 8%;
+}
+
+.colValor {
+  width: 11%;
+}
+
+.tablaLotes {
+  margin-top: -1px;
+}
+
+.colLoteCodigo {
+  width: 22%;
+}
+
+.colLoteDescripcion {
+  width: 40%;
+}
+
+.colLoteVencimiento {
+  width: 22%;
+}
+
+.colLoteCantidad {
+  width: 16%;
+}
+
+/* ---------------- Observaciones ---------------- */
+
+.observaciones {
+  margin-top: 3px;
+  font-size: 8pt;
+}
+
+.observacionesEspacio {
+  min-height: 14mm;
+  border-bottom: 1px solid #000;
+  padding-top: 2px;
+}
+
+/* ---------------- Impresión ---------------- */
+
+@media print {
+  .comprobante {
+    font-size: 8.5pt;
+  }
+
+  /* La tabla de productos repite su encabezado si el comprobante
+     ocupa más de una media hoja. */
+  .tabla thead {
+    display: table-header-group;
+  }
+
+  .tabla tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .encabezado,
+  .entidadBloque,
+  .observaciones {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

@@ -97,14 +97,31 @@ funciona.
 ### Pruebas — AUTOMATIZADAS
 | Suite | Comando | Resultado |
 |---|---|---|
-| Unitarias (validaciones + exportador Siigo) | `npm run test:run` | 34 ✅ |
+| Unitarias (validaciones + exportador Siigo) | `npm run test:run` | 43 ✅ |
 | End-to-end (todos los módulos por HTTP) | `npm run test:e2e` | 60 ✅ |
+| End-to-end del módulo de Entradas (7 escenarios) | `npm run test:e2e:entradas` | 62 ✅ |
 | Verificación integral (conexión + esquema + un test por módulo + lectura directa de la BD) | `npm run verify` | 46 ✅ |
 | Módulos (página + datos, como en el navegador) | `npm run check:modulos` | 51 ✅ |
 | Conexión y failover (principal rota → recuperación automática) | `npm run test:conexion` | ✅ |
 | Interfaz (render de las 14 páginas) | `npm run check:ui` | 15 ✅ |
 | Tipos | `npm run typecheck` | ✅ |
 | Lint | `npm run lint` | 0 errores ✅ |
+
+### Módulo de Entradas — ADAPTADO AL PROCEDIMIENTO DE SIIGO PYME
+
+| Aspecto | Estado |
+|---|---|
+| Captura en el orden del procedimiento | ✅ Tipo → entidad → datos → fecha → O.C. → C.C. → productos → lotes → observaciones |
+| Tipos de entrada con título y código documental | ✅ E1, E3, N3, N5 (`src/lib/entries/entry-types.ts`) |
+| Consecutivo atómico por tipo (`E-003-28`) | ✅ `document_sequences` con `INSERT … ON CONFLICT` |
+| Entidades con autocompletado (NIT, razón social) | ✅ `third_parties` + `/api/terceros` |
+| Lotes con vencimiento y control por línea | ✅ `entry_item_lots` + validación de la suma |
+| Valor monetario, D/C, ubicación, secuencia, NIT por línea | ✅ columnas nuevas en `entry_items` |
+| Comprobante impreso media hoja carta | ✅ `/entradas/[id]/comprobante` |
+| Cantidades con decimales | ✅ `numeric(14,3)` en inventario, movimientos y líneas |
+| Catálogos de unidades y centros de costo | ✅ `units`, `cost_centers` |
+
+Detalle completo en **[MODULO_ENTRADAS.md](./MODULO_ENTRADAS.md)**.
 
 ### Verificación de conexión y de datos en Supabase
 

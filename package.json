@@ -12,6 +12,7 @@
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
     "test:e2e": "node scripts/e2e-test.mjs",
+    "test:e2e:entradas": "node scripts/e2e-entradas.mjs",
     "verify": "node scripts/verify-system.mjs",
     "verify:server": "node scripts/verify-system.mjs --server",
     "check:ui": "node scripts/ui-check.mjs",

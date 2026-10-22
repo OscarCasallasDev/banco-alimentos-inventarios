@@ -129,12 +129,35 @@ la interfaz.
 
 ## 6. Entradas — `/entradas`
 
+> Detalle completo del procedimiento y del comprobante en
+> **[MODULO_ENTRADAS.md](./MODULO_ENTRADAS.md)**.
+
 | Qué hacer | Resultado esperado |
 |---|---|
-| Abre el módulo | Tabla con número, formato, fecha, origen y estado |
-| **Nueva Entrada**: formato `E1`, número (déjalo vacío → se genera solo), fecha de hoy, origen `Prueba demo`, y **2 ítems**: producto + bodega + cantidad | Se guarda con número `ENT-2026-XXXX` y estado **Confirmada** |
-| Ve a **Inventario** | La existencia de ese producto **subió** exactamente la cantidad que pusiste |
-| Vuelve a **Entradas** | La entrada aparece en la lista con su número y estado |
+| Abre el módulo | Tabla con número, tipo, fecha, entidad, estado y botón **Imprimir** |
+| **Nueva Entrada** → tipo **E3** | Aparece el título *NOTA ENTRADA PRODUCCIÓN OTROS* y el código `E-003` |
+| Busca la entidad (NIT, nombre o sucursal) | Se completan solos el **NIT** y la **razón social** (en mayúsculas) |
+| Registra la fecha y la orden de compra | Quedan como campos independientes |
+| **Agregar producto** → busca por ref, nombre o categoría | Se completan código, descripción y unidad |
+| Elige la bodega | Desplegable con las bodegas activas; para E3 se propone **1.1** y para E1 **1.2** |
+| Registra cantidad, unidad, ubicación y valor | El valor admite 0; la cantidad admite decimales |
+| **Lotes** → *Agregar lote* | Código, «Lotes Inicial», fecha de vencimiento y cantidad por lote |
+| Guarda con lotes que no cuadran | Error: «los lotes suman X y la cantidad es Y» |
+| Guarda con un producto sin código | Error indicando la línea a corregir |
+| **Guardar** | Se genera el número `E-003-n` y se pregunta si se imprime |
+| **Imprimir** | Abre el comprobante con el diseño de la plantilla |
+| Vuelve a **Inventario** | La existencia del producto cambió exactamente con la cantidad registrada |
+
+### Comprobante impreso
+
+| Qué mirar | Resultado esperado |
+|---|---|
+| Encabezado | Logo (escala de grises) · nombre y datos del Banco · título y `E - 003 - n` |
+| Entidad | SEÑORES, NIT, DIRECCIÓN, TELÉFONO, CIUDAD, FECHA DOCUMENTO, ORDEN DE COMPRA |
+| Tabla | CÓDIGO, DESCRIPCIÓN, C. de COSTO, BODEGA, CANTIDAD, UNIDAD, VALOR |
+| Lotes | Código, denominación, `F.V.: AAAA-MM-DD` y cantidad |
+| Observaciones | Etiqueta `OBSERVACIONES:` con el espacio de escritura |
+| Tamaño | Media hoja carta (21,59 × 13,97 cm), en blanco y negro |
 
 ---
 
@@ -243,7 +266,7 @@ Si el estado dice **Sin conexión**, ejecuta `npm run db:check`.
 | 3 | Productos (crear, editar, duplicado, desactivar) | ☐ |
 | 4 | Bodegas (crear, editar, desactivar) | ☐ |
 | 5 | Inventario (listado y buscador) | ☐ |
-| 6 | Entradas (crear → sube el stock) | ☐ |
+| 6 | Entradas (tipo, entidad, lotes, valor) + comprobante impreso | ☐ |
 | 7 | Pedido → Factura → Recibo → Despacho (baja el stock) | ☐ |
 | 8 | Reglas: stock insuficiente y un solo despacho por recibo | ☐ |
 | 9 | Auditoría (conciliación y ajuste de stock) | ☐ |

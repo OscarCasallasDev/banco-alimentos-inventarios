@@ -3,7 +3,7 @@
  * Banco Arquidiocesano de Alimentos de Ibagué
  */
 
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, ilike, or, sql } from "drizzle-orm";
 import { categories, products } from "@/lib/db/schema";
 import type { DbExecutor } from "@/lib/db/client";
 import { conflictError, notFoundError } from "@/lib/utils/errors";
@@ -32,6 +32,48 @@ export async function listProducts(executor: DbExecutor) {
     .from(products)
     .leftJoin(categories, eq(products.categoryId, categories.id))
     .orderBy(asc(products.code));
+}
+
+/**
+ * Busca productos por código, nombre, presentación o categoría.
+ * Es la búsqueda que usa el módulo de Entradas para locating el producto
+ * por cualquiera de sus características.
+ */
+export async function searchProducts(executor: DbExecutor, term: string) {
+  const pattern = `%${term.trim()}%`;
+
+  return executor
+    .select({
+      id: products.id,
+      code: products.code,
+      name: products.name,
+      description: products.description,
+      presentation: products.presentation,
+      weight: products.weight,
+      unit: products.unit,
+      categoryId: products.categoryId,
+      status: products.status,
+      minStock: products.minStock,
+      createdAt: products.createdAt,
+      updatedAt: products.updatedAt,
+      categoryName: categories.name,
+    })
+    .from(products)
+    .leftJoin(categories, eq(products.categoryId, categories.id))
+    .where(
+      and(
+        eq(products.status, "ACTIVE"),
+        or(
+          ilike(products.code, pattern),
+          ilike(products.name, pattern),
+          ilike(products.presentation, pattern),
+          ilike(products.description, pattern),
+          ilike(categories.name, pattern)
+        )
+      )
+    )
+    .orderBy(asc(products.code))
+    .limit(20);
 }
 
 /**

@@ -232,6 +232,7 @@ docs/                       # Documentación
 ## Documentación
 
 - [Guía de prueba en el navegador](./docs/GUIA_PRUEBA_NAVEGADOR.md) ← **empieza por aquí para revisar el sistema**
+- [Módulo de Entradas y comprobante](./docs/MODULO_ENTRADAS.md) ← procedimiento de Siigo Pyme y diseño del comprobante
 - [Arquitectura](./docs/ARQUITECTURA.md)
 - [Modelo de Datos](./docs/MODELO_DATOS.md)
 - [Integración Siigo](./docs/INTEGRACION_SIIGO.md)
