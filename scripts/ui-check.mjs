@@ -12,7 +12,9 @@ const BASE_URL = process.argv[2] ?? "http://localhost:3000";
  */
 const pages = [
   { path: "/dashboard", expect: ["animate-spin"], note: "carga por API" },
-  { path: "/entradas", expect: ["Nueva Entrada", "Entradas", "Tipo de entrada"] },
+  // El formulario de registro vive en un modal y el listado se llena por
+  // API: el HTML inicial solo muestra el encabezado y el botón.
+  { path: "/entradas", expect: ["Nueva Entrada", "Entradas"], note: "carga por API" },
   { path: "/pedidos", expect: ["Pedidos", "Destino", "Nuevo Pedido"] },
   { path: "/facturas", expect: ["Facturas", "Pedido", "Nueva Factura"] },
   { path: "/recibos", expect: ["Recibos", "Factura"] },
