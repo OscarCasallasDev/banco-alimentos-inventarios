@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth/session";
 import { jsonOk, handleRouteError } from "@/lib/api/response";
 import {
   createWarehouse,
+  invalidateWarehousesCache,
   listWarehouses,
 } from "@/lib/services/warehouse.service";
 import { recordAuditLog } from "@/lib/services/audit-log.service";
@@ -41,6 +42,8 @@ export async function POST(request: Request) {
 
       return created;
     });
+
+    invalidateWarehousesCache();
 
     return jsonOk(warehouse, 201);
   } catch (error) {

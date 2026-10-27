@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Database, RefreshCw } from "lucide-react";
 import ProtectedLayout from "@/components/layout/ProtectedLayout";
 import { ToastProvider } from "@/components/ui/Toast";
+import QueryProvider from "@/components/providers/QueryProvider";
 import { getCurrentUser } from "@/lib/auth/session";
 import { isConnectionError } from "@/lib/utils/connection";
 
@@ -54,8 +55,10 @@ export default async function Layout({ children }: { children: React.ReactNode }
   }
 
   return (
-    <ToastProvider>
-      <ProtectedLayout>{children}</ProtectedLayout>
-    </ToastProvider>
+    <QueryProvider>
+      <ToastProvider>
+        <ProtectedLayout user={user}>{children}</ProtectedLayout>
+      </ToastProvider>
+    </QueryProvider>
   );
 }

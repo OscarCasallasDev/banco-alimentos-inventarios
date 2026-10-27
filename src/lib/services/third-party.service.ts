@@ -10,6 +10,7 @@
 import { and, asc, eq, ilike, or } from "drizzle-orm";
 import { thirdParties } from "@/lib/db/schema";
 import type { DbExecutor } from "@/lib/db/client";
+import { cached, invalidate, DEFAULT_TTL_MS } from "@/lib/cache/memory-cache";
 import { conflictError, notFoundError } from "@/lib/utils/errors";
 import type { ThirdPartyType } from "@/types/database";
 
@@ -26,42 +27,49 @@ export interface ThirdPartyInput {
 /**
  * Lista los terceros, con filtro opcional por texto libre.
  * La búsqueda cubre NIT, sucursal, razón social y ciudad.
+ *
+ * El resultado se cachea por término de búsqueda: la lista de terceros es
+ * pequeña y no cambia entre pantallas.
  */
 export async function listThirdParties(
   executor: DbExecutor,
   search?: string,
   limit = 50
 ) {
-  const conditions = [eq(thirdParties.status, "ACTIVE")];
+  const key = `catalog:thirdParties:${(search ?? "").trim().toLowerCase()}:${limit}`;
 
-  if (search && search.trim()) {
-    const term = `%${search.trim()}%`;
-    conditions.push(
-      or(
-        ilike(thirdParties.nit, term),
-        ilike(thirdParties.branch, term),
-        ilike(thirdParties.name, term),
-        ilike(thirdParties.city, term)
-      )!
-    );
-  }
+  return cached(key, DEFAULT_TTL_MS, async () => {
+    const conditions = [eq(thirdParties.status, "ACTIVE")];
 
-  return executor
-    .select({
-      id: thirdParties.id,
-      nit: thirdParties.nit,
-      branch: thirdParties.branch,
-      name: thirdParties.name,
-      type: thirdParties.type,
-      address: thirdParties.address,
-      phone: thirdParties.phone,
-      city: thirdParties.city,
-      status: thirdParties.status,
-    })
-    .from(thirdParties)
-    .where(and(...conditions))
-    .orderBy(asc(thirdParties.name))
-    .limit(limit);
+    if (search && search.trim()) {
+      const term = `%${search.trim()}%`;
+      conditions.push(
+        or(
+          ilike(thirdParties.nit, term),
+          ilike(thirdParties.branch, term),
+          ilike(thirdParties.name, term),
+          ilike(thirdParties.city, term)
+        )!
+      );
+    }
+
+    return executor
+      .select({
+        id: thirdParties.id,
+        nit: thirdParties.nit,
+        branch: thirdParties.branch,
+        name: thirdParties.name,
+        type: thirdParties.type,
+        address: thirdParties.address,
+        phone: thirdParties.phone,
+        city: thirdParties.city,
+        status: thirdParties.status,
+      })
+      .from(thirdParties)
+      .where(and(...conditions))
+      .orderBy(asc(thirdParties.name))
+      .limit(limit);
+  });
 }
 
 /**
@@ -142,6 +150,9 @@ export async function upsertThirdParty(
       city: input.city ?? null,
     })
     .returning();
+
+  // El catálogo de terceros cambia: se invalida su caché.
+  invalidate("catalog:thirdParties:");
 
   return created;
 }

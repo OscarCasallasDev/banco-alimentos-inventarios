@@ -61,12 +61,14 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Match all request paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder
+     * Protege páginas y APIs, pero nunca intercepta:
+     * - _next/static y _next/image (recursos internos de Next.js)
+     * - favicon.ico
+     * - archivos estáticos de /public (logos, imágenes, fuentes, etc.)
+     *
+     * Sin esta exclusión, /logo1.jpeg y /logo2.jpeg se redirigían a /login
+     * y el optimizador de imágenes recibía HTML en lugar de la imagen.
      */
-    "/((?!_next/static|_next/image|favicon.ico|public).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|css|js|map|txt|xml|webmanifest|woff|woff2|ttf|otf)$).*)",
   ],
 };

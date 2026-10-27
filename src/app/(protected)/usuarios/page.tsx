@@ -2,7 +2,10 @@
 
 import { Users, Plus, Search, Edit, Trash2, X, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { useApiQuery } from "@/hooks/useApiQuery";
+import QueryError from "@/components/ui/QueryError";
+import { useToast } from "@/components/ui/Toast";
+import { useState } from "react";
 
 interface User {
   id: string;
@@ -43,30 +46,22 @@ const emptyForm: {
 };
 
 export default function UsuariosPage() {
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { showToast } = useToast();
+
+  const {
+    data: users = [],
+    isLoading,
+    isError: loadError,
+    error: queryError,
+    refetch: refetchUsers,
+  } = useApiQuery<User[]>("/api/usuarios");
+
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  async function fetchUsers() {
-    try {
-      const res = await fetch("/api/usuarios");
-      const data = await res.json();
-      if (data.success) setUsers(data.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }
 
   function openCreate() {
     setForm(emptyForm);
@@ -113,7 +108,7 @@ export default function UsuariosPage() {
       }
 
       setShowModal(false);
-      fetchUsers();
+      refetchUsers();
     } catch {
       setError("Error de conexión");
     } finally {
@@ -122,13 +117,39 @@ export default function UsuariosPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("¿Estás seguro de eliminar este usuario?")) return;
+    if (
+      !confirm(
+        "¿Desactivar este usuario? Su historial se conserva y no podrá iniciar sesión."
+      )
+    ) {
+      return;
+    }
 
     try {
       const res = await fetch(`/api/usuarios/${id}`, { method: "DELETE" });
-      if (res.ok) fetchUsers();
-    } catch (err) {
-      console.error(err);
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        showToast(
+          "error",
+          "No se pudo desactivar",
+          data?.error?.message || "Intenta de nuevo."
+        );
+        return;
+      }
+
+      showToast(
+        "success",
+        "Usuario desactivado",
+        "El historial se conserva."
+      );
+      refetchUsers();
+    } catch {
+      showToast(
+        "error",
+        "Error de conexión",
+        "No se pudo conectar con el servidor."
+      );
     }
   }
 
@@ -172,6 +193,10 @@ export default function UsuariosPage() {
         />
       </div>
 
+      {loadError && (
+        <QueryError error={queryError} onRetry={() => void refetchUsers()} />
+      )}
+
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -185,7 +210,7 @@ export default function UsuariosPage() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {isLoading ? (
                 <tr>
                   <td colSpan={5} className="py-12 text-center text-gray-500">
                     <div className="flex items-center justify-center gap-2">
@@ -228,7 +253,7 @@ export default function UsuariosPage() {
                         <button
                           onClick={() => handleDelete(user.id)}
                           className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Eliminar"
+                          title="Desactivar"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

@@ -2,9 +2,26 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Lock, User, Mail, Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react";
 
 type View = "login" | "register";
+
+/**
+ * Destino posterior al login. Solo se aceptan rutas internas para evitar
+ * redirecciones abiertas a otros dominios.
+ */
+function getNextPath(): string {
+  if (typeof window === "undefined") return "/dashboard";
+
+  const next = new URLSearchParams(window.location.search).get("next");
+  if (!next || !next.startsWith("/") || next.startsWith("//")) {
+    return "/dashboard";
+  }
+  if (next.startsWith("/login")) return "/dashboard";
+
+  return next;
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -22,7 +39,7 @@ export default function LoginPage() {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (active && data?.success) {
-          router.replace("/dashboard");
+          router.replace(getNextPath());
         }
       })
       .catch(() => undefined);
@@ -65,7 +82,7 @@ export default function LoginPage() {
 
       // Navegación desde el cliente: evita recargar toda la página y
       // garantiza que el layout protegido valide la sesión en el servidor.
-      router.replace("/dashboard");
+      router.replace(getNextPath());
       router.refresh();
     } catch {
       setError("Error de conexión. Verifica tu internet e intenta nuevamente.");
@@ -146,9 +163,12 @@ export default function LoginPage() {
           {/* Logo */}
           <div className="mb-12">
             <div className="inline-flex items-center justify-center w-20 h-20 bg-white/10 backdrop-blur-sm rounded-2xl mb-6 p-3 border border-white/20">
-              <img
+              <Image
                 src="/logo1.jpeg"
                 alt="Banco Arquidiocesano de Alimentos de Ibagué"
+                width={80}
+                height={80}
+                unoptimized
                 className="w-full h-full object-contain rounded-xl"
               />
             </div>
@@ -196,9 +216,12 @@ export default function LoginPage() {
           {/* Logo móvil */}
           <div className="lg:hidden text-center mb-8">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-2xl shadow-lg mb-4 p-2">
-              <img
+              <Image
                 src="/logo1.jpeg"
                 alt="Banco Arquidiocesano de Alimentos de Ibagué"
+                width={80}
+                height={80}
+                unoptimized
                 className="w-full h-full object-contain rounded-xl"
               />
             </div>

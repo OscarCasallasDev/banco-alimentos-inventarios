@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Package,
   Boxes,
@@ -20,6 +20,8 @@ import {
   Link2,
 } from "lucide-react";
 import { formatNumber } from "@/lib/utils";
+import { useApiQuery } from "@/hooks/useApiQuery";
+import QueryError from "@/components/ui/QueryError";
 
 interface DashboardData {
   totalProducts: number;
@@ -140,21 +142,15 @@ const modules = [
 ];
 
 export default function DashboardPage() {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useApiQuery<DashboardData>("/api/dashboard");
 
-  useEffect(() => {
-    fetch("/api/dashboard")
-      .then((res) => res.json())
-      .then((result) => {
-        if (result.success) {
-          setData(result.data);
-        }
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" />
@@ -220,9 +216,12 @@ export default function DashboardPage() {
         <div className="flex flex-col lg:flex-row items-center gap-6">
           <div className="flex-shrink-0">
             <div className="w-20 h-20 lg:w-24 lg:h-24 bg-white rounded-2xl p-2 shadow-lg">
-              <img
+              <Image
                 src="/logo2.jpeg"
                 alt="Banco de Alimentos"
+                width={96}
+                height={96}
+                unoptimized
                 className="w-full h-full object-contain rounded-xl"
               />
             </div>
@@ -240,6 +239,8 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {isError && <QueryError error={error} onRetry={() => void refetch()} />}
 
       {/* Tarjetas de estadísticas */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

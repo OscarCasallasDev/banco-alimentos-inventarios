@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { FileText, Plus, Search, X, AlertCircle } from "lucide-react";
-import { cn, formatDateOnly } from "@/lib/utils";
+import { cn, formatDateOnly, todayIsoDate } from "@/lib/utils";
+import { useApiQuery } from "@/hooks/useApiQuery";
+import QueryError from "@/components/ui/QueryError";
 
 interface Invoice {
   id: string;
@@ -30,45 +32,25 @@ const emptyForm: {
   format: "SF1",
   number: "",
   orderId: "",
-  date: new Date().toISOString().split("T")[0],
+  date: todayIsoDate(),
 };
 
 export default function FacturasPage() {
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    data: invoices = [],
+    isLoading,
+    isError: loadError,
+    error: queryError,
+    refetch: refetchInvoices,
+  } = useApiQuery<Invoice[]>("/api/facturas");
+
+  const { data: orders = [] } = useApiQuery<Order[]>("/api/pedidos");
+
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    fetchInvoices();
-    fetchOrders();
-  }, []);
-
-  async function fetchInvoices() {
-    try {
-      const res = await fetch("/api/facturas");
-      const data = await res.json();
-      if (data.success) setInvoices(data.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function fetchOrders() {
-    try {
-      const res = await fetch("/api/pedidos");
-      const data = await res.json();
-      if (data.success) setOrders(data.data);
-    } catch (err) {
-      console.error(err);
-    }
-  }
 
   function openCreate() {
     setForm(emptyForm);
@@ -96,7 +78,7 @@ export default function FacturasPage() {
       }
 
       setShowModal(false);
-      fetchInvoices();
+      refetchInvoices();
     } catch {
       setError("Error de conexión");
     } finally {
@@ -142,6 +124,10 @@ export default function FacturasPage() {
         />
       </div>
 
+      {loadError && (
+        <QueryError error={queryError} onRetry={() => void refetchInvoices()} />
+      )}
+
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -154,7 +140,7 @@ export default function FacturasPage() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {isLoading ? (
                 <tr>
                   <td colSpan={4} className="py-12 text-center text-gray-500">
                     <div className="flex items-center justify-center gap-2">

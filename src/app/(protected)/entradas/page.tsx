@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowDownToLine,
@@ -14,8 +14,10 @@ import {
   ChevronUp,
   Package,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, todayIsoDate } from "@/lib/utils";
 import { ENTRY_TYPE_LIST, getEntryType } from "@/lib/entries/entry-types";
+import { useApiQuery } from "@/hooks/useApiQuery";
+import QueryError from "@/components/ui/QueryError";
 
 /* ------------------------------------------------------------------ */
 /*  Tipos del formulario                                               */
@@ -166,7 +168,7 @@ function emptyForm(): EntryForm {
   return {
     format: "E1",
     number: "",
-    date: new Date().toISOString().slice(0, 10),
+    date: todayIsoDate(),
     thirdPartyId: "",
     nit: "",
     origin: "",
@@ -185,68 +187,25 @@ function emptyForm(): EntryForm {
 export default function EntradasPage() {
   const router = useRouter();
 
-  const [entries, setEntries] = useState<EntryRow[]>([]);
-  const [products, setProducts] = useState<ProductOption[]>([]);
-  const [thirdParties, setThirdParties] = useState<ThirdPartyOption[]>([]);
-  const [units, setUnits] = useState<UnitOption[]>([]);
-  const [costCenters, setCostCenters] = useState<CostCenterOption[]>([]);
-  const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
+  const {
+    data: entries = [],
+    isLoading: loading,
+    isError: loadError,
+    error: queryError,
+    refetch: refetchEntries,
+  } = useApiQuery<EntryRow[]>("/api/entradas");
+  const { data: units = [] } = useApiQuery<UnitOption[]>("/api/unidades");
+  const { data: costCenters = [] } =
+    useApiQuery<CostCenterOption[]>("/api/centros-costo");
+  const { data: warehouses = [] } =
+    useApiQuery<WarehouseOption[]>("/api/bodegas");
 
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<EntryForm>(emptyForm());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [savedEntryId, setSavedEntryId] = useState<string | null>(null);
-
-  /* ---------------- Carga de catálogos ---------------- */
-
-  useEffect(() => {
-    let active = true;
-
-    fetch("/api/entradas")
-      .then((res) => res.json())
-      .then((data) => {
-        if (active && data.success) setEntries(data.data);
-      })
-      .catch((err) => console.error(err))
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    fetch("/api/productos")
-      .then((res) => res.json())
-      .then((data) => {
-        if (active && data.success) setProducts(data.data);
-      })
-      .catch(() => undefined);
-
-    fetch("/api/unidades")
-      .then((res) => res.json())
-      .then((data) => {
-        if (active && data.success) setUnits(data.data);
-      })
-      .catch(() => undefined);
-
-    fetch("/api/centros-costo")
-      .then((res) => res.json())
-      .then((data) => {
-        if (active && data.success) setCostCenters(data.data);
-      })
-      .catch(() => undefined);
-
-    fetch("/api/bodegas")
-      .then((res) => res.json())
-      .then((data) => {
-        if (active && data.success) setWarehouses(data.data);
-      })
-      .catch(() => undefined);
-
-    return () => {
-      active = false;
-    };
-  }, []);
 
   /* ---------------- Bodega sugerida según el tipo ---------------- */
 
@@ -271,17 +230,22 @@ export default function EntradasPage() {
   const [showThirdPartyResults, setShowThirdPartyResults] = useState(false);
   const [selectedThirdParty, setSelectedThirdParty] =
     useState<ThirdPartyOption | null>(null);
+  const [thirdParties, setThirdParties] = useState<ThirdPartyOption[]>([]);
 
   useEffect(() => {
     if (thirdPartySearch.trim().length < 2) return;
 
     let active = true;
     const timer = setTimeout(async () => {
-      const res = await fetch(
-        `/api/terceros?search=${encodeURIComponent(thirdPartySearch)}`
-      );
-      const data = await res.json();
-      if (active && data.success) setThirdParties(data.data);
+      try {
+        const res = await fetch(
+          `/api/terceros?search=${encodeURIComponent(thirdPartySearch)}`
+        );
+        const data = await res.json();
+        if (active && data.success) setThirdParties(data.data);
+      } catch {
+        if (active) setThirdParties([]);
+      }
     }, 250);
 
     return () => {
@@ -329,17 +293,27 @@ export default function EntradasPage() {
 
     if (!key || term.length < 2) return;
 
+    let active = true;
     const timer = setTimeout(async () => {
-      const res = await fetch(
-        `/api/productos?search=${encodeURIComponent(term)}`
-      );
-      const data = await res.json();
-      if (data.success) {
-        setProductResults((current) => ({ ...current, [key]: data.data }));
+      try {
+        const res = await fetch(
+          `/api/productos?search=${encodeURIComponent(term)}`
+        );
+        const data = await res.json();
+        if (active && data.success) {
+          setProductResults((current) => ({ ...current, [key]: data.data }));
+        }
+      } catch {
+        if (active) {
+          setProductResults((current) => ({ ...current, [key]: [] }));
+        }
       }
     }, 250);
 
-    return () => clearTimeout(timer);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
   }, [openProductSearch, productSearch]);
 
   function selectProduct(itemKey: string, product: ProductOption) {
@@ -578,12 +552,7 @@ export default function EntradasPage() {
       setShowModal(false);
 
       // Se refresca el listado sin recargar la página.
-      fetch("/api/entradas")
-        .then((res) => res.json())
-        .then((list) => {
-          if (list.success) setEntries(list.data);
-        })
-        .catch(() => undefined);
+      void refetchEntries();
     } catch {
       setError("Error de conexión. Verifica tu internet e intenta nuevamente.");
     } finally {
@@ -635,6 +604,10 @@ export default function EntradasPage() {
           className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
         />
       </div>
+
+      {loadError && (
+        <QueryError error={queryError} onRetry={() => void refetchEntries()} />
+      )}
 
       {/* Tabla */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

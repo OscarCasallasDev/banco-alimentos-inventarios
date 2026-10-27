@@ -4,6 +4,7 @@ import { jsonOk, handleRouteError } from "@/lib/api/response";
 import {
   deactivateWarehouse,
   getWarehouse,
+  invalidateWarehousesCache,
   updateWarehouse,
 } from "@/lib/services/warehouse.service";
 import { recordAuditLog } from "@/lib/services/audit-log.service";
@@ -51,6 +52,8 @@ export async function PUT(
       return updated;
     });
 
+    invalidateWarehousesCache();
+
     return jsonOk(warehouse);
   } catch (error) {
     return handleRouteError(error, "bodegas:PUT");
@@ -82,6 +85,8 @@ export async function DELETE(
 
       return deactivated;
     });
+
+    invalidateWarehousesCache();
 
     return jsonOk({
       id: warehouse.id,

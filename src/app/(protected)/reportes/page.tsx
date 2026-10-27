@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Package,
   AlertTriangle,
   TrendingUp,
   TrendingDown,
+  Download,
+  Loader2,
 } from "lucide-react";
-import { cn, formatDateOnly } from "@/lib/utils";
+import { cn, formatDateOnly, todayIsoDate } from "@/lib/utils";
+import { useApiQuery } from "@/hooks/useApiQuery";
+import QueryError from "@/components/ui/QueryError";
+import { useToast } from "@/components/ui/Toast";
 
 interface ReportData {
   inventoryByWarehouse: Array<{
@@ -44,28 +49,87 @@ interface ReportData {
 }
 
 export default function ReportesPage() {
-  const [data, setData] = useState<ReportData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { showToast } = useToast();
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useApiQuery<ReportData>("/api/reportes");
+  const [exporting, setExporting] = useState(false);
 
-  useEffect(() => {
-    let active = true;
+  async function handleExport() {
+    if (!data) return;
 
-    fetch("/api/reportes")
-      .then((res) => res.json())
-      .then((result) => {
-        if (active && result.success) setData(result.data);
-      })
-      .catch((err) => console.error(err))
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    setExporting(true);
 
-    return () => {
-      active = false;
-    };
-  }, []);
+    try {
+      // Se carga bajo demanda: xlsx no forma parte del bundle inicial.
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.utils.book_new();
 
-  if (loading) {
+      const sheets: Array<{ name: string; rows: Record<string, unknown>[] }> = [
+        {
+          name: "Inventario por bodega",
+          rows: data.inventoryByWarehouse.map((item) => ({
+            Bodega: item.warehouseName,
+            Código: item.warehouseCode,
+            Productos: item.totalProducts,
+            Unidades: item.totalUnits,
+          })),
+        },
+        {
+          name: "Stock bajo",
+          rows: data.lowStock.map((item) => ({
+            Producto: item.productName,
+            Código: item.productCode,
+            Bodega: item.warehouseName,
+            Cantidad: item.quantity,
+            "Stock mínimo": item.minStock,
+          })),
+        },
+        {
+          name: "Entradas recientes",
+          rows: data.recentEntries.map((item) => ({
+            Número: item.number,
+            Formato: item.format,
+            Fecha: formatDateOnly(item.date),
+            Estado: item.status === "CONFIRMED" ? "Confirmado" : "Borrador",
+          })),
+        },
+        {
+          name: "Diferencias auditoría",
+          rows: data.auditDifferences.map((item) => ({
+            Producto: item.productName,
+            Sistema: item.systemQuantity,
+            Físico: item.physicalQuantity,
+            Diferencia: item.difference,
+            Observación: item.observation ?? "",
+          })),
+        },
+      ];
+
+      for (const sheet of sheets) {
+        const worksheet = XLSX.utils.json_to_sheet(sheet.rows);
+        XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name);
+      }
+
+      const today = todayIsoDate();
+      XLSX.writeFile(workbook, `reporte-inventario-${today}.xlsx`);
+      showToast("success", "Reporte exportado", "El archivo Excel se descargó correctamente.");
+    } catch {
+      showToast(
+        "error",
+        "No se pudo exportar",
+        "Verifica la conexión e intenta de nuevo."
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" />
@@ -75,10 +139,29 @@ export default function ReportesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Reportes</h1>
-        <p className="text-gray-600 mt-1">Análisis y exportación de datos</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Reportes</h1>
+          <p className="text-gray-600 mt-1">
+            Análisis del inventario y exportación a Excel
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={!data || exporting}
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {exporting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Download className="h-4 w-4" />
+          )}
+          {exporting ? "Generando..." : "Exportar Excel"}
+        </button>
       </div>
+
+      {isError && <QueryError error={error} onRetry={() => void refetch()} />}
 
       {/* Inventario por bodega */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">

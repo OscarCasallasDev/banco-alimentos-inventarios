@@ -31,9 +31,9 @@ export async function GET() {
         products: productCount,
       },
       security: {
-        passwordHash: "SHA-256",
+        passwordHash: "SHA-256 (sin sal)",
         session: "Cookie firmada HMAC-SHA256 (HttpOnly)",
-        rowLevelSecurity: "El servidor accede con el rol de servicio de la base de datos",
+        rowLevelSecurity: "Control en servidor; RLS no configurada",
       },
     });
   } catch (error) {

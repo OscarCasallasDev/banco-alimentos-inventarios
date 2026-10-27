@@ -29,7 +29,7 @@ import {
 } from "@/lib/db/schema";
 import type { DbExecutor } from "@/lib/db/client";
 import { businessRuleError, conflictError, notFoundError } from "@/lib/utils/errors";
-import { parseDocumentDate, toIsoDate } from "@/lib/utils";
+import { toIsoDate } from "@/lib/utils";
 import { getEntryType, type EntryTypeCode } from "@/lib/entries/entry-types";
 import type { CreateEntryInput } from "@/lib/validations/schemas";
 import {
@@ -192,7 +192,6 @@ export async function createEntry(
   input: CreateEntryInput,
   userId: string
 ) {
-  const entryDate = parseDocumentDate(input.date);
   const entryType = getEntryType(input.format);
 
   // --- Entidad que entrega los productos ---

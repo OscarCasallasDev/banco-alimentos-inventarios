@@ -26,7 +26,7 @@ const pages = [
   { path: "/reportes", expect: ["animate-spin"], note: "carga por API" },
   { path: "/usuarios", expect: ["Usuarios", "Nuevo Usuario", "Rol"] },
   { path: "/integracion-siigo", expect: ["Integración Siigo", "Formatos de exportación"] },
-  { path: "/configuracion", expect: ["Configuración", "Base de Datos", "Host"] },
+  { path: "/configuracion", expect: ["Configuración", "Base de Datos", "Motor"] },
 ];
 
 let cookie = "";

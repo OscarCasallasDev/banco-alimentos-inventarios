@@ -57,6 +57,19 @@ export function formatDateOnly(date: string | Date | null | undefined): string {
 }
 
 /**
+ * Devuelve la fecha local de hoy como `YYYY-MM-DD`.
+ *
+ * No usar `toISOString()`: en Colombia (UTC-5) después de las 19:00 devuelve
+ * el día siguiente, lo que haría que un documento quedara fechado mañana.
+ */
+export function todayIsoDate(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+    now.getDate()
+  ).padStart(2, "0")}`;
+}
+
+/**
  * Normaliza la fecha de un documento al formato `YYYY-MM-DD` que usa la
  * columna `date` de PostgreSQL.
  *
@@ -71,7 +84,7 @@ export function toIsoDate(value: string): string {
 
   const parsed = new Date(trimmed);
   if (Number.isNaN(parsed.getTime())) {
-    return new Date().toISOString().slice(0, 10);
+    return todayIsoDate();
   }
 
   return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(

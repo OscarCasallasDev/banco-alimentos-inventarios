@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Database, Shield, Bell, Palette, CheckCircle, AlertCircle } from "lucide-react";
+import { Database, Shield, Bell, Palette, CheckCircle, AlertCircle, Info } from "lucide-react";
+import { useApiQuery } from "@/hooks/useApiQuery";
+import QueryError from "@/components/ui/QueryError";
 
 interface SystemStatus {
   database: {
@@ -21,18 +22,13 @@ interface SystemStatus {
 }
 
 export default function ConfiguracionPage() {
-  const [status, setStatus] = useState<SystemStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch("/api/configuracion")
-      .then((res) => res.json())
-      .then((result) => {
-        if (result.success) setStatus(result.data);
-      })
-      .catch(() => undefined)
-      .finally(() => setLoading(false));
-  }, []);
+  const {
+    data: status,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useApiQuery<SystemStatus>("/api/configuracion");
 
   const connected = status?.database.connected ?? false;
 
@@ -40,8 +36,12 @@ export default function ConfiguracionPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Configuración</h1>
-        <p className="text-gray-600 mt-1">Ajustes generales del sistema</p>
+        <p className="text-gray-600 mt-1">
+          Estado técnico y parámetros generales del sistema
+        </p>
       </div>
+
+      {isError && <QueryError error={error} onRetry={() => void refetch()} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Base de datos */}
@@ -57,9 +57,9 @@ export default function ConfiguracionPage() {
           </div>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between gap-4">
-              <span className="text-gray-500">Host</span>
-              <span className="font-mono text-gray-900 text-right break-all">
-                {status?.database.host ?? (loading ? "Verificando..." : "No configurado")}
+              <span className="text-gray-500">Motor</span>
+              <span className="text-gray-900 text-right">
+                Supabase PostgreSQL
               </span>
             </div>
             <div className="flex justify-between">
@@ -107,7 +107,9 @@ export default function ConfiguracionPage() {
           <div className="space-y-2 text-sm">
             <div className="flex justify-between gap-4">
               <span className="text-gray-500">Hash de contraseñas</span>
-              <span className="text-gray-900">{status?.security.passwordHash ?? "—"}</span>
+              <span className="text-gray-900">
+                {status?.security.passwordHash ?? (isLoading ? "Verificando..." : "—")}
+              </span>
             </div>
             <div className="flex justify-between gap-4">
               <span className="text-gray-500">Sesión</span>
@@ -119,6 +121,14 @@ export default function ConfiguracionPage() {
               <span className="text-gray-500">Acceso a datos</span>
               <span className="text-gray-900 text-right">
                 {status?.security.rowLevelSecurity ?? "—"}
+              </span>
+            </div>
+            <div className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <Info className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>
+                La autenticación actual usa cookie firmada y hash SHA-256.
+                Migrar a un hash con sal (Argon2/bcrypt) y activar RLS en
+                Supabase sigue pendiente.
               </span>
             </div>
           </div>
@@ -136,20 +146,25 @@ export default function ConfiguracionPage() {
             </div>
           </div>
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
+            <div className="flex justify-between gap-3">
               <span className="text-gray-500">Stock bajo</span>
-              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                 <CheckCircle className="w-3 h-3 mr-1" />
-                Activado
+                Visible en pantalla
               </span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between gap-3">
               <span className="text-gray-500">Auditorías</span>
-              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                 <CheckCircle className="w-3 h-3 mr-1" />
-                Activado
+                Visible en pantalla
               </span>
             </div>
+            <p className="pt-1 text-xs text-gray-400">
+              El envío automático de correos o alertas push aún no está
+              implementado. Por ahora las alertas se consultan en Inventario y
+              Reportes.
+            </p>
           </div>
         </div>
 

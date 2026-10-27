@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ArrowUpFromLine, Plus, Search, X, AlertCircle } from "lucide-react";
-import { cn, formatDateOnly } from "@/lib/utils";
+import { cn, formatDateOnly, todayIsoDate } from "@/lib/utils";
+import { useApiQuery } from "@/hooks/useApiQuery";
+import QueryError from "@/components/ui/QueryError";
 
 interface Dispatch {
   id: string;
@@ -21,49 +23,36 @@ interface Receipt {
   format: string;
 }
 
-const emptyForm = {
+const emptyForm: {
+  number: string;
+  receiptId: string;
+  date: string;
+  status: "PENDING" | "PREPARED" | "DISPATCHED" | "CANCELLED";
+  notes: string;
+} = {
   number: "",
   receiptId: "",
-  date: new Date().toISOString().split("T")[0],
+  date: todayIsoDate(),
+  status: "DISPATCHED",
   notes: "",
 };
 
 export default function SalidasPage() {
-  const [dispatches, setDispatches] = useState<Dispatch[]>([]);
-  const [receipts, setReceipts] = useState<Receipt[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    data: dispatches = [],
+    isLoading,
+    isError: loadError,
+    error: queryError,
+    refetch: refetchDispatches,
+  } = useApiQuery<Dispatch[]>("/api/despachos");
+
+  const { data: receipts = [] } = useApiQuery<Receipt[]>("/api/recibos");
+
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    fetchDispatches();
-    fetchReceipts();
-  }, []);
-
-  async function fetchDispatches() {
-    try {
-      const res = await fetch("/api/despachos");
-      const data = await res.json();
-      if (data.success) setDispatches(data.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function fetchReceipts() {
-    try {
-      const res = await fetch("/api/recibos");
-      const data = await res.json();
-      if (data.success) setReceipts(data.data);
-    } catch (err) {
-      console.error(err);
-    }
-  }
 
   function openCreate() {
     setForm(emptyForm);
@@ -91,7 +80,7 @@ export default function SalidasPage() {
       }
 
       setShowModal(false);
-      fetchDispatches();
+      refetchDispatches();
     } catch {
       setError("Error de conexión");
     } finally {
@@ -137,6 +126,10 @@ export default function SalidasPage() {
         />
       </div>
 
+      {loadError && (
+        <QueryError error={queryError} onRetry={() => void refetchDispatches()} />
+      )}
+
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -149,7 +142,7 @@ export default function SalidasPage() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {isLoading ? (
                 <tr>
                   <td colSpan={4} className="py-12 text-center text-gray-500">
                     <div className="flex items-center justify-center gap-2">
@@ -244,6 +237,38 @@ export default function SalidasPage() {
                     </option>
                   ))}
                 </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  Los productos, cantidades y bodegas se toman automáticamente
+                  del recibo, su factura y el pedido asociado.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Estado *
+                </label>
+                <select
+                  value={form.status}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      status: e.target.value as
+                        | "PENDING"
+                        | "PREPARED"
+                        | "DISPATCHED"
+                        | "CANCELLED",
+                    })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                >
+                  <option value="PENDING">Pendiente</option>
+                  <option value="PREPARED">Preparado</option>
+                  <option value="DISPATCHED">Despachado (descuenta stock)</option>
+                  <option value="CANCELLED">Cancelado</option>
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  Solo el estado «Despachado» descuenta inventario.
+                </p>
               </div>
 
               <div>

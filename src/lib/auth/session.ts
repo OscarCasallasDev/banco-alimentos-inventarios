@@ -14,6 +14,7 @@
  */
 
 import { cookies } from "next/headers";
+import { cache } from "react";
 import { createHmac, timingSafeEqual } from "crypto";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
@@ -118,8 +119,12 @@ export function buildSessionCookie(userId: string) {
 
 /**
  * Obtiene el usuario de la sesión activa, o `null` si no hay sesión válida.
+ *
+ * `cache()` deduplica la consulta durante el mismo render del servidor:
+ * el layout protegido y la página comparten el resultado en lugar de
+ * consultar la base de datos dos veces por navegación.
  */
-export async function getCurrentUser(): Promise<SessionUser | null> {
+export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
   const cookieStore = await cookies();
   const userId = verifySessionToken(cookieStore.get(SESSION_COOKIE_NAME)?.value);
 
@@ -143,7 +148,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   if (!user || user.status !== "ACTIVE") return null;
 
   return user;
-}
+});
 
 /**
  * Verifica si hay una sesión activa.

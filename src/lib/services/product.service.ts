@@ -6,32 +6,44 @@
 import { and, asc, eq, ilike, or, sql } from "drizzle-orm";
 import { categories, products } from "@/lib/db/schema";
 import type { DbExecutor } from "@/lib/db/client";
+import { cached, invalidate, DEFAULT_TTL_MS } from "@/lib/cache/memory-cache";
 import { conflictError, notFoundError } from "@/lib/utils/errors";
 import type { CreateProductInput, UpdateProductInput } from "@/lib/validations/schemas";
 
 /**
  * Lista el catálogo de productos con el nombre de su categoría.
+ *
+ * El catálogo se cachea: se lee en cada pantalla y cambia muy pocas veces.
  */
 export async function listProducts(executor: DbExecutor) {
-  return executor
-    .select({
-      id: products.id,
-      code: products.code,
-      name: products.name,
-      description: products.description,
-      presentation: products.presentation,
-      weight: products.weight,
-      unit: products.unit,
-      categoryId: products.categoryId,
-      status: products.status,
-      minStock: products.minStock,
-      createdAt: products.createdAt,
-      updatedAt: products.updatedAt,
-      categoryName: categories.name,
-    })
-    .from(products)
-    .leftJoin(categories, eq(products.categoryId, categories.id))
-    .orderBy(asc(products.code));
+  return cached("catalog:products", DEFAULT_TTL_MS, () =>
+    executor
+      .select({
+        id: products.id,
+        code: products.code,
+        name: products.name,
+        description: products.description,
+        presentation: products.presentation,
+        weight: products.weight,
+        unit: products.unit,
+        categoryId: products.categoryId,
+        status: products.status,
+        minStock: products.minStock,
+        createdAt: products.createdAt,
+        updatedAt: products.updatedAt,
+        categoryName: categories.name,
+      })
+      .from(products)
+      .leftJoin(categories, eq(products.categoryId, categories.id))
+      .orderBy(asc(products.code))
+  );
+}
+
+/**
+ * Invalida el caché del catálogo de productos.
+ */
+export function invalidateProductsCache(): void {
+  invalidate("catalog:products");
 }
 
 /**

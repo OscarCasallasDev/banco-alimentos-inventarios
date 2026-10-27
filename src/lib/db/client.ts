@@ -109,14 +109,23 @@ class ConnectionPool {
    */
   getClient(): SqlClient {
     if (!this.clients[this.activeIndex]) {
-      this.clients[this.activeIndex] = postgres(this.currentUrl, {
-        max: Number(process.env.DATABASE_POOL_MAX ?? 5),
-        idle_timeout: 20,
+      const client = postgres(this.currentUrl, {
+        max: Number(process.env.DATABASE_POOL_MAX ?? 10),
+        // El handshake TLS con Supabase cuesta ~1 s. Mantener las conexiones
+        // vivas evita pagar ese coste en cada petición.
+        idle_timeout: Number(process.env.DATABASE_IDLE_TIMEOUT ?? 120),
         connect_timeout: 15,
+        max_lifetime: 60 * 30,
         // El pooler en modo transacción no admite prepared statements.
         prepare: false,
         onnotice: () => {},
       });
+
+      // Precalentamiento: abre la conexión en segundo plano para que la
+      // primera petición del usuario no espere el handshake.
+      void client.unsafe("select 1").catch(() => {});
+
+      this.clients[this.activeIndex] = client;
     }
 
     return this.clients[this.activeIndex]!;

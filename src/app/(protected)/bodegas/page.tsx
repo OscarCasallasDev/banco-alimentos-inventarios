@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Warehouse,
   Plus,
@@ -11,7 +11,9 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useApiQuery } from "@/hooks/useApiQuery";
 import { useToast } from "@/components/ui/Toast";
+import QueryError from "@/components/ui/QueryError";
 
 interface WarehouseItem {
   id: string;
@@ -50,8 +52,6 @@ const typeLabels: Record<string, string> = {
 
 export default function BodegasPage() {
   const { showToast } = useToast();
-  const [warehouses, setWarehouses] = useState<WarehouseItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -60,22 +60,15 @@ export default function BodegasPage() {
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    fetchWarehouses();
-  }, []);
-
-  async function fetchWarehouses() {
-    try {
-      const res = await fetch("/api/bodegas");
-      const data = await res.json();
-      if (data.success) setWarehouses(data.data);
-    } catch (err) {
-      console.error(err);
-      showToast("error", "Error al cargar bodegas", "No se pudo conectar con el servidor");
-    } finally {
-      setLoading(false);
-    }
-  }
+  // Los datos se piden una vez y quedan en memoria: al volver al módulo
+  // la tabla aparece de inmediato, sin pantalla de carga.
+  const {
+    data: warehouses = [],
+    isLoading: loading,
+    isError: loadError,
+    error: queryError,
+    refetch: refetchWarehouses,
+  } = useApiQuery<WarehouseItem[]>("/api/bodegas");
 
   function validateForm(): boolean {
     const errors: Record<string, string> = {};
@@ -155,7 +148,7 @@ export default function BodegasPage() {
 
       showToast("success", editingId ? "Bodega actualizada" : "Bodega creada", `La bodega "${form.name}" se guardó correctamente`);
       setShowModal(false);
-      fetchWarehouses();
+      refetchWarehouses();
     } catch {
       setError("Error de conexión. Verifica tu internet e intenta nuevamente.");
       showToast("error", "Error de conexión", "Verifica tu internet e intenta nuevamente");
@@ -171,7 +164,7 @@ export default function BodegasPage() {
       const res = await fetch(`/api/bodegas/${id}`, { method: "DELETE" });
       if (res.ok) {
         showToast("success", "Bodega desactivada", "La bodega ya no admite movimientos. Su historial se conserva.");
-        fetchWarehouses();
+        refetchWarehouses();
       } else {
         const data = await res.json();
         showToast("error", "Error al desactivar", data.error?.message || "No se pudo desactivar la bodega");
@@ -215,6 +208,10 @@ export default function BodegasPage() {
           className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
         />
       </div>
+
+      {loadError && (
+        <QueryError error={queryError} onRetry={() => void refetchWarehouses()} />
+      )}
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

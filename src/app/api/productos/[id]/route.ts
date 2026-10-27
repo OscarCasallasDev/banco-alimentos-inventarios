@@ -4,6 +4,7 @@ import { jsonOk, handleRouteError } from "@/lib/api/response";
 import {
   deactivateProduct,
   getProduct,
+  invalidateProductsCache,
   updateProduct,
 } from "@/lib/services/product.service";
 import { recordAuditLog } from "@/lib/services/audit-log.service";
@@ -51,6 +52,8 @@ export async function PUT(
       return updated;
     });
 
+    invalidateProductsCache();
+
     return jsonOk(product);
   } catch (error) {
     return handleRouteError(error, "productos:PUT");
@@ -82,6 +85,8 @@ export async function DELETE(
 
       return deactivated;
     });
+
+    invalidateProductsCache();
 
     return jsonOk({
       id: product.id,

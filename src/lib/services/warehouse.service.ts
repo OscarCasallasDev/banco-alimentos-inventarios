@@ -6,6 +6,7 @@
 import { asc, eq } from "drizzle-orm";
 import { warehouses } from "@/lib/db/schema";
 import type { DbExecutor } from "@/lib/db/client";
+import { cached, invalidate, DEFAULT_TTL_MS } from "@/lib/cache/memory-cache";
 import { conflictError, notFoundError } from "@/lib/utils/errors";
 import type {
   CreateWarehouseInput,
@@ -14,22 +15,33 @@ import type {
 
 /**
  * Lista las bodegas.
+ *
+ * El catálogo se cachea: se lee en cada pantalla y cambia muy pocas veces.
  */
 export async function listWarehouses(executor: DbExecutor) {
-  return executor
-    .select({
-      id: warehouses.id,
-      code: warehouses.code,
-      name: warehouses.name,
-      description: warehouses.description,
-      type: warehouses.type,
-      status: warehouses.status,
-      observations: warehouses.observations,
-      createdAt: warehouses.createdAt,
-      updatedAt: warehouses.updatedAt,
-    })
-    .from(warehouses)
-    .orderBy(asc(warehouses.code));
+  return cached("catalog:warehouses", DEFAULT_TTL_MS, () =>
+    executor
+      .select({
+        id: warehouses.id,
+        code: warehouses.code,
+        name: warehouses.name,
+        description: warehouses.description,
+        type: warehouses.type,
+        status: warehouses.status,
+        observations: warehouses.observations,
+        createdAt: warehouses.createdAt,
+        updatedAt: warehouses.updatedAt,
+      })
+      .from(warehouses)
+      .orderBy(asc(warehouses.code))
+  );
+}
+
+/**
+ * Invalida el caché del catálogo de bodegas.
+ */
+export function invalidateWarehousesCache(): void {
+  invalidate("catalog:warehouses");
 }
 
 /**

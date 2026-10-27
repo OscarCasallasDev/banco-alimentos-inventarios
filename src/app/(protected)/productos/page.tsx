@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Package,
   Plus,
@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
+import { useApiQuery } from "@/hooks/useApiQuery";
+import QueryError from "@/components/ui/QueryError";
 
 interface Product {
   id: string;
@@ -59,9 +61,6 @@ const emptyForm: {
 
 export default function ProductosPage() {
   const { showToast } = useToast();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -70,33 +69,18 @@ export default function ProductosPage() {
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    fetchProducts();
-    fetchCategories();
-  }, []);
+  // Los datos se piden una vez y quedan en memoria: al volver al módulo
+  // la tabla aparece de inmediato, sin pantalla de carga.
+  const {
+    data: products = [],
+    isLoading: loading,
+    isError: loadError,
+    error: queryError,
+    refetch: refetchProducts,
+  } = useApiQuery<Product[]>("/api/productos");
 
-  async function fetchProducts() {
-    try {
-      const res = await fetch("/api/productos");
-      const data = await res.json();
-      if (data.success) setProducts(data.data);
-    } catch (err) {
-      console.error(err);
-      showToast("error", "Error al cargar productos", "No se pudo conectar con el servidor");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const { data: categories = [] } = useApiQuery<Category[]>("/api/categorias");
 
-  async function fetchCategories() {
-    try {
-      const res = await fetch("/api/categorias");
-      const data = await res.json();
-      if (data.success) setCategories(data.data);
-    } catch (err) {
-      console.error(err);
-    }
-  }
 
   function validateForm(): boolean {
     const errors: Record<string, string> = {};
@@ -201,7 +185,7 @@ export default function ProductosPage() {
 
       showToast("success", editingId ? "Producto actualizado" : "Producto creado", `El producto "${form.name}" se guardó correctamente`);
       setShowModal(false);
-      fetchProducts();
+      refetchProducts();
     } catch {
       setError("Error de conexión. Verifica tu internet e intenta nuevamente.");
       showToast("error", "Error de conexión", "Verifica tu internet e intenta nuevamente");
@@ -217,7 +201,7 @@ export default function ProductosPage() {
       const res = await fetch(`/api/productos/${id}`, { method: "DELETE" });
       if (res.ok) {
         showToast("success", "Producto desactivado", "El producto ya no admite movimientos. Su historial se conserva.");
-        fetchProducts();
+        refetchProducts();
       } else {
         const data = await res.json();
         showToast("error", "Error al desactivar", data.error?.message || "No se pudo desactivar el producto");
@@ -267,6 +251,10 @@ export default function ProductosPage() {
           className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
         />
       </div>
+
+      {loadError && (
+        <QueryError error={queryError} onRetry={() => void refetchProducts()} />
+      )}
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -325,7 +313,7 @@ export default function ProductosPage() {
                         <button
                           onClick={() => handleDelete(product.id)}
                           className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Eliminar"
+                          title="Desactivar"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

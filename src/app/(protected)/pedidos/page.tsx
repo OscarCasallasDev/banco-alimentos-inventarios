@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ClipboardList,
   Plus,
@@ -9,7 +9,9 @@ import {
   AlertCircle,
   Trash2,
 } from "lucide-react";
-import { cn, formatDateOnly } from "@/lib/utils";
+import { cn, formatDateOnly, todayIsoDate } from "@/lib/utils";
+import { useApiQuery } from "@/hooks/useApiQuery";
+import QueryError from "@/components/ui/QueryError";
 
 interface Order {
   id: string;
@@ -44,7 +46,7 @@ interface OrderItem {
 
 const emptyForm = {
   number: "",
-  date: new Date().toISOString().split("T")[0],
+  date: todayIsoDate(),
   nit: "",
   destination: "",
   notes: "",
@@ -52,53 +54,25 @@ const emptyForm = {
 };
 
 export default function PedidosPage() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [warehouses, setWarehouses] = useState<WarehouseItem[]>([]);
-  const [loading, setLoading] = useState(true);
+
+
+
+  const {
+    data: orders = [],
+    isLoading,
+    isError: loadError,
+    error: queryError,
+    refetch: refetchOrders,
+  } = useApiQuery<Order[]>("/api/pedidos");
+
+  const { data: products = [] } = useApiQuery<Product[]>("/api/productos");
+  const { data: warehouses = [] } = useApiQuery<WarehouseItem[]>("/api/bodegas");
+
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    fetchOrders();
-    fetchProducts();
-    fetchWarehouses();
-  }, []);
-
-  async function fetchOrders() {
-    try {
-      const res = await fetch("/api/pedidos");
-      const data = await res.json();
-      if (data.success) setOrders(data.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function fetchProducts() {
-    try {
-      const res = await fetch("/api/productos");
-      const data = await res.json();
-      if (data.success) setProducts(data.data);
-    } catch (err) {
-      console.error(err);
-    }
-  }
-
-  async function fetchWarehouses() {
-    try {
-      const res = await fetch("/api/bodegas");
-      const data = await res.json();
-      if (data.success) setWarehouses(data.data);
-    } catch (err) {
-      console.error(err);
-    }
-  }
 
   function openCreate() {
     setForm(emptyForm);
@@ -143,7 +117,7 @@ export default function PedidosPage() {
       }
 
       setShowModal(false);
-      fetchOrders();
+      refetchOrders();
     } catch {
       setError("Error de conexión");
     } finally {
@@ -192,6 +166,10 @@ export default function PedidosPage() {
         />
       </div>
 
+      {loadError && (
+        <QueryError error={queryError} onRetry={() => void refetchOrders()} />
+      )}
+
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -204,7 +182,7 @@ export default function PedidosPage() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {isLoading ? (
                 <tr>
                   <td colSpan={4} className="py-12 text-center text-gray-500">
                     <div className="flex items-center justify-center gap-2">

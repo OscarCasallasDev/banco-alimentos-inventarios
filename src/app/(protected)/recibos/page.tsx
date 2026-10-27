@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Receipt, Plus, Search, X, AlertCircle } from "lucide-react";
-import { cn, formatDateOnly } from "@/lib/utils";
+import { useState } from "react";
+import { Receipt, Plus, Search, X, AlertCircle, Info, Banknote } from "lucide-react";
+import { cn, formatDateOnly, todayIsoDate } from "@/lib/utils";
+import { useApiQuery } from "@/hooks/useApiQuery";
+import QueryError from "@/components/ui/QueryError";
 
 interface Receipt {
   id: string;
@@ -30,45 +32,25 @@ const emptyForm: {
   format: "R1",
   number: "",
   invoiceId: "",
-  date: new Date().toISOString().split("T")[0],
+  date: todayIsoDate(),
 };
 
 export default function RecibosPage() {
-  const [receipts, setReceipts] = useState<Receipt[]>([]);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    data: receipts = [],
+    isLoading,
+    isError: loadError,
+    error: queryError,
+    refetch: refetchReceipts,
+  } = useApiQuery<Receipt[]>("/api/recibos");
+
+  const { data: invoices = [] } = useApiQuery<Invoice[]>("/api/facturas");
+
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    fetchReceipts();
-    fetchInvoices();
-  }, []);
-
-  async function fetchReceipts() {
-    try {
-      const res = await fetch("/api/recibos");
-      const data = await res.json();
-      if (data.success) setReceipts(data.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function fetchInvoices() {
-    try {
-      const res = await fetch("/api/facturas");
-      const data = await res.json();
-      if (data.success) setInvoices(data.data);
-    } catch (err) {
-      console.error(err);
-    }
-  }
 
   function openCreate() {
     setForm(emptyForm);
@@ -96,7 +78,7 @@ export default function RecibosPage() {
       }
 
       setShowModal(false);
-      fetchReceipts();
+      refetchReceipts();
     } catch {
       setError("Error de conexión");
     } finally {
@@ -118,8 +100,10 @@ export default function RecibosPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Recibos</h1>
-          <p className="text-gray-600 mt-1">Gestión de recibos de entrega</p>
+          <h1 className="text-2xl font-bold text-gray-900">Recibos de documento</h1>
+          <p className="text-gray-600 mt-1">
+            Recibos R1–R4 asociados a facturas. No son recibos de caja.
+          </p>
         </div>
         <button
           onClick={openCreate}
@@ -141,6 +125,10 @@ export default function RecibosPage() {
         />
       </div>
 
+      {loadError && (
+        <QueryError error={queryError} onRetry={() => void refetchReceipts()} />
+      )}
+
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -153,7 +141,7 @@ export default function RecibosPage() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {isLoading ? (
                 <tr>
                   <td colSpan={4} className="py-12 text-center text-gray-500">
                     <div className="flex items-center justify-center gap-2">
@@ -191,6 +179,85 @@ export default function RecibosPage() {
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* Vista previa informativa: el modelo actual no almacena recibos de caja. */}
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100">
+            <Banknote className="h-5 w-5 text-amber-700" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-amber-900">
+              Recibo de caja (vista previa, no conectado)
+            </h2>
+            <p className="mt-1 text-sm text-amber-800">
+              Estos campos muestran el formato que se usaría para un recibo de
+              caja. El modelo de datos actual no tiene valor, medio de pago ni
+              estado de cartera, por lo que <strong>no se guarda nada</strong>.
+              El módulo real de recibos de caja queda pendiente.
+            </p>
+
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <label className="text-xs font-medium text-amber-900">
+                Número
+                <input
+                  disabled
+                  placeholder="RC-2026-0001"
+                  className="mt-1 w-full rounded-lg border border-amber-200 bg-white/60 px-3 py-2 text-sm text-gray-500"
+                />
+              </label>
+              <label className="text-xs font-medium text-amber-900">
+                Fecha
+                <input
+                  disabled
+                  type="date"
+                  className="mt-1 w-full rounded-lg border border-amber-200 bg-white/60 px-3 py-2 text-sm text-gray-500"
+                />
+              </label>
+              <label className="text-xs font-medium text-amber-900">
+                Factura relacionada
+                <input
+                  disabled
+                  placeholder="Seleccionar factura"
+                  className="mt-1 w-full rounded-lg border border-amber-200 bg-white/60 px-3 py-2 text-sm text-gray-500"
+                />
+              </label>
+              <label className="text-xs font-medium text-amber-900">
+                Tercero / donante
+                <input
+                  disabled
+                  placeholder="Nombre o NIT"
+                  className="mt-1 w-full rounded-lg border border-amber-200 bg-white/60 px-3 py-2 text-sm text-gray-500"
+                />
+              </label>
+              <label className="text-xs font-medium text-amber-900">
+                Valor recibido
+                <input
+                  disabled
+                  placeholder="$ 0"
+                  className="mt-1 w-full rounded-lg border border-amber-200 bg-white/60 px-3 py-2 text-sm text-gray-500"
+                />
+              </label>
+              <label className="text-xs font-medium text-amber-900">
+                Medio de pago
+                <input
+                  disabled
+                  placeholder="Efectivo, transferencia..."
+                  className="mt-1 w-full rounded-lg border border-amber-200 bg-white/60 px-3 py-2 text-sm text-gray-500"
+                />
+              </label>
+            </div>
+
+            <div className="mt-3 flex items-start gap-2 text-xs text-amber-800">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                Esta vista es únicamente informativa para la demostración. No
+                existe un botón de guardado ni una tabla asociada.
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 

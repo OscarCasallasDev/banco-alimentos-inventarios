@@ -8,8 +8,16 @@ import {
   FileText,
   Download,
   Info,
+  Loader2,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, todayIsoDate } from "@/lib/utils";
+import { useApiQuery } from "@/hooks/useApiQuery";
+import QueryError from "@/components/ui/QueryError";
+
+interface SiigoAvailability {
+  format: string;
+  documents: number;
+}
 
 /**
  * Integración con Siigo Pyme mediante archivos planos (ExcelSiigo).
@@ -19,16 +27,16 @@ import { cn } from "@/lib/utils";
  * formato. La estructura definitiva está PENDIENTE de validación con el Banco.
  */
 const integrationStatus = [
-  { format: "E1", name: "Formato E1", description: "Entrada de mercancía", status: "DEMO", notes: "Exporta la entrada más reciente del sistema" },
-  { format: "E3", name: "Formato E3", description: "Entrada por donación", status: "DEMO", notes: "Exporta la entrada más reciente del sistema" },
-  { format: "N3", name: "Formato N3", description: "Nota de ajuste", status: "DEMO", notes: "Plantilla pendiente de validación con el Banco" },
-  { format: "N5", name: "Formato N5", description: "Nota de contabilización", status: "DEMO", notes: "Plantilla pendiente de validación con el Banco" },
-  { format: "SF1", name: "Formato SF1", description: "Factura de venta", status: "DEMO", notes: "Exporta la factura más reciente del sistema" },
-  { format: "F2", name: "Formato F2", description: "Factura simplificada", status: "DEMO", notes: "Exporta la factura más reciente del sistema" },
-  { format: "R1", name: "Formato R1", description: "Recibo de entrega", status: "DEMO", notes: "Exporta el recibo más reciente del sistema" },
-  { format: "R2", name: "Formato R2", description: "Recibo de devolución", status: "DEMO", notes: "Exporta el recibo más reciente del sistema" },
-  { format: "R3", name: "Formato R3", description: "Recibo de traslado", status: "DEMO", notes: "Plantilla pendiente de validación con el Banco" },
-  { format: "R4", name: "Formato R4", description: "Recibo de ajuste", status: "DEMO", notes: "Plantilla pendiente de validación con el Banco" },
+  { format: "E1", name: "Formato E1", description: "Entrada de mercancía", status: "DEMO", notes: "Exporta la entrada más reciente de formato E1" },
+  { format: "E3", name: "Formato E3", description: "Entrada por donación", status: "DEMO", notes: "Exporta la entrada más reciente de formato E3" },
+  { format: "N3", name: "Formato N3", description: "Nota de ajuste", status: "PENDING", notes: "Plantilla pendiente de validación con el Banco" },
+  { format: "N5", name: "Formato N5", description: "Nota de contabilización", status: "PENDING", notes: "Plantilla pendiente de validación con el Banco" },
+  { format: "SF1", name: "Formato SF1", description: "Factura de venta", status: "DEMO", notes: "Exporta la factura más reciente de formato SF1" },
+  { format: "F2", name: "Formato F2", description: "Factura simplificada", status: "DEMO", notes: "Exporta la factura más reciente de formato F2" },
+  { format: "R1", name: "Formato R1", description: "Recibo de entrega", status: "DEMO", notes: "Exporta el recibo más reciente de formato R1" },
+  { format: "R2", name: "Formato R2", description: "Recibo de devolución", status: "DEMO", notes: "Exporta el recibo más reciente de formato R2" },
+  { format: "R3", name: "Formato R3", description: "Recibo de traslado", status: "PENDING", notes: "Plantilla pendiente de validación con el Banco" },
+  { format: "R4", name: "Formato R4", description: "Recibo de ajuste", status: "PENDING", notes: "Plantilla pendiente de validación con el Banco" },
 ];
 
 const statusConfig: Record<string, { icon: typeof Clock; color: string; label: string }> = {
@@ -38,14 +46,29 @@ const statusConfig: Record<string, { icon: typeof Clock; color: string; label: s
 };
 
 export default function IntegracionSiigoPage() {
+  const {
+    data: availability = [],
+    isError: availabilityError,
+    error: availabilityErrorMessage,
+    refetch,
+  } = useApiQuery<SiigoAvailability[]>("/api/siigo/export");
   const [exporting, setExporting] = useState<string | null>(null);
   const [exportSuccess, setExportSuccess] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+
+  const documentsByFormat = new Map(
+    availability.map((item) => [item.format, item.documents])
+  );
 
   const counters = integrationStatus.reduce(
     (acc, item) => ({ ...acc, [item.status]: acc[item.status] + 1 }),
     { REAL: 0, DEMO: 0, PENDING: 0 } as Record<string, number>
   );
+
+  function canExport(item: (typeof integrationStatus)[number]): boolean {
+    if (item.status === "PENDING") return false;
+    return (documentsByFormat.get(item.format) ?? 0) > 0;
+  }
 
   async function handleExport(format: string) {
     setExporting(format);
@@ -71,7 +94,7 @@ export default function IntegracionSiigoPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Siigo_${format}_${new Date().toISOString().split("T")[0]}.xlsx`;
+      a.download = `Siigo_${format}_${todayIsoDate()}.xlsx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -100,19 +123,32 @@ export default function IntegracionSiigoPage() {
         <div className="flex items-start gap-3">
           <Info className="w-5 h-5 text-accent-600 mt-0.5" />
           <div>
-            <h3 className="font-medium text-accent-900">¿Cómo funciona?</h3>
+            <h3 className="font-medium text-accent-900">
+              Exportación en modo demostración
+            </h3>
             <p className="text-sm text-accent-700 mt-1">
-              1. Selecciona un formato de la lista
+              El sistema genera un archivo Excel para revisión. No se envía
+              nada directamente a Siigo Pyme ni se modifica el sistema
+              contable. La carga (PUSH) se realiza fuera de la aplicación,
+              con autorización y validación previa del Banco.
+            </p>
+            <p className="text-sm text-accent-700 mt-2">
+              1. Selecciona un formato con documentos disponibles.
               <br />
-              2. Haz clic en <strong>Exportar</strong> para generar el archivo Excel
+              2. Haz clic en <strong>Exportar</strong> para descargar el Excel.
               <br />
-              3. Abre el archivo en ExcelSiigo
-              <br />
-              4. Usa la función <strong>PUSH</strong> para enviar los datos a Siigo Pyme
+              3. Revisa la plantilla con el área contable antes de usarla.
             </p>
           </div>
         </div>
       </div>
+
+      {availabilityError && (
+        <QueryError
+          error={availabilityErrorMessage}
+          onRetry={() => void refetch()}
+        />
+      )}
 
       {exportError && (
         <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
@@ -170,6 +206,7 @@ export default function IntegracionSiigoPage() {
                 <th className="text-left py-3 px-4 font-medium text-gray-600">Formato</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">Descripción</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">Estado</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">Documentos</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">Notas</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">Acciones</th>
               </tr>
@@ -178,6 +215,19 @@ export default function IntegracionSiigoPage() {
               {integrationStatus.map((item) => {
                 const config = statusConfig[item.status];
                 const Icon = config.icon;
+                const documents = documentsByFormat.get(item.format) ?? 0;
+                const exportable = canExport(item);
+                const buttonLabel =
+                  item.status === "PENDING"
+                    ? "Pendiente"
+                    : documents === 0
+                    ? "Sin documentos"
+                    : exporting === item.format
+                    ? "Generando..."
+                    : exportSuccess === item.format
+                    ? "¡Listo!"
+                    : "Exportar";
+
                 return (
                   <tr key={item.format} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="py-3 px-4">
@@ -193,22 +243,37 @@ export default function IntegracionSiigoPage() {
                         {config.label}
                       </span>
                     </td>
+                    <td className="py-3 px-4">
+                      {documents > 0 ? (
+                        <span className="text-gray-900">{documents}</span>
+                      ) : (
+                        <span className="text-gray-400">0</span>
+                      )}
+                    </td>
                     <td className="py-3 px-4 text-gray-500 text-xs">{item.notes}</td>
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button
+                          type="button"
                           onClick={() => handleExport(item.format)}
-                          disabled={exporting === item.format}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-xs font-medium disabled:opacity-50"
+                          disabled={!exportable || exporting === item.format}
+                          title={
+                            item.status === "PENDING"
+                              ? "La plantilla está pendiente de validación con el Banco"
+                              : documents === 0
+                              ? "No hay documentos de este formato en la base de datos"
+                              : "Generar archivo Excel para revisión"
+                          }
+                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-xs font-medium disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
                         >
                           {exporting === item.format ? (
-                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />
+                            <Loader2 className="w-3 h-3 animate-spin" />
                           ) : exportSuccess === item.format ? (
                             <CheckCircle className="w-3 h-3" />
                           ) : (
                             <Download className="w-3 h-3" />
                           )}
-                          {exporting === item.format ? "Generando..." : exportSuccess === item.format ? "¡Listo!" : "Exportar"}
+                          {buttonLabel}
                         </button>
                       </div>
                     </td>

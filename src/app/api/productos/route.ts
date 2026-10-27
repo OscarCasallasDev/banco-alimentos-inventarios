@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth/session";
 import { jsonOk, handleRouteError } from "@/lib/api/response";
 import {
   createProduct,
+  invalidateProductsCache,
   listProducts,
   searchProducts,
 } from "@/lib/services/product.service";
@@ -47,6 +48,9 @@ export async function POST(request: Request) {
 
       return created;
     });
+
+    // El catálogo cambió: se invalida su caché.
+    invalidateProductsCache();
 
     return jsonOk(product, 201);
   } catch (error) {

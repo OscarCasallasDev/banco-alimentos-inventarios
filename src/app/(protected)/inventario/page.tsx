@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Boxes, Search, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useApiQuery } from "@/hooks/useApiQuery";
+import QueryError from "@/components/ui/QueryError";
 
 interface InventoryItem {
   id: string;
@@ -19,27 +21,14 @@ interface InventoryItem {
 }
 
 export default function InventarioPage() {
-  const [items, setItems] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    data: items = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useApiQuery<InventoryItem[]>("/api/inventario");
   const [search, setSearch] = useState("");
-
-  useEffect(() => {
-    let active = true;
-
-    fetch("/api/inventario")
-      .then((res) => res.json())
-      .then((data) => {
-        if (active && data.success) setItems(data.data);
-      })
-      .catch((err) => console.error(err))
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const filtered = items.filter(
     (item) =>
@@ -68,6 +57,11 @@ export default function InventarioPage() {
           className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
         />
       </div>
+
+      {/* Error de carga */}
+      {isError && (
+        <QueryError error={error} onRetry={() => void refetch()} />
+      )}
 
       {/* Low stock alert */}
       {lowStock.length > 0 && (
@@ -100,7 +94,7 @@ export default function InventarioPage() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {isLoading ? (
                 <tr>
                   <td colSpan={5} className="py-12 text-center text-gray-500">
                     <div className="flex items-center justify-center gap-2">

@@ -24,7 +24,7 @@ export default async function ComprobantePage({
   if (!entry) notFound();
 
   return (
-    <div className="min-h-screen bg-gray-100 py-6">
+    <div className="min-h-screen bg-gray-100 py-6 print:min-h-0 print:bg-white print:py-0">
       <div className="mx-auto max-w-[21.59cm] px-4 print:max-w-none print:px-0">
         <ComprobanteAcciones />
 

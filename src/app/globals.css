@@ -162,3 +162,33 @@ body {
 .animate-pulse-soft {
   animation: pulse-soft 2s ease-in-out infinite;
 }
+
+/* ------------------------------------------------------------------ */
+/* Impresión                                                          */
+/* ------------------------------------------------------------------ */
+
+@media print {
+  body {
+    background: #fff !important;
+  }
+
+  /* El menú y la cabecera de la aplicación no forman parte del documento
+     impreso. El encabezado propio del comprobante usa <header>, por eso
+     se ocultan por clase y no por etiqueta. */
+  .app-sidebar,
+  .app-header {
+    display: none !important;
+  }
+
+  .app-content {
+    padding-left: 0 !important;
+  }
+
+  .app-main {
+    padding: 0 !important;
+  }
+
+  .app-shell {
+    background: #fff !important;
+  }
+}

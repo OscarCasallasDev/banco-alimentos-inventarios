@@ -25,6 +25,7 @@
 import Image from "next/image";
 import { INSTITUTION } from "@/lib/config/institution";
 import { getEntryType } from "@/lib/entries/entry-types";
+import { formatDateOnly } from "@/lib/utils";
 import styles from "./entrada-comprobante.module.css";
 
 export interface ComprobanteLot {
@@ -114,6 +115,7 @@ export default function EntradaComprobante({ entry }: { entry: ComprobanteEntry 
               alt="Banco Arquidiocesano de Alimentos de Ibagué"
               width={1600}
               height={1295}
+              unoptimized
               className={styles.logo}
               priority
             />
@@ -167,7 +169,8 @@ export default function EntradaComprobante({ entry }: { entry: ComprobanteEntry 
 
         <div className={`${styles.entidadColumna} ${styles.entidadDocumento}`}>
           <p>
-            <span className={styles.etiqueta}>FECHA DOCUMENTO:</span> {entry.date}
+            <span className={styles.etiqueta}>FECHA DOCUMENTO:</span>{" "}
+            {formatDateOnly(entry.date)}
           </p>
           <p>
             <span className={styles.etiqueta}>ORDEN DE COMPRA:</span>{" "}
@@ -230,7 +233,9 @@ export default function EntradaComprobante({ entry }: { entry: ComprobanteEntry 
                     {lot.description ?? ""}
                   </td>
                   <td className={styles.colLoteVencimiento}>
-                    {lot.expirationDate ? `F.V.: ${lot.expirationDate}` : ""}
+                    {lot.expirationDate
+                      ? `F.V.: ${formatDateOnly(lot.expirationDate)}`
+                      : ""}
                   </td>
                   <td className={`${styles.colLoteCantidad} ${styles.numero}`}>
                     {formatQuantity(lot.quantity)}
