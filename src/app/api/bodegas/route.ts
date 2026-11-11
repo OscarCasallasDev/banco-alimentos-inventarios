@@ -1,4 +1,6 @@
+import { NextRequest } from "next/server";
 import { getDb, withTransaction } from "@/lib/db/client";
+import { requireModulePermission } from "@/lib/auth/guard";
 import { requireUser } from "@/lib/auth/session";
 import { jsonOk, handleRouteError } from "@/lib/api/response";
 import {
@@ -7,16 +9,30 @@ import {
   listWarehouses,
 } from "@/lib/services/warehouse.service";
 import { recordAuditLog } from "@/lib/services/audit-log.service";
+import { listWarehouseSummary } from "@/lib/services/warehouse.service";
 import { createWarehouseSchema } from "@/lib/validations/schemas";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    await requireUser();
+    await requireModulePermission("bodegas", "inventory.read");
 
     const db = getDb();
-    const data = await listWarehouses(db);
+    const includeInactive = request.nextUrl.searchParams.get("all") === "true";
+    const data = await listWarehouses(db, includeInactive);
 
-    return jsonOk(data);
+    // Se mantiene el formato array (compatibilidad con el m?dulo existente)
+    // y se a?ade el resumen de existencias importadas de Siigo.
+    const resumen = await listWarehouseSummary(db);
+    const porId = new Map<string, (typeof resumen)[number]>(
+      resumen.map((r) => [r.id, r])
+    );
+
+    return jsonOk(
+      data.map((row) => ({
+        ...row,
+        siigoSummary: porId.get(row.id) ?? null,
+      }))
+    );
   } catch (error) {
     return handleRouteError(error, "bodegas:GET");
   }

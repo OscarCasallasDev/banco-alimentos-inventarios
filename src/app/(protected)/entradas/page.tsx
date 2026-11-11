@@ -16,7 +16,10 @@ import {
 } from "lucide-react";
 import { cn, todayIsoDate } from "@/lib/utils";
 import { ENTRY_TYPE_LIST, getEntryType } from "@/lib/entries/entry-types";
-import { useApiQuery } from "@/hooks/useApiQuery";
+import {
+  useApiQuery,
+  useInvalidateStockQueries,
+} from "@/hooks/useApiQuery";
 import QueryError from "@/components/ui/QueryError";
 
 /* ------------------------------------------------------------------ */
@@ -29,6 +32,10 @@ interface ProductOption {
   name: string;
   presentation: string | null;
   unit: string;
+  stockUnit: string;
+  unitKind: string;
+  netWeightGrams: number | null;
+  tracksExpiration: boolean;
   categoryName: string | null;
 }
 
@@ -64,9 +71,12 @@ interface WarehouseOption {
 
 interface LotForm {
   key: string;
+  /** Código del lote en el empaque del proveedor (no es el código interno). */
   code: string;
   description: string;
   expirationDate: string;
+  /** El Banco declara que no conoce el vencimiento de este lote. */
+  expirationUnknown: boolean;
   quantity: string;
 }
 
@@ -78,6 +88,9 @@ interface ItemForm {
   presentation: string;
   description: string;
   unit: string;
+  stockUnit: string;
+  netWeightGrams: number | null;
+  tracksExpiration: boolean;
   quantity: string;
   value: string;
   debitCredit: string;
@@ -153,6 +166,9 @@ function emptyItem(warehouseId: string, unit: string): ItemForm {
     presentation: "",
     description: "",
     unit,
+    stockUnit: "UND",
+    netWeightGrams: null,
+    tracksExpiration: true,
     quantity: "",
     value: "0",
     debitCredit: "0",
@@ -199,6 +215,7 @@ export default function EntradasPage() {
     useApiQuery<CostCenterOption[]>("/api/centros-costo");
   const { data: warehouses = [] } =
     useApiQuery<WarehouseOption[]>("/api/bodegas");
+  const invalidateStockQueries = useInvalidateStockQueries();
 
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
@@ -334,6 +351,9 @@ export default function EntradasPage() {
                 ""
               ),
               unit: product.unit || item.unit,
+              stockUnit: product.stockUnit || item.stockUnit,
+              netWeightGrams: product.netWeightGrams,
+              tracksExpiration: product.tracksExpiration,
             }
           : item
       ),
@@ -394,6 +414,7 @@ export default function EntradasPage() {
                   code: "",
                   description: "Lotes Inicial",
                   expirationDate: "",
+                  expirationUnknown: false,
                   quantity: item.quantity || "",
                 },
               ],
@@ -478,11 +499,18 @@ export default function EntradasPage() {
         }
 
         for (const lot of item.lots) {
-          if (!lot.expirationDate) {
-            return `Ingresa la fecha de vencimiento de un lote de la línea ${line}.`;
-          }
           if (!Number.isFinite(Number(lot.quantity)) || Number(lot.quantity) <= 0) {
             return `La cantidad del lote de la línea ${line} debe ser mayor que cero.`;
+          }
+
+          // Un producto que controla vencimiento exige la fecha O la
+          // declaración de que se desconoce. Nunca se inventa una fecha.
+          if (
+            item.tracksExpiration &&
+            !lot.expirationDate &&
+            !lot.expirationUnknown
+          ) {
+            return `Ingresa la fecha de vencimiento del lote de la línea ${line} o marca que se desconoce.`;
           }
         }
       }
@@ -532,9 +560,10 @@ export default function EntradasPage() {
             debitCredit:
               item.debitCredit.trim() === "" ? 0 : Number(item.debitCredit),
             lots: item.lots.map((lot) => ({
-              code: lot.code.trim() || undefined,
+              externalCode: lot.code.trim() || undefined,
               description: lot.description.trim() || undefined,
               expirationDate: lot.expirationDate || undefined,
+              expirationUnknown: lot.expirationUnknown,
               quantity: Number(lot.quantity),
             })),
           })),
@@ -551,8 +580,11 @@ export default function EntradasPage() {
       setSavedEntryId(data.data.id);
       setShowModal(false);
 
-      // Se refresca el listado sin recargar la página.
+      // Se refresca el listado sin recargar la página, y se invalidan los
+      // datos de existencias: el dashboard, el inventario y los lotes deben
+      // reflejar el ingreso de inmediato.
       void refetchEntries();
+      void invalidateStockQueries();
     } catch {
       setError("Error de conexión. Verifica tu internet e intenta nuevamente.");
     } finally {
@@ -1150,6 +1182,16 @@ export default function EntradasPage() {
                             }
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                           />
+                          {item.netWeightGrams !== null && (
+                            <p className="mt-1 text-[11px] text-gray-500">
+                              ≈{" "}
+                              {(
+                                (Number(item.quantity) || 0) *
+                                item.netWeightGrams
+                              ).toFixed(1)}{" "}
+                              g
+                            </p>
+                          )}
                         </div>
 
                         {/* Unidad */}
@@ -1244,7 +1286,7 @@ export default function EntradasPage() {
                             >
                               <div className="col-span-3">
                                 <label className="block text-[11px] text-gray-500 mb-0.5">
-                                  Código de lote
+                                  Código del proveedor
                                 </label>
                                 <input
                                   type="text"
@@ -1279,13 +1321,30 @@ export default function EntradasPage() {
                                 <input
                                   type="date"
                                   value={lot.expirationDate}
+                                  disabled={lot.expirationUnknown}
                                   onChange={(e) =>
                                     updateLot(item.key, lot.key, {
                                       expirationDate: e.target.value,
                                     })
                                   }
-                                  className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                                  className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm disabled:bg-gray-100"
                                 />
+                                <label className="flex items-center gap-1 mt-1 text-[11px] text-gray-600">
+                                  <input
+                                    type="checkbox"
+                                    checked={lot.expirationUnknown}
+                                    onChange={(e) =>
+                                      updateLot(item.key, lot.key, {
+                                        expirationUnknown: e.target.checked,
+                                        expirationDate: e.target.checked
+                                          ? ""
+                                          : lot.expirationDate,
+                                      })
+                                    }
+                                    className="rounded border-gray-300 text-primary-600"
+                                  />
+                                  No se conoce
+                                </label>
                               </div>
                               <div className="col-span-1">
                                 <label className="block text-[11px] text-gray-500 mb-0.5">

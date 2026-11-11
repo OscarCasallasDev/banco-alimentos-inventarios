@@ -6,12 +6,13 @@
  * ASSOCIATED_TO_RECEIPT.
  */
 
-import { desc, eq, like } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { invoices, receipts, users } from "@/lib/db/schema";
 import type { DbExecutor } from "@/lib/db/client";
 import { conflictError, notFoundError } from "@/lib/utils/errors";
 import { parseDocumentDate, toIsoDate } from "@/lib/utils";
-import { DOCUMENT_PREFIX, formatDocumentNumber } from "@/lib/utils/numbers";
+import { DOCUMENT_PREFIX } from "@/lib/utils/numbers";
+import { nextYearlyDocumentCode } from "./sequence.service";
 import type { CreateReceiptInput } from "@/lib/validations/schemas";
 import { createDocument } from "./document.service";
 import { recordAuditLog } from "./audit-log.service";
@@ -60,24 +61,13 @@ export async function getReceipt(executor: DbExecutor, id: string) {
 
 /**
  * Calcula el siguiente consecutivo de recibo del año.
+ * Consecutivo atómico: dos recibos simultáneos nunca comparten número.
  */
 async function nextReceiptNumber(
   executor: DbExecutor,
   date: Date
 ): Promise<string> {
-  const year = date.getFullYear();
-  const rows = await executor
-    .select({ number: receipts.number })
-    .from(receipts)
-    .where(like(receipts.number, `${DOCUMENT_PREFIX.RECEIPT}-${year}-%`));
-
-  const sequence =
-    rows.reduce((max, row) => {
-      const value = Number(row.number.split("-").pop());
-      return Number.isFinite(value) && value > max ? value : max;
-    }, 0) + 1;
-
-  return formatDocumentNumber(DOCUMENT_PREFIX.RECEIPT, date, sequence);
+  return nextYearlyDocumentCode(executor, DOCUMENT_PREFIX.RECEIPT, date);
 }
 
 /**

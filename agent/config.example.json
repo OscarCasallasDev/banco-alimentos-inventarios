@@ -1,0 +1,9 @@
+{
+  "apiUrl": "http://localhost:3000",
+  "apiKey": "",
+  "watchFolder": "C:\\BancoAlimentos\\Siigo\\Salidas",
+  "agentId": "agente-pc-almacen",
+  "batchSize": 10000,
+  "maxAgeMinutes": 90,
+  "force": false
+}

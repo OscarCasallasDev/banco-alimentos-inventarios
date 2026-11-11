@@ -9,7 +9,7 @@ import {
   AlertCircle,
   Trash2,
 } from "lucide-react";
-import { cn, formatDateOnly, todayIsoDate } from "@/lib/utils";
+import { cn, formatDateOnly, formatNumber, todayIsoDate } from "@/lib/utils";
 import { useApiQuery } from "@/hooks/useApiQuery";
 import QueryError from "@/components/ui/QueryError";
 
@@ -37,12 +37,22 @@ interface WarehouseItem {
   name: string;
 }
 
+interface AuditLotCount {
+  lotId: string;
+  code: string;
+  systemQuantity: number;
+  physicalQuantity: number;
+}
+
 interface AuditItem {
   productId: string;
   systemQuantity: number;
   physicalQuantity: number;
   difference: number;
   observation: string;
+  /** Conteo físico por lote (opcional). Si se informa, el ajuste se aplica
+   *  sobre esos lotes concretos y no se reparte por FEFO. */
+  lots: AuditLotCount[];
 }
 
 const emptyForm = {
@@ -82,7 +92,14 @@ export default function AuditoriaPage() {
       ...form,
       items: [
         ...form.items,
-        { productId: "", systemQuantity: 0, physicalQuantity: 0, difference: 0, observation: "" },
+        {
+          productId: "",
+          systemQuantity: 0,
+          physicalQuantity: 0,
+          difference: 0,
+          observation: "",
+          lots: [],
+        },
       ],
     });
   }
@@ -91,12 +108,17 @@ export default function AuditoriaPage() {
     setForm({ ...form, items: form.items.filter((_, i) => i !== index) });
   }
 
-  function updateItem(index: number, field: keyof AuditItem, value: string | number) {
+  function updateItem(
+    index: number,
+    field: keyof AuditItem,
+    value: string | number | AuditLotCount[]
+  ) {
     const newItems = [...form.items];
     newItems[index] = { ...newItems[index], [field]: value };
     // Recalcular diferencia
     if (field === "systemQuantity" || field === "physicalQuantity") {
-      newItems[index].difference = newItems[index].physicalQuantity - newItems[index].systemQuantity;
+      newItems[index].difference =
+        newItems[index].physicalQuantity - newItems[index].systemQuantity;
     }
     setForm({ ...form, items: newItems });
   }
@@ -110,7 +132,22 @@ export default function AuditoriaPage() {
       const res = await fetch("/api/auditoria", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          items: form.items.map((item) => ({
+            productId: item.productId,
+            physicalQuantity: item.physicalQuantity,
+            observation: item.observation,
+            // El conteo por lote solo viaja si el usuario lo informa.
+            lots:
+              item.lots.length > 0
+                ? item.lots.map((lote) => ({
+                    lotId: lote.lotId,
+                    physicalQuantity: lote.physicalQuantity,
+                  }))
+                : undefined,
+          })),
+        }),
       });
 
       const data = await res.json();
@@ -341,6 +378,23 @@ export default function AuditoriaPage() {
                           </button>
                         </div>
                         <div className="col-span-12">
+                          {item.productId && form.warehouseId && (
+                            <ConteoPorLote
+                              key={`${index}-${item.productId}`}
+                              productId={item.productId}
+                              warehouseId={form.warehouseId}
+                              onChange={(lots, total) => {
+                                const newItems = [...form.items];
+                                newItems[index].lots = lots;
+                                newItems[index].physicalQuantity = total;
+                                newItems[index].difference =
+                                  total - newItems[index].systemQuantity;
+                                setForm({ ...form, items: newItems });
+                              }}
+                            />
+                          )}
+                        </div>
+                        <div className="col-span-12">
                           <input
                             type="text"
                             placeholder="Observación..."
@@ -375,6 +429,121 @@ export default function AuditoriaPage() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Conteo físico POR LOTE.
+ *
+ * Cuando el usuario informa el conteo de cada lote, el ajuste se aplica
+ * sobre esos lotes concretos y queda registrada la cantidad anterior, la
+ * contada y la posterior. Si no se usa, el sistema reparte la diferencia
+ * por FEFO.
+ */
+function ConteoPorLote({
+  productId,
+  warehouseId,
+  onChange,
+}: {
+  productId: string;
+  warehouseId: string;
+  onChange: (lots: AuditLotCount[], total: number) => void;
+}) {
+  const { data, isLoading } = useApiQuery<{
+    items: {
+      id: string;
+      code: string;
+      quantityAvailable: number;
+      expirationDate: string | null;
+      status: string;
+    }[];
+  }>(
+    `/api/lotes?productId=${productId}&warehouseId=${warehouseId}&includeEmpty=true&pageSize=100`,
+    { enabled: Boolean(productId && warehouseId) }
+  );
+
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [abierto, setAbierto] = useState(false);
+
+  const lotes = data?.items ?? [];
+
+  function cambiar(lotId: string, valor: number) {
+    const siguiente = { ...counts, [lotId]: valor };
+
+    setCounts(siguiente);
+
+    const informed = lotes
+      .filter((lote) => (siguiente[lote.id] ?? 0) > 0)
+      .map((lote) => ({
+        lotId: lote.id,
+        code: lote.code,
+        systemQuantity: Number(lote.quantityAvailable),
+        physicalQuantity: siguiente[lote.id],
+      }));
+
+    const total = informed.reduce(
+      (sum, lote) => sum + lote.physicalQuantity,
+      0
+    );
+
+    onChange(informed, total);
+  }
+
+  if (isLoading) {
+    return (
+      <p className="text-xs text-gray-500 py-1">Consultando lotes…</p>
+    );
+  }
+
+  if (lotes.length === 0) {
+    return (
+      <p className="text-xs text-gray-500 py-1">
+        Este producto no tiene lotes registrados en la bodega.
+      </p>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white p-3">
+      <button
+        type="button"
+        onClick={() => setAbierto((valor) => !valor)}
+        className="text-xs font-medium text-primary-700"
+      >
+        {abierto ? "Ocultar" : "Contar"} por lote ({lotes.length} lote(s))
+      </button>
+
+      {abierto && (
+        <div className="mt-2 space-y-1">
+          {lotes.map((lote) => (
+            <div
+              key={lote.id}
+              className="flex items-center justify-between gap-3 text-xs"
+            >
+              <span className="font-mono text-gray-700">{lote.code}</span>
+              <span className="text-gray-500">
+                sistema {formatNumber(Number(lote.quantityAvailable))}
+              </span>
+              <input
+                type="number"
+                min={0}
+                step="0.001"
+                value={counts[lote.id] ?? ""}
+                onChange={(e) =>
+                  cambiar(lote.id, Number(e.target.value) || 0)
+                }
+                className="w-24 px-2 py-1 border border-gray-300 rounded text-right"
+                placeholder="0"
+              />
+            </div>
+          ))}
+          <p className="text-[11px] text-gray-500">
+            Si informas el conteo por lote, el ajuste se aplica sobre esos
+            lotes. Si lo dejas vacío, la diferencia se reparte por FEFO.
+          </p>
         </div>
       )}
     </div>

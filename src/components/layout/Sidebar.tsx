@@ -4,52 +4,46 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { usePrefetchRoute } from "@/hooks/useApiQuery";
-import {
-  LayoutDashboard,
-  Package,
-  Warehouse,
-  Boxes,
-  ArrowDownToLine,
-  ArrowUpFromLine,
-  ClipboardList,
-  FileText,
-  Receipt,
-  ShieldCheck,
-  BarChart3,
-  Users,
-  Link2,
-  Settings,
-  LogOut,
-  X,
-} from "lucide-react";
+import { LogOut, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MODULES, MODULE_ORDER, type ModuleKey } from "@/lib/config/modules";
+import type { SessionUser } from "@/lib/auth/session";
 
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
+  user: SessionUser;
+  /** Claves de banderas que están activas. */
+  enabledFlags: string[];
 }
 
-const navigation = [
-  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Productos", href: "/productos", icon: Package },
-  { name: "Bodegas", href: "/bodegas", icon: Warehouse },
-  { name: "Inventario", href: "/inventario", icon: Boxes },
-  { name: "Entradas", href: "/entradas", icon: ArrowDownToLine },
-  { name: "Salidas", href: "/salidas", icon: ArrowUpFromLine },
-  { name: "Pedidos", href: "/pedidos", icon: ClipboardList },
-  { name: "Facturas", href: "/facturas", icon: FileText },
-  { name: "Recibos", href: "/recibos", icon: Receipt },
-  { name: "Auditoría", href: "/auditoria", icon: ShieldCheck },
-  { name: "Reportes", href: "/reportes", icon: BarChart3 },
-  { name: "Usuarios", href: "/usuarios", icon: Users },
-  { name: "Integración Siigo", href: "/integracion-siigo", icon: Link2 },
-  { name: "Configuración", href: "/configuracion", icon: Settings },
-];
-
-export default function Sidebar({ isOpen, onClose }: SidebarProps) {
+/**
+ * Navegación lateral.
+ *
+ * Los módulos que se muestran dependen de DOS cosas:
+ *   1. La bandera del módulo (`feature_flags`) — reversible por el administrador.
+ *   2. El rol del usuario.
+ *
+ * Los módulos en espera NO aparecen, pero sus rutas, tablas y datos siguen
+ * intactos: se pueden reactivar desde Configuración sin reconstruir nada.
+ */
+export default function Sidebar({
+  isOpen,
+  onClose,
+  user,
+  enabledFlags,
+}: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const prefetchRoute = usePrefetchRoute();
+
+  const enabled = new Set(enabledFlags);
+
+  const navigation = MODULE_ORDER.filter((key: ModuleKey) => {
+    const definition = MODULES[key];
+    if (!enabled.has(definition.flag)) return false;
+    return definition.roles.includes(user.role);
+  }).map((key) => ({ key, ...MODULES[key] }));
 
   async function handleLogout() {
     try {
@@ -116,7 +110,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
               <Link
-                key={item.href}
+                key={item.key}
                 href={item.href}
                 onClick={onClose}
                 onMouseEnter={() => prefetchRoute(item.href)}
@@ -130,7 +124,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 )}
               >
                 <item.icon className="w-5 h-5 flex-shrink-0" />
-                {item.name}
+                {item.label}
               </Link>
             );
           })}

@@ -400,6 +400,175 @@
 
 ---
 
+## Modelo de Lotes y Trazabilidad (FASE 11)
+
+### La idea central
+
+El **catálogo de productos** y los **ingresos** son cosas distintas:
+
+- Un **producto** es una referencia comercial (arroz de 500 g).
+- Un **lote** es una cantidad específica de ese producto recibida en una
+  entrada concreta, con su propia fecha de vencimiento y su propia existencia.
+
+Dos ingresos del mismo producto con vencimientos distintos son **dos lotes**,
+aunque compartan el mismo `product_id`.
+
+### Fuente de verdad
+
+| Nivel | Fuente | Naturaleza |
+|---|---|---|
+| Existencias por lote | `lots.quantity_available` | Verdad |
+| Historial | `inventory_movements` (inmutable, con `lot_id`) | Verdad |
+| Existencias por producto/bodega | `inventory.quantity` | **Caché materializada** |
+
+El agregado y los lotes se actualizan **siempre en la misma transacción**.
+La vista `v_inventory_reconciliation` compara ambos: su diferencia debe ser
+cero. Si no lo es, el dashboard lo muestra como alerta.
+
+> Nunca se suman el agregado y los lotes: son dos vistas del mismo hecho.
+
+### Relaciones
+
+```
+products   1 ─── N lots
+warehouses 1 ─── N lots
+entries    1 ─── N entry_items 1 ─── N lots
+lots       1 ─── N inventory_movements
+dispatch_items N ─── M lots   (dispatch_item_lots)
+audit_items   N ─── M lots   (audit_item_lots)
+inventory      (product_id, warehouse_id) = caché del agregado
+```
+
+### Tabla `lots`
+
+| Columna | Tipo | Significado |
+|---|---|---|
+| `id` | uuid PK | Identificador interno (UUID de PostgreSQL) |
+| `code` | varchar(50) **UNIQUE** | Código visible: `L-ARR001-20261027-0001` |
+| `external_code` | varchar(100) | Código del proveedor/fabricante (no único) |
+| `entry_id` / `entry_item_id` | uuid FK | Documento y línea de entrada de origen |
+| `product_id` | uuid FK | Producto del lote |
+| `warehouse_id` | uuid FK | Bodega lógica |
+| `status` | lot_status | DRAFT, ACTIVE, BLOCKED, DEPLETED, DISPOSED, CANCELLED |
+| `origin` | lot_origin | ENTRY, OPENING, ADJUSTMENT, RETURN, TRANSFER, MIGRATION |
+| `traceability` | lot_traceability | FULL, PARTIAL, NONE |
+| `expiration_date` | date | Vencimiento. **NULL = dato no conocido** |
+| `received_at` | timestamp | Fecha de recepción |
+| `quantity_received` | numeric(14,3) | **Histórica e inmutable** |
+| `quantity_available` | numeric(14,3) | Existencias actuales del lote |
+| `stock_unit` | varchar(20) | Snapshot de la unidad de manejo |
+| `unit_kind` | stock_unit_kind | Snapshot de la naturaleza (COUNT/MASS/VOLUME) |
+| `presentation` | varchar(100) | Snapshot de la presentación comercial |
+| `net_weight_grams` | numeric(14,3) | **Peso neto por unidad de stock** (snapshot) |
+| `net_volume_ml` | numeric(14,3) | Volumen neto por unidad de stock (snapshot) |
+| `weight_is_estimate` | boolean | El contenido es estimado |
+| `is_historical` | boolean | Lote de apertura o sin trazabilidad completa |
+| `parent_lot_id` | uuid FK | Lote origen (transferencias / división) |
+| `created_by` | uuid FK | Usuario que creó el lote |
+
+Restricciones de integridad:
+
+- `UNIQUE (code)` — la garantía final de unicidad.
+- `quantity_received > 0`.
+- `0 <= quantity_available <= quantity_received`.
+- `net_weight_grams IS NULL OR > 0` (igual para `net_volume_ml`).
+- Trigger `trg_lots_immutable_keys`: no se puede cambiar `code`, `product_id`,
+  `warehouse_id`, `entry_item_id`, `quantity_received`, `created_by` ni
+  `received_at`.
+- Trigger `trg_lots_no_delete`: los lotes no se eliminan; se cancelan.
+- Trigger `trg_lots_expiration_required`: un lote de entrada cuyo producto
+  controla vencimiento no puede declararse `FULL` sin fecha.
+
+### Código de lote
+
+Formato: `L-{PREFIJO_PRODUCTO}-{AAAAMMDD}-{NNNN}` (ej. `L-ARR001-20261027-0001`).
+
+- El prefijo sale del código del producto normalizado.
+- La fecha es la **de recepción**, no la de vencimiento: el vencimiento puede
+  ser desconocido o corregirse sin que el lote pierda su identidad.
+- El consecutivo se reserva en `lot_sequences` con
+  `INSERT … ON CONFLICT DO UPDATE` (atómico). **Nunca** se usa `MAX()+1`.
+- El ámbito del consecutivo es `LOT:{prefijo}:{fecha}`: dos productos con
+  prefijos equivalentes comparten contador y no pueden colisionar.
+- El código **no depende de la cantidad**: sigue siendo válido aunque el
+  lote se consuma por completo.
+
+La etiqueta legible con el vencimiento se muestra aparte:
+`L-ARR001-20261027-0001 · Vence 01/11/2026`.
+
+### Reglas de peso
+
+```
+peso_recibido_kg  = quantity_received  × net_weight_grams / 1000
+peso_disponible_kg = quantity_available × net_weight_grams / 1000
+volumen_disponible_l = quantity_available × net_volume_ml / 1000
+```
+
+- 300 bolsas de 500 g = **150 kg**.
+- Si no hay contenido neto conocido, el peso es `null`: **no se inventa** y
+  no se reporta 0 kg. El dashboard informa la **cobertura** del peso.
+- Las unidades no se suman entre naturalezas distintas: el conteo, la masa y
+  el volumen se informan por separado.
+- Conversiones: 1 kg = 1000 g, 1 L = 1000 ml, 1 lb = 453,59237 g.
+- La aritmética se hace con enteros escalados (`multiplyExact`) y los
+  agregados en SQL con `numeric`, nunca con coma flotante.
+
+### Reglas de vencimiento
+
+| Estado | Regla | Efecto |
+|---|---|---|
+| `EXPIRED` | vencimiento < hoy | No despachable; alerta roja |
+| `EXPIRES_TODAY` | = hoy | Crítico; no despachable |
+| `EXPIRES_TOMORROW` | = mañana | Crítico |
+| `CRITICAL` | ≤ `expiry_critical_days` (7) | Alerta alta |
+| `WARNING` | ≤ `expiry_alert_days` (30) | Alerta media |
+| `OK` | > horizonte | Sin alerta |
+| `NO_EXPIRY` | sin fecha | Dato faltante si el producto lo controla |
+
+- El "hoy" es siempre el del Banco (`America/Bogota`).
+- Las fechas son `date`, nunca marcas de tiempo: no se desplazan un día.
+- Solo generan alerta los lotes `ACTIVE` con `quantity_available > 0`.
+- El horizonte se configura en `system_settings` (pantalla de Configuración).
+
+### Reglas de disponibilidad
+
+- **Entrada DRAFT**: lotes `DRAFT`, disponible 0, sin movimientos.
+- **Entrada CONFIRMED**: lotes `ACTIVE`, disponible = recibido, movimiento
+  `ENTRY`. Idempotente mediante `entries.stock_applied_at`.
+- **Salida**: consume lotes FEFO (o los que el usuario elija). Un lote
+  vencido **no** se despacha automáticamente. Registra
+  `dispatch_item_lots` y un movimiento `EXIT`.
+- **Auditoría**: por producto (reparto FEFO) o **por lote** (si el conteo se
+  informa por lote). El sobrante se registra en un lote de ajuste; la
+  cantidad recibida de un lote nunca se reescribe.
+- **Lote agotado**: queda `DEPLETED`, se conserva para consulta histórica y
+  no aparece como disponible ni genera alerta.
+- **Bloqueo / disposición** (`PATCH /api/lotes/[id]/estado`, solo ADMIN): la
+  mercancía sale del pool disponible y queda registrada en el libro de
+  movimientos.
+
+### Tablas de soporte
+
+| Tabla | Propósito |
+|---|---|
+| `lot_sequences` | Consecutivo atómico de códigos de lote |
+| `dispatch_item_lots` | Qué lote se consumió en cada línea de salida |
+| `audit_item_lots` | Conteo/ajuste por lote con cantidad anterior, física y diferencia |
+| `system_settings` | Parámetros del Banco (horizonte de alertas) |
+
+### Datos históricos
+
+- Los lotes de apertura (`origin = 'OPENING'`, `is_historical = true`)
+  representan el saldo previo al modelo. **No** tienen vencimiento ni
+  documento: inventarlos violaría la trazabilidad.
+- Las entradas anteriores al modelo **no** reciben lotes retroactivos: su
+  saldo ya está en los lotes de apertura. Duplicarlo sería incorrecto.
+- Los movimientos con `lot_id IS NULL` se conservan y se identifican como
+  históricos: no se les inventa una relación con un lote.
+- `npm run db:auditar` revisa estas inconsistencias sin modificar datos.
+
+---
+
 ## Reglas de Negocio
 
 1. No cantidades negativas en entradas
@@ -412,7 +581,11 @@
 8. Toda operación tiene usuario y fecha
 9. Toda salida asociada a su flujo documental
 10. Información histórica siempre trazable
+11. Cada ingreso genera lotes trazables con cantidad, peso y vencimiento propios
+12. Un lote vencido no se despacha; los lotes agotados no generan alerta
+13. El peso nunca se inventa: si no hay contenido neto, se informa la cobertura
+14. Las unidades de naturaleza distinta (conteo, masa, volumen) no se suman entre sí
 
 ---
 
-*Última actualización: FASE 2 — Base de datos*
+*Última actualización: FASE 11 — Trazabilidad por lotes, vencimientos y peso*

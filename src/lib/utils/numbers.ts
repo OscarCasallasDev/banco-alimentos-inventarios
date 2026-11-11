@@ -12,6 +12,10 @@ export const DOCUMENT_PREFIX = {
   INVOICE: "FAC",
   RECEIPT: "REC",
   DISPATCH: "DES",
+  /** Salidas de almacén (documento de entrega al despacho). */
+  SALIDA: "SAL",
+  /** Orden de pedido interna (almacén → despacho). */
+  ORDEN_PEDIDO: "OP",
 } as const;
 
 export type DocumentPrefix =

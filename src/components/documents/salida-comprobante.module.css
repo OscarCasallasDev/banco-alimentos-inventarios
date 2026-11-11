@@ -1,0 +1,356 @@
+/*
+ * Estilos del COMPROBANTE DE SALIDA DE ALMACÉN.
+ *
+ * Formato carta (21.59 × 27.94 cm) con márgenes de 0.8 cm, pensado para
+ * imprimirse en una impresora normal del Banco.
+ *
+ * Reglas de impresión aplicadas:
+ *   - `table-header-group` repite el encabezado de la tabla en cada página.
+ *   - `break-inside: avoid` evita que una fila o el bloque de firmas se
+ *     partan entre dos páginas.
+ *   - Cifras con `tabular-nums` para que las columnas no se descuadren.
+ */
+
+@page {
+  size: 21.59cm 27.94cm;
+  margin: 0.8cm;
+}
+
+.documento {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 8.5pt;
+  color: #111827;
+  background: #ffffff;
+  width: 19.99cm;
+  padding: 0.4cm;
+  box-sizing: border-box;
+}
+
+/* ---------------- Encabezado ---------------- */
+
+.encabezado {
+  display: grid;
+  grid-template-columns: 52% 48%;
+  gap: 0.3cm;
+  align-items: center;
+  border-bottom: 1.5pt solid #48151c;
+  padding-bottom: 0.25cm;
+  margin-bottom: 0.3cm;
+}
+
+.encabezadoInstitucion {
+  display: flex;
+  align-items: center;
+  gap: 0.3cm;
+}
+
+.logo {
+  width: 2.4cm;
+  height: 1.95cm;
+  object-fit: contain;
+}
+
+.banco {
+  font-size: 10pt;
+  font-weight: bold;
+  line-height: 1.15;
+  letter-spacing: 0.2pt;
+  color: #48151c;
+}
+
+.datosInstitucion {
+  font-size: 7pt;
+  color: #4b5563;
+  line-height: 1.3;
+}
+
+.encabezadoDocumento {
+  text-align: right;
+}
+
+.tituloDocumento {
+  font-size: 11pt;
+  font-weight: bold;
+  letter-spacing: 0.3pt;
+  color: #48151c;
+  line-height: 1.2;
+}
+
+.numeroDocumento {
+  font-size: 12pt;
+  font-weight: bold;
+  letter-spacing: 1.2pt;
+  margin: 0.1cm 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.fechaDocumento,
+.estadoDocumento {
+  font-size: 7.5pt;
+  color: #4b5563;
+  line-height: 1.35;
+}
+
+.estadoDocumento {
+  font-weight: bold;
+  color: #48151c;
+}
+
+/* ---------------- Información general ---------------- */
+
+.bloqueGeneral {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.15cm 0.6cm;
+  border: 0.5pt solid #d1d5db;
+  padding: 0.25cm 0.3cm;
+  margin-bottom: 0.3cm;
+  background: #f9fafb;
+}
+
+.datoGeneral {
+  display: flex;
+  flex-direction: column;
+}
+
+.etiqueta {
+  font-size: 6.5pt;
+  font-weight: bold;
+  letter-spacing: 0.3pt;
+  color: #6b7280;
+  text-transform: uppercase;
+}
+
+.valor {
+  font-size: 9pt;
+  font-weight: bold;
+  color: #111827;
+}
+
+/* ---------------- Tabla ---------------- */
+
+.tabla {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  margin-bottom: 0.3cm;
+}
+
+.tabla thead {
+  display: table-header-group;
+}
+
+.tabla th {
+  background: #48151c;
+  color: #ffffff;
+  font-size: 6.8pt;
+  font-weight: bold;
+  letter-spacing: 0.2pt;
+  text-align: left;
+  padding: 0.16cm 0.12cm;
+  border: 0.4pt solid #48151c;
+}
+
+.tabla td {
+  font-size: 8pt;
+  padding: 0.14cm 0.12cm;
+  border: 0.4pt solid #d1d5db;
+  vertical-align: top;
+  word-wrap: break-word;
+}
+
+.tabla tbody tr {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.tabla tbody tr:nth-child(even) {
+  background: #f9fafb;
+}
+
+.colNumero {
+  width: 4%;
+}
+.colReferencia {
+  width: 12%;
+}
+.colProducto {
+  width: 30%;
+}
+.colPresentacion {
+  width: 12%;
+}
+.colUnidad {
+  width: 8%;
+}
+.colCantidad {
+  width: 10%;
+}
+.colPesoUnit {
+  width: 12%;
+}
+.colPesoTotal {
+  width: 12%;
+}
+
+.numero {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.codigo {
+  font-family: "Courier New", monospace;
+  font-size: 7.2pt;
+}
+
+.notaProducto {
+  font-size: 7pt;
+  color: #6b7280;
+  font-style: italic;
+}
+
+/* ---------------- Resumen ---------------- */
+
+.resumen {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.25cm;
+  border: 0.5pt solid #d1d5db;
+  padding: 0.22cm 0.3cm;
+  margin-bottom: 0.3cm;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.resumenItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.notaParcial {
+  font-size: 6.5pt;
+  color: #b45309;
+  font-weight: normal;
+}
+
+/* ---------------- Observaciones ---------------- */
+
+.observaciones {
+  border: 0.5pt solid #d1d5db;
+  padding: 0.22cm 0.3cm;
+  margin-bottom: 0.3cm;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.textoObservaciones {
+  font-size: 8pt;
+  margin-top: 0.1cm;
+  white-space: pre-wrap;
+}
+
+/* ---------------- Firmas ---------------- */
+
+.firmas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.8cm;
+  margin-top: 0.5cm;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.bloqueFirma {
+  display: flex;
+  flex-direction: column;
+}
+
+.tituloFirma {
+  font-size: 7.5pt;
+  font-weight: bold;
+  letter-spacing: 0.4pt;
+  color: #48151c;
+  text-align: center;
+  margin-bottom: 0.5cm;
+}
+
+.lineaFirma {
+  border-bottom: 0.5pt solid #111827;
+  height: 0.85cm;
+}
+
+.lineaFirmaCorta {
+  border-bottom: 0.5pt solid #9ca3af;
+  height: 0.45cm;
+  margin-top: 0.15cm;
+}
+
+.nombreFirma {
+  font-size: 8pt;
+  font-weight: bold;
+  text-align: center;
+  margin-top: 0.08cm;
+  min-height: 0.35cm;
+}
+
+.cargoFirma {
+  font-size: 7pt;
+  color: #6b7280;
+  text-align: center;
+  min-height: 0.3cm;
+}
+
+.fechaFirma {
+  font-size: 6.8pt;
+  color: #6b7280;
+  text-align: center;
+  margin-top: 0.08cm;
+}
+
+/* ---------------- Pie ---------------- */
+
+.pie {
+  margin-top: 0.45cm;
+  padding-top: 0.15cm;
+  border-top: 0.5pt solid #d1d5db;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.4cm;
+  align-items: end;
+  font-size: 6.5pt;
+  color: #6b7280;
+  line-height: 1.3;
+}
+
+.pieDerecha {
+  font-weight: bold;
+  color: #48151c;
+  letter-spacing: 0.5pt;
+  white-space: nowrap;
+}
+
+/* ---------------- Impresión ---------------- */
+
+@media print {
+  .documento {
+    width: 100%;
+    padding: 0;
+  }
+
+  .tabla th {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .tabla tbody tr:nth-child(even) {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .bloqueGeneral {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

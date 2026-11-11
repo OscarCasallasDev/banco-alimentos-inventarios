@@ -1,248 +1,183 @@
 # Estado Actual del Proyecto
 
-**Última actualización:** 2026-10-20
+**Última actualización:** 2026-11-10
 
 ---
 
 ## Resumen Ejecutivo
 
-El sistema está **conectado y funcional de extremo a extremo** contra la base de
-datos real de Supabase. Todos los módulos (catálogo, inventario, entradas,
-flujo de salida, auditoría, reportes, dashboard, usuarios e integración
-Siigo) están implementados, probados y verificados con una suite end-to-end
-de **60 pruebas** que se ejecuta contra la aplicación en ejecución.
+El sistema está en la **primera etapa** de la ruta acordada con el Banco:
+la **comunicación entre el almacenista y la persona encargada del despacho**.
+
+El flujo operativo completo funciona de extremo a extremo:
+
+```
+Almacenista ──► nueva orden de pedido ──► ORDEN DE PEDIDO imprimible (OP-2026-0001)
+                                                            │
+Despacho ────────► recibe, verifica y continúa en Siigo Pyme ◄─┘
+```
+
+Todo lo anterior del proyecto **se conserva**: 33 tablas del modelo original,
+los 14 módulos previos, sus rutas, sus datos y sus pruebas. Los módulos que
+no se necesitan en esta etapa están **en espera mediante banderas
+reversibles**, no eliminados.
 
 ---
 
 ## ✅ Estado por capa
 
-### Base de datos — COMPLETO Y CONECTADO
-- 20 tablas de negocio + tabla de control de migraciones (`_migrations`)
-- 16 tipos ENUM
-- Migraciones `0000` … `0003` aplicadas y registradas
-- Seed completo y coherente (productos, bodegas, inventario, documentos y su detalle)
-- Script de instalación idempotente: `npm run db:setup`
+### Base de datos — COMPLETO
 
-### Conexión a Supabase — RESILIENTE
-El host directo de Supabase (`db.<ref>.supabase.co`) resuelve por DNS de forma
-intermitente y provocaba la caída del sistema con `getaddrinfo ENOTFOUND`.
-La conexión quedó así:
-
-| Variable | Valor |
+| Elemento | Estado |
 |---|---|
-| `DATABASE_URL` | Pooler de Supabase (modo sesión, 5432) — estable, IP fija |
-| `DATABASE_FALLBACK_URLS` | Pooler en modo transacción (6543) y conexión directa |
+| Tablas | **49** (33 originales + 16 nuevas de esta etapa) |
+| Enums | 28 |
+| Migraciones | `0000` … `0011`, idempotentes y aditivas |
+| Script de instalación | `npm run db:setup` (re-ejecutable) |
 
-Además, la capa de datos **cambia de conexión sola** si una falla (failover
-automático) y, si ninguna responde, la aplicación muestra un mensaje
-accionable en vez de reventar con un "Runtime Error".
+**Migraciones nuevas de esta etapa:**
 
-Comprobado con `npm run test:conexion` en las dos situaciones:
-- Principal rota con respaldo válido → la aplicación se recupera sola.
-- Principal y respaldo rotos → mensaje accionable y API con 503
-  `DATABASE_UNAVAILABLE`.
+| Migración | Contenido |
+|---|---|
+| `0009_salidas_siigo_import.sql` | Importación desde Siigo, salidas de almacén, reservas, mapeo de bodegas, banderas de módulo |
+| `0010_flags_programas.sql` | Banderas de módulo y catálogo base de programas |
+| `0011_destinos_orden_pedido.sql` | Catálogo de destinos, ubicaciones de Siigo, movimientos del reporte resumen, peso/vencimiento en las líneas, campos de bodega |
 
-### Capa de acceso a datos — COMPLETA
-- **Drizzle ORM** sobre `postgres.js` (única capa de acceso a datos)
-- Conexión directa o *pooler* de Supabase (se detecta sola)
-- Transacciones reales para las operaciones que mueven inventario
-- Convenciones unificadas: la base usa `snake_case`, la aplicación `camelCase`
+### Importación desde Siigo Pyme — COMPLETO
 
-### Autenticación — COMPLETA
-- Cookie `HttpOnly` firmada con HMAC-SHA256 (no falsificable)
-- `src/proxy.ts` protege páginas y APIs (401 en JSON para las APIs)
-- Validación de sesión en el servidor en el layout protegido
-- Contraseñas con SHA-256 (deuda técnica documentada)
+Se procesan **los dos reportes** que genera Siigo, con tratamiento distinto
+porque no dicen lo mismo:
 
-### API — COMPLETA (26 rutas)
-| Módulo | Rutas | Estado |
+| Reporte | Qué actualiza | Saldos |
 |---|---|---|
-| Autenticación | `login`, `logout`, `me`, `register` | ✅ |
-| Productos | `GET/POST /api/productos`, `GET/PUT/DELETE /api/productos/[id]` | ✅ |
-| Bodegas | `GET/POST /api/bodegas`, `GET/PUT/DELETE /api/bodegas/[id]` | ✅ |
-| Categorías | `GET/POST /api/categorias` | ✅ |
-| Inventario | `GET /api/inventario` | ✅ |
-| Entradas | `GET/POST /api/entradas`, `POST /api/entradas/[id]/confirmar` | ✅ |
-| Pedidos | `GET/POST /api/pedidos` | ✅ |
-| Facturas | `GET/POST /api/facturas` | ✅ |
-| Recibos | `GET/POST /api/recibos` | ✅ |
-| Despachos | `GET/POST /api/despachos` | ✅ |
-| Auditoría | `GET/POST /api/auditoria` | ✅ |
-| Dashboard | `GET /api/dashboard` | ✅ |
-| Reportes | `GET /api/reportes` | ✅ |
-| Usuarios | `GET/POST /api/usuarios`, `GET/PUT/DELETE /api/usuarios/[id]` | ✅ |
-| Configuración | `GET /api/configuracion` | ✅ |
-| Siigo | `POST /api/siigo/export` | ✅ DEMO |
+| **Detallado** (65.832 filas) | existencias, movimientos, catálogo | **Sí** (trae `CANT. ANTERIOR`) |
+| **Resumen por bodega** (2.209 filas) | bodegas, ubicaciones, productos, movimientos agregados | **No** (su columna de diferencia es el movimiento neto) |
 
-Todas las rutas: validación Zod con schemas compartidos, sesión obligatoria,
-manejo centralizado de errores y bitácora de auditoría.
+- Lector propio del `.xlsx`: **1.830 ms / 212 MB** frente a **30.065 ms / 900 MB** de SheetJS.
+- Idempotencia en 5 capas (hash del archivo, corrida, lote, fila, clave natural del movimiento).
+- Importar el mismo archivo **no duplica nada**.
+- Detecta **1 fila corrupta** en el archivo real y marca **1 grupo** para revisión.
 
-### Frontend — COMPLETO (14 páginas)
-Dashboard, Entradas, Pedidos, Facturas, Recibos, Despachos, Auditoría,
-Inventario, Productos, Bodegas, Reportes, Usuarios, Integración Siigo y
-Configuración. Las 14 renderizan correctamente y la redirección sin sesión
-funciona.
+Ver `docs/IMPORTACION_SIIGO.md`.
 
-### Reglas de negocio — IMPLEMENTADAS Y VERIFICADAS
-1. No se aceptan cantidades cero ni negativas.
-2. Toda entrada confirmada suma al inventario.
-3. Un despacho por encima de la existencia se rechaza y **no** altera el stock.
-4. Cada recibo genera un único despacho (no se puede descontar dos veces).
-5. Las entradas y auditorías en DRAFT se confirman con un endpoint dedicado.
-6. La auditoría toma la existencia **real** del sistema, no la que envía el cliente.
-7. Productos, bodegas y usuarios se desactivan; nunca se borra su historial.
-8. Todo movimiento queda registrado en `inventory_movements` con su saldo.
-9. Todo documento queda registrado en `documents` y en `audit_logs`.
+### Salidas de almacén / Orden de pedido — COMPLETO
 
-### Pruebas — AUTOMATIZADAS
+- Formulario con destino (autocompletado), bodega, productos (autocompletado
+  desde el inventario importado) y líneas editables con cantidad, unidad,
+  peso, unidad de peso y fecha de vencimiento.
+- Numeración única e irrepetible `OP-2026-0001`.
+- Documento imprimible **ORDEN DE PEDIDO** (carta, con logo, encabezados
+  repetidos, espacios de firma y reimpresión idéntica).
+- Estados: `DRAFT` → `GENERATED` → `DELIVERED` → `CONFIRMED_SIIGO` → `CANCELLED`.
+
+### Control de existencias — COMPLETO (sin doble descuento)
+
+- La existencia informada por Siigo **nunca** se modifica desde la aplicación.
+- Las salidas **reservan** cantidades; la reserva se libera cuando una
+  importación **demuestra** que Siigo ya reflejó el descuento.
+- Verificado con `npm run test:reconciliacion`: 100 → salida de 50 → disponible
+  50 → nueva importación con 50 → **disponible 50 (no 0)**.
+
+### Roles y permisos — COMPLETO
+
+- Rol nuevo `ALMACENISTA` (además de `SUPERADMIN`, `ADMIN`, `RECEPCION`,
+  `DESPACHO`, `CONTABILIDAD`).
+- Permisos **configurables** en la tabla `roles.permissions`.
+- Validación en el **backend** (`requireRole`, `requirePermission`,
+  `requireModuleAccess`), no solo ocultando botones.
+
+### Módulos en espera — REVERSIBLES
+
+Se desactivan con una bandera desde **Configuración → Módulos del sistema**.
+Sus rutas, tablas y datos siguen intactos.
+
+| Módulo | Estado |
+|---|---|
+| Entradas, Pedidos, Facturas, Recibos, Auditoría, Lotes, Movimientos, Reportes, Productos, Despachos (flujo contable) | En espera |
+
+---
+
+## 🧪 Pruebas
+
 | Suite | Comando | Resultado |
 |---|---|---|
-| Unitarias (validaciones + exportador Siigo) | `npm run test:run` | 43 ✅ |
-| End-to-end (todos los módulos por HTTP) | `npm run test:e2e` | 60 ✅ |
-| End-to-end del módulo de Entradas (7 escenarios) | `npm run test:e2e:entradas` | 62 ✅ |
-| Verificación integral (conexión + esquema + un test por módulo + lectura directa de la BD) | `npm run verify` | 46 ✅ |
-| Módulos (página + datos, como en el navegador) | `npm run check:modulos` | 51 ✅ |
-| Conexión y failover (principal rota → recuperación automática) | `npm run test:conexion` | ✅ |
-| Interfaz (render de las 14 páginas) | `npm run check:ui` | 15 ✅ |
+| Unitarias + integración | `npm run test:run` | **154 / 154** ✅ |
+| Flujo operativo (orden de pedido) | `npm run test:orden` | **42 / 42** ✅ |
+| Reconciliación (sin doble descuento) | `npm run test:reconciliacion` | **9 / 9** ✅ |
 | Tipos | `npm run typecheck` | ✅ |
-| Lint | `npm run lint` | 0 errores ✅ |
+| Lint | `npm run lint` | ✅ 0 errores |
+| Build | `npm run build` | ✅ |
 
-### Módulo de Entradas — ADAPTADO AL PROCEDIMIENTO DE SIIGO PYME
-
-| Aspecto | Estado |
-|---|---|
-| Captura en el orden del procedimiento | ✅ Tipo → entidad → datos → fecha → O.C. → C.C. → productos → lotes → observaciones |
-| Tipos de entrada con título y código documental | ✅ E1, E3, N3, N5 (`src/lib/entries/entry-types.ts`) |
-| Consecutivo atómico por tipo (`E-003-28`) | ✅ `document_sequences` con `INSERT … ON CONFLICT` |
-| Entidades con autocompletado (NIT, razón social) | ✅ `third_parties` + `/api/terceros` |
-| Lotes con vencimiento y control por línea | ✅ `entry_item_lots` + validación de la suma |
-| Valor monetario, D/C, ubicación, secuencia, NIT por línea | ✅ columnas nuevas en `entry_items` |
-| Comprobante impreso media hoja carta | ✅ `/entradas/[id]/comprobante` |
-| Cantidades con decimales | ✅ `numeric(14,3)` en inventario, movimientos y líneas |
-| Catálogos de unidades y centros de costo | ✅ `units`, `cost_centers` |
-
-Detalle completo en **[MODULO_ENTRADAS.md](./MODULO_ENTRADAS.md)**.
-
-### Verificación de conexión y de datos en Supabase
-
-`npm run verify` es la herramienta para demostrar en una demostración que el
-sistema está realmente conectado:
-
-1. **Conexión**: TCP + autenticación + consulta, con host, versión de
-   PostgreSQL y latencia. Confirma además una escritura real.
-2. **Esquema**: 20 tablas, 17 enums, 75 índices y 31 claves foráneas.
-3. **Un test por módulo** a través de la API real (no consultas directas), lo
-   que demuestra que toda la cadena —interfaz → ruta → servicio → base— funciona.
-4. **Lectura directa** de la base para confirmar el valor escrito (cantidades,
-   estados, saldos y diferencias de auditoría).
-5. **Instrucciones** de dónde ver cada dato en el dashboard de Supabase.
-
-Los datos quedan marcados con el prefijo `PRUEBA-AAAAMMDD-HHMM` y se limpian
-con `scripts/supabase-limpiar.sql` (solo toca ese prefijo).
+> Las pruebas de integración usan la base de datos real: **no deben
+> ejecutarse en paralelo** con una importación (`npm run siigo:import`),
+> porque comparten las mismas tablas.
 
 ---
 
-## 🔧 Pendientes (por prioridad)
+## 🔧 Pendientes
 
 ### Alta prioridad
-1. **Rotar las claves de Supabase**: la clave secreta estuvo hardcodeada en
-   scripts antiguos que ya están en el historial de git. Genera una nueva en
-   *Supabase Dashboard → Project Settings → API* y actualiza `.env.local`.
-2. **Validar los formatos Siigo** con el Banco (ver más abajo).
-3. **Reglas de RLS** en Supabase si se decide exponer el acceso directo desde
-   el cliente. Hoy la aplicación accede con el rol de servicio y toda la
-   validación vive en el servidor.
+
+1. **Mapeo de las 7 bodegas de Siigo** con las de la aplicación (los
+   nombres llegan truncados en el reporte).
+2. **Reporte de existencias actuales**: el reporte resumen no trae saldos.
+   Para refrescar existencias cada 1–2 horas sin el reporte detallado hace
+   falta un reporte con saldo inicial o final.
+3. **Catálogo oficial de parroquias y grupos de familia** para reemplazar los
+   10 destinos de demostración.
 
 ### Media prioridad
-4. **Paginación y filtros** en los listados (hoy devuelven todo).
-5. **Migrar el hash de contraseñas** a bcrypt/argon2 o Supabase Auth.
-6. **Rate limiting** en el endpoint de login.
-7. **Impresión/PDF** de los soportes físicos.
-8. **Alertas automáticas** de stock bajo.
+
+4. Rotar las claves de Supabase que quedaron en el historial de Git.
+5. Migrar el hash de contraseñas a bcrypt/argon2.
+6. Impresión directa a PDF desde el servidor (hoy se usa el diálogo del
+   navegador, igual que el comprobante de entrada).
+7. Rate limiting en el login y reglas de RLS en Supabase.
 
 ### Baja prioridad
-9. Migrar las páginas a React Query (hoy usan `fetch` + `useState`).
-10. Componentes reutilizables de formulario (`FormField` ya existe, falta Adoption).
-11. Exportación de reportes a Excel/PDF.
-12. Respaldo automático de la base de datos.
+
+8. Migrar el resto de las páginas a React Query.
+9. Exportación de reportes a Excel.
 
 ---
 
-## 📋 Pendientes de validación con el Banco
-
-- [ ] Significado exacto de los formatos E1/E3/N3/N5
-- [ ] Diferencia funcional entre SF1 y F2
-- [ ] Relación de R1/R2/R3/R4 con SF1/F2
-- [ ] Plantillas ExcelSiigo (GET/PUSH)
-- [ ] Nombres definitivos de las bodegas virtuales
-- [ ] Formato físico de los soportes
-- [ ] Cuenta contable y centro de costo para el formato N5
-- [ ] Precio unitario de los productos (hoy vive en Siigo Pyme)
-
----
-
-## 🚀 Inicio rápido
+## ▶️ Inicio rápido
 
 ```bash
 npm install
-cp .env.example .env.local     # y completar con los datos de Supabase
-
-npm run db:check               # verifica la conexión y ajusta DATABASE_URL
-npm run db:setup               # aplica migraciones y carga la semilla
-npm run dev                    # http://localhost:3000
+npm run db:setup        # aplica las migraciones (idempotente)
+npm run dev             # http://localhost:3000
 ```
 
 **Usuario:** `admin` · **Contraseña:** `admin123`
 
-Comandos de verificación:
+### Cargar el inventario de Siigo
 
 ```bash
-npm run typecheck   # TypeScript estricto
-npm run lint        # ESLint
-npm run test:run    # pruebas unitarias
-npm run test:e2e    # prueba end-to-end de todos los módulos
-npm run check:ui    # render de todas las páginas
-npm run check:modulos  # cada módulo: página + datos (como en el navegador)
-npm run test:conexion  # comprueba la conexión y el failover
+npm run siigo:import -- "tests/fixtures/siigo-reporte-inventarios.xlsx"
+npm run siigo:import -- "tests/fixtures/siigo-reporte-resumido.xlsx"
 ```
 
-Para dejar la base de datos como recién salida de la semilla:
-`npm run db:setup:reset`
+### Sincronización automática (opcional)
+
+```bash
+npm run agent:install   # registra la Tarea Programada de Windows (cada hora)
+npm run agent:run       # prueba manual del agente
+```
 
 ---
 
-## 📊 Progreso por FASE
+## 📌 Decisiones técnicas destacadas
 
-| FASE | Descripción | Estado |
-|------|-------------|--------|
-| FASE 0 | Análisis del entorno | ✅ Completado |
-| FASE 1 | Arquitectura + Scaffold | ✅ Completado |
-| FASE 2 | Base de datos (schema + migraciones + seed) | ✅ Completado |
-| FASE 3 | Autenticación + Layout | ✅ Completado |
-| FASE 4 | Productos + Bodegas (CRUD) | ✅ Completado |
-| FASE 5 | Inventario + Entradas | ✅ Completado |
-| FASE 6 | Salidas (Pedido → Factura → Recibo → Despacho) | ✅ Completado |
-| FASE 7 | Auditoría + Reportes | ✅ Completado |
-| FASE 8 | Integración Siigo (DEMO) | ✅ Implementada (plantilla PENDIENTE) |
-| FASE 9 | Pruebas | ✅ Unitarias + E2E + UI |
-| FASE 10 | Deploy | ⏳ Pendiente de rotar claves y configurar Vercel |
+| Decisión | Motivo |
+|---|---|
+| Lector propio del `.xlsx` | 12× más rápido y 4× menos memoria que SheetJS; el Excel nunca se procesa en el navegador |
+| `INSERT … SELECT … FROM unnest(...)` | Un parámetro por columna en vez de uno por celda: la importación del resumen pasó de 440 s a 7 s |
+| Código de producto normalizado a `LIN-GRUP-ELEMEN` | Los dos reportes de Siigo codifican el producto distinto; sin normalizar el catálogo queda duplicado |
+| `siigo_balances` separado del `inventory` legacy | Las existencias de Siigo no tienen lotes; mezclarlas contaminaría el módulo de trazabilidad por lotes |
+| Reservas en vez de descuento directo | Evita el doble descuento cuando Siigo refleja el movimiento |
+| Banderas en base de datos | Activar o desactivar módulos sin tocar código ni despliegues |
 
 ---
 
-## 🔐 Notas de seguridad
-
-- **NUNCA** subir `.env.local` al repositorio (ya está en `.gitignore`).
-- **NUNCA** exponer la clave secreta de Supabase: solo se usa en el servidor.
-- Los scripts de `scripts/` leen las credenciales del `.env.local`; no hay
-  secretos en el código.
-- Las contraseñas usan SHA-256 por compatibilidad con la semilla. Migrar a
-  bcrypt/argon2 antes de producción.
-- La sesión viaja en cookie `HttpOnly` firmada (no falsificable desde el cliente).
-- No hay rate limiting en el login ni protección CSRF.
-
----
-
-## 📞 Soporte
-
-- **Desarrollador:** Oscar Daniel Casallas Lozano
-- **Programa:** Paz y Región 2026B — Universidad de Ibagué
+*Desarrollador: Oscar Daniel Casallas Lozano · Programa: Paz y Región 2026B — Universidad de Ibagué*

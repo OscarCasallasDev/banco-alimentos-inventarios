@@ -169,12 +169,58 @@ const MODULES = [
     page: "/inventario",
     endpoint: "/api/inventario",
     async check(data) {
-      const rows = data?.data;
+      const rows = data?.data?.items;
       if (!Array.isArray(rows)) return fail("no devolvió un listado");
       ok(`${rows.length} registro(s) de stock`);
-      if (rows[0]) ok(`${rows[0].productCode} en ${rows[0].warehouseCode} → ${rows[0].quantity} unidades`);
+      if (rows[0]) {
+        ok(
+          `${rows[0].productCode} en ${rows[0].warehouseCode} → ${rows[0].quantity} ${rows[0].stockUnit}` +
+            ` · ${rows[0].lotCount} lote(s) · ${rows[0].totalWeightKg} kg`
+        );
+      }
       const conNombre = rows.find((r) => r.productName && r.warehouseName);
       if (!conNombre) fail("no trae el nombre del producto ni de la bodega");
+      const conPeso = rows.find((r) => typeof r.totalWeightKg === "number");
+      if (!conPeso) fail("no trae el peso disponible");
+    },
+  },
+  {
+    name: "Lotes",
+    page: "/lotes",
+    endpoint: "/api/lotes?pageSize=10",
+    async check(data) {
+      const rows = data?.data?.items;
+      if (!Array.isArray(rows)) return fail("no devolvió un listado");
+      ok(`${data.data.total} lote(s) en total`);
+      if (rows[0]) {
+        ok(
+          `${rows[0].code} · ${rows[0].productCode} · ` +
+            `${rows[0].quantityAvailable} ${rows[0].stockUnit} · ` +
+            `${rows[0].weightAvailableKg ?? "sin peso"} kg · ` +
+            `vencimiento ${rows[0].expirationDate ?? "sin dato"}`
+        );
+      }
+      const conCodigo = rows.find((r) => r.code);
+      if (!conCodigo) fail("no trae el código de lote");
+    },
+  },
+  {
+    name: "Movimientos",
+    page: "/movimientos",
+    endpoint: "/api/movimientos?pageSize=10",
+    async check(data) {
+      const rows = data?.data?.items;
+      if (!Array.isArray(rows)) return fail("no devolvió un listado");
+      ok(`${data.data.total} movimiento(s) en el libro`);
+      if (rows[0]) {
+        ok(
+          `${rows[0].type} · ${rows[0].productCode} · ` +
+            `${rows[0].quantity} ${rows[0].stockUnit} · ` +
+            `lote ${rows[0].lotCode ?? "sin lote (histórico)"}`
+        );
+      }
+      const conLote = rows.find((r) => r.lotId);
+      if (conLote) ok(`movimiento con lote: ${conLote.lotCode} · saldo ${conLote.lotBalanceAfter}`);
     },
   },
   {

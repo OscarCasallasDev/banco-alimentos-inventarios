@@ -234,6 +234,97 @@ describe("Create Entry Schema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("debe aceptar el lote con código externo, vencimiento y peso fraccionado", () => {
+    // Payload exacto que envía el formulario de Entradas.
+    const result = createEntrySchema.safeParse({
+      format: "E1",
+      date: "2026-10-27",
+      sellerNumber: 1,
+      status: "CONFIRMED",
+      items: [
+        {
+          productId: "123e4567-e89b-12d3-a456-426614174000",
+          warehouseId: "123e4567-e89b-12d3-a456-426614174001",
+          quantity: 300,
+          unit: "BOLSA",
+          presentation: "Bolsa 500g",
+          value: 0,
+          debitCredit: 0,
+          lots: [
+            {
+              externalCode: "LOTE-FABRICA-99",
+              description: "LOTES INICIAL",
+              expirationDate: "2026-11-01",
+              expirationUnknown: false,
+              quantity: 300,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.items[0].lots[0].externalCode).toBe("LOTE-FABRICA-99");
+      expect(result.data.items[0].lots[0].expirationDate).toBe("2026-11-01");
+    }
+  });
+
+  it("debe aceptar un lote cuyo vencimiento se declara desconocido", () => {
+    const result = createEntrySchema.safeParse({
+      format: "E1",
+      date: "2026-10-27",
+      sellerNumber: 1,
+      items: [
+        {
+          productId: "123e4567-e89b-12d3-a456-426614174000",
+          warehouseId: "123e4567-e89b-12d3-a456-426614174001",
+          quantity: 12.5,
+          unit: "KG",
+          value: 0,
+          debitCredit: 0,
+          lots: [
+            {
+              expirationDate: undefined,
+              expirationUnknown: true,
+              expirationNote: "El Banco no conoce el vencimiento",
+              quantity: 12.5,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.items[0].lots[0].expirationUnknown).toBe(true);
+      expect(result.data.items[0].lots[0].expirationDate).toBeUndefined();
+    }
+  });
+
+  it("debe rechazar una fecha de vencimiento con formato inválido", () => {
+    const result = createEntrySchema.safeParse({
+      format: "E1",
+      date: "2026-10-27",
+      sellerNumber: 1,
+      items: [
+        {
+          productId: "123e4567-e89b-12d3-a456-426614174000",
+          warehouseId: "123e4567-e89b-12d3-a456-426614174001",
+          quantity: 100,
+          unit: "BOLSA",
+          value: 0,
+          debitCredit: 0,
+          lots: [
+            { expirationDate: "01/11/2026", quantity: 100 },
+          ],
+        },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it("debe aceptar cantidades con decimales", () => {
     const result = createEntrySchema.safeParse({
       format: "E3",

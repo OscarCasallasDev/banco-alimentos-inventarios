@@ -86,6 +86,42 @@ const MIGRATION_CHECKS = {
       join pg_enum e on e.enumtypid = t.oid
       where t.typname = 'audit_log_action' and e.enumlabel = 'WAREHOUSE_CREATE'
     ) as done`,
+  "0004_modulo_entradas.sql": `
+    select to_regclass('public.entry_items') is not null as done`,
+  "0005_lotes_trazabilidad.sql": `
+    select exists (
+      select 1 from information_schema.columns
+      where table_schema = 'public' and table_name = 'lots' and column_name = 'quantity_available'
+    ) as done`,
+  "0006_lotes_apertura.sql": `
+    select to_regclass('public.v_lot_stock') is not null as done`,
+  "0007_lotes_operacion.sql": `
+    select exists (
+      select 1 from information_schema.columns
+      where table_schema = 'public' and table_name = 'lots' and column_name = 'unit_kind'
+    ) and to_regclass('public.system_settings') is not null as done`,
+  "0008_secuencias_documentales.sql": `
+    select to_regclass('public.document_sequences') is not null as done`,
+  "0009_salidas_siigo_import.sql": `
+    select to_regclass('public.siigo_balances') is not null
+       and to_regclass('public.salidas') is not null
+       and to_regclass('public.siigo_import_runs') is not null as done`,
+  "0010_flags_programas.sql": `
+    select to_regclass('public.programs') is not null
+       and to_regclass('public.feature_flags') is not null as done`,
+  "0011_destinos_orden_pedido.sql": `
+    select to_regclass('public.destinations') is not null
+       and to_regclass('public.siigo_locations') is not null
+       and to_regclass('public.siigo_resumen_movements') is not null as done`,
+  "0012_consolidacion_vencimientos.sql": `
+    select to_regclass('public.v_stock_consolidated') is not null
+       and to_regclass('public.vencimiento_lotes') is not null as done`,
+  "0013_group_key_conciliacion.sql": `
+    select exists (
+      select 1 from information_schema.columns
+      where table_schema = 'public' and table_name = 'siigo_reservations'
+        and column_name = 'group_key'
+    ) as done`,
 };
 
 async function isAlreadyApplied(sql, file) {

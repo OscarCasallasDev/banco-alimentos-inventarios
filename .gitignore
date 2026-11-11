@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Fixture grande del reporte detallado (8 MB). Se copia manualmente para
+# ejecutar las pruebas que lo usan; estas se omiten si no está presente.
+tests/fixtures/siigo-reporte-inventarios.xlsx
+

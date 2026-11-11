@@ -9,6 +9,7 @@ import {
   Trash2,
   X,
   AlertCircle,
+  Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApiQuery } from "@/hooks/useApiQuery";
@@ -23,6 +24,17 @@ interface WarehouseItem {
   type: "PROPIA" | "TERCERO" | "CAMPAIGN" | "PROGRAM";
   status: "ACTIVE" | "INACTIVE";
   observations: string | null;
+  /** Origen: MANUAL (cat?logo local) o SIIGO (importado del reporte). */
+  source: string;
+  /** C?digo de bodega en Siigo Pyme. */
+  siigoCode: number | null;
+  /** Resumen de existencias importadas. */
+  siigoSummary: {
+    productCount: number;
+    locationCount: number;
+    totalQuantity: number;
+    lastSyncedAt: string | null;
+  } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -186,7 +198,9 @@ export default function BodegasPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Bodegas</h1>
-          <p className="text-gray-600 mt-1">Gestión de bodegas y almacenes</p>
+          <p className="text-gray-600 mt-1">
+            Bodegas del sistema y las importadas desde Siigo Pyme
+          </p>
         </div>
         <button
           onClick={openCreate}
@@ -195,6 +209,17 @@ export default function BodegasPage() {
           <Plus className="w-4 h-4" />
           Nueva Bodega
         </button>
+      </div>
+
+      {/* Origen del catálogo */}
+      <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800">
+        <Info className="w-4 h-4 shrink-0 mt-0.5" />
+        <p>
+          El catálogo de bodegas se alimenta del reporte de Siigo Pyme: las
+          bodegas importadas se identifican por su código de Siigo y su nombre
+          se actualiza en cada importación, sin duplicarlas. «Nueva Bodega» es
+          para las bodegas que no vienen de Siigo.
+        </p>
       </div>
 
       {/* Search */}
@@ -229,7 +254,7 @@ export default function BodegasPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center text-gray-500">
+                  <td colSpan={7} className="py-12 text-center text-gray-500">
                     <div className="flex items-center justify-center gap-2">
                       <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600" />
                       Cargando...
@@ -238,7 +263,7 @@ export default function BodegasPage() {
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center text-gray-500">
+                  <td colSpan={7} className="py-12 text-center text-gray-500">
                     <Warehouse className="w-10 h-10 mx-auto mb-2 text-gray-300" />
                     No hay bodegas registradas
                   </td>

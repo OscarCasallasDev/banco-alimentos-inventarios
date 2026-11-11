@@ -5,6 +5,7 @@ import { ToastProvider } from "@/components/ui/Toast";
 import QueryProvider from "@/components/providers/QueryProvider";
 import { getCurrentUser } from "@/lib/auth/session";
 import { isConnectionError } from "@/lib/utils/connection";
+import { getFeatureFlags } from "@/lib/config/features";
 
 /**
  * Layout de las rutas protegidas.
@@ -54,10 +55,18 @@ export default async function Layout({ children }: { children: React.ReactNode }
     redirect("/login");
   }
 
+  // Banderas de módulo activas: determinan qué opciones ve el usuario.
+  const flags = await getFeatureFlags();
+  const enabledFlags = Object.entries(flags)
+    .filter(([, enabled]) => enabled)
+    .map(([key]) => key);
+
   return (
     <QueryProvider>
       <ToastProvider>
-        <ProtectedLayout user={user}>{children}</ProtectedLayout>
+        <ProtectedLayout user={user} enabledFlags={enabledFlags}>
+          {children}
+        </ProtectedLayout>
       </ToastProvider>
     </QueryProvider>
   );

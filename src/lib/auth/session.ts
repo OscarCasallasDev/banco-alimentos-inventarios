@@ -19,7 +19,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
-import { unauthorizedError } from "@/lib/utils/errors";
+import { unauthorizedError, forbiddenError } from "@/lib/utils/errors";
 import {
   SESSION_COOKIE_NAME,
   SESSION_MAX_AGE_SECONDS,
@@ -165,6 +165,22 @@ export async function requireUser(): Promise<SessionUser> {
 
   if (!user) {
     throw unauthorizedError("No autenticado");
+  }
+
+  return user;
+}
+
+/**
+ * Exige una sesión de administrador (SUPERADMIN o ADMIN).
+ * Se usa en las operaciones que alteran existencias o параметos del Banco.
+ */
+export async function requireAdmin(): Promise<SessionUser> {
+  const user = await requireUser();
+
+  if (user.role !== "SUPERADMIN" && user.role !== "ADMIN") {
+    throw forbiddenError(
+      "Esta operación requiere permisos de administrador"
+    );
   }
 
   return user;

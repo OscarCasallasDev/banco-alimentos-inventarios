@@ -8,9 +8,15 @@ import type { SessionUser } from "@/lib/auth/session";
 interface ProtectedLayoutProps {
   children: React.ReactNode;
   user: SessionUser;
+  /** Claves de banderas de módulo activas (calculadas en el servidor). */
+  enabledFlags: string[];
 }
 
-export default function ProtectedLayout({ children, user }: ProtectedLayoutProps) {
+export default function ProtectedLayout({
+  children,
+  user,
+  enabledFlags,
+}: ProtectedLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
@@ -22,7 +28,12 @@ export default function ProtectedLayout({ children, user }: ProtectedLayoutProps
         Ir al contenido principal
       </a>
 
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        user={user}
+        enabledFlags={enabledFlags}
+      />
 
       {/* Contenido principal */}
       <div className="app-content lg:pl-64">

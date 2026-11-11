@@ -15,6 +15,11 @@ import { sql } from "drizzle-orm";
 import { documentSequences } from "@/lib/db/schema";
 import type { DbExecutor } from "@/lib/db/client";
 import { formatDocumentCode, type EntryTypeCode } from "@/lib/entries/entry-types";
+import {
+  DOCUMENT_PREFIX,
+  formatDocumentNumber,
+  type DocumentPrefix,
+} from "@/lib/utils/numbers";
 
 /**
  * Asigna el siguiente consecutivo para un tipo de documento.
@@ -24,7 +29,7 @@ import { formatDocumentCode, type EntryTypeCode } from "@/lib/entries/entry-type
  */
 export async function nextDocumentSequence(
   executor: DbExecutor,
-  type: EntryTypeCode
+  type: EntryTypeCode | string
 ): Promise<number> {
   const [row] = await executor
     .insert(documentSequences)
@@ -51,4 +56,46 @@ export async function nextEntryDocumentCode(
 ): Promise<string> {
   const sequence = await nextDocumentSequence(executor, type);
   return formatDocumentCode(type, sequence);
+}
+
+/**
+ * Genera el número de despacho con un consecutivo atómico.
+ * Ejemplo: `DES-2026-0001`.
+ */
+export async function nextDispatchDocumentCode(
+  executor: DbExecutor,
+  date: Date
+): Promise<string> {
+  return nextYearlyDocumentCode(executor, DOCUMENT_PREFIX.DISPATCH, date);
+}
+
+/**
+ * Genera el número de una salida de almacén con un consecutivo atómico.
+ * Ejemplo: `SAL-2026-0001`.
+ *
+ * El número es único y no se reutiliza: vive en `document_sequences` con el
+ * ámbito `SAL-<AÑO>` y se asigna con `INSERT ... ON CONFLICT DO UPDATE`.
+ */
+export async function nextSalidaDocumentCode(
+  executor: DbExecutor,
+  date: Date
+): Promise<string> {
+  return nextYearlyDocumentCode(executor, DOCUMENT_PREFIX.ORDEN_PEDIDO, date);
+}
+
+/**
+ * Genera el número de un documento cuyo formato incluye el año
+ * (PED-2026-0001, FAC-2026-0001, REC-2026-0001, DES-2026-0001).
+ *
+ * El contador vive en `document_sequences` con el ámbito `PREFIJO-AÑO`, de
+ * modo que dos registros simultáneos nunca reciben el mismo número.
+ */
+export async function nextYearlyDocumentCode(
+  executor: DbExecutor,
+  prefix: DocumentPrefix,
+  date: Date
+): Promise<string> {
+  const year = date.getFullYear();
+  const sequence = await nextDocumentSequence(executor, `${prefix}-${year}`);
+  return formatDocumentNumber(prefix, date, sequence);
 }

@@ -9,8 +9,12 @@ import { Printer, ArrowLeft } from "lucide-react";
  */
 export default function ComprobanteAcciones({
   backUrl = "/entradas",
+  backLabel = "Volver a Entradas",
+  printLabel = "Imprimir comprobante",
 }: {
   backUrl?: string;
+  backLabel?: string;
+  printLabel?: string;
 }) {
   const router = useRouter();
 
@@ -22,7 +26,7 @@ export default function ComprobanteAcciones({
         className="inline-flex items-center gap-2 px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
-        Volver a Entradas
+        {backLabel}
       </button>
 
       <button
@@ -31,7 +35,7 @@ export default function ComprobanteAcciones({
         className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors"
       >
         <Printer className="w-4 h-4" />
-        Imprimir comprobante
+        {printLabel}
       </button>
     </div>
   );

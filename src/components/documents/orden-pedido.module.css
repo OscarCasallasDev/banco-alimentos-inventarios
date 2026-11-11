@@ -1,0 +1,378 @@
+/*
+ * Estilos de la ORDEN DE PEDIDO (formato carta).
+ *
+ * Reglas de impresión:
+ *   - `table-header-group` repite el encabezado de la tabla en cada página.
+ *   - `break-inside: avoid` evita que una fila o el bloque de firmas se partan.
+ *   - Cifras con `tabular-nums` para que las columnas no se descuadren.
+ */
+
+@page {
+  size: 21.59cm 27.94cm;
+  /* 1 cm de margen a cada lado deja ~19,59 cm imprimibles. El documento
+     usa 19,2 cm, as? que el encabezado nunca queda cortado por el borde. */
+  margin: 1cm 1cm;
+}
+
+.documento {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 8.5pt;
+  color: #111827;
+  background: #ffffff;
+  /* Cabe dentro del ?rea imprimible (19,59 cm) con holgura. */
+  width: 19.2cm;
+  max-width: 100%;
+  padding: 0 0.2cm;
+  box-sizing: border-box;
+  overflow-wrap: break-word;
+}
+
+/* ---------------- Encabezado ---------------- */
+
+.encabezado {
+  display: grid;
+  /* El bloque del documento tiene 44 % y el institucional 56 %; con el
+     gap y el padding, el texto de la derecha queda holgado dentro del
+     margen de impresi?n. */
+  grid-template-columns: 56% 44%;
+  gap: 0.2cm;
+  align-items: center;
+  border-bottom: 1.5pt solid #48151c;
+  padding-bottom: 0.25cm;
+  margin-bottom: 0.3cm;
+}
+
+.encabezado > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.encabezadoInstitucion {
+  display: flex;
+  align-items: center;
+  gap: 0.25cm;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.logo {
+  width: 2.4cm;
+  height: 1.95cm;
+  object-fit: contain;
+}
+
+.banco {
+  font-size: 10pt;
+  font-weight: bold;
+  line-height: 1.15;
+  letter-spacing: 0.2pt;
+  color: #48151c;
+}
+
+.datosInstitucion {
+  font-size: 7pt;
+  color: #4b5563;
+  line-height: 1.3;
+}
+
+.encabezadoDocumento {
+  text-align: right;
+  min-width: 0;
+  max-width: 100%;
+  /* Permite que el n?mero y el estado largos bajen de l?nea en vez de
+     salirse del ?rea imprimible. */
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.tituloDocumento {
+  font-size: 11pt;
+  font-weight: bold;
+  letter-spacing: 0.4pt;
+  color: #48151c;
+  line-height: 1.15;
+}
+
+.numeroDocumento {
+  font-size: 11.5pt;
+  font-weight: bold;
+  letter-spacing: 0.8pt;
+  margin: 0.1cm 0;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.fechaDocumento,
+.estadoDocumento {
+  font-size: 7.5pt;
+  color: #4b5563;
+  line-height: 1.35;
+}
+
+.estadoDocumento {
+  font-weight: bold;
+  color: #48151c;
+}
+
+/* ---------------- Información general ---------------- */
+
+.bloqueGeneral {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.15cm 0.6cm;
+  border: 0.5pt solid #d1d5db;
+  padding: 0.25cm 0.3cm;
+  margin-bottom: 0.3cm;
+  background: #f9fafb;
+}
+
+.datoGeneral {
+  display: flex;
+  flex-direction: column;
+}
+
+.etiqueta {
+  font-size: 6.5pt;
+  font-weight: bold;
+  letter-spacing: 0.3pt;
+  color: #6b7280;
+  text-transform: uppercase;
+}
+
+.valor {
+  font-size: 9pt;
+  font-weight: bold;
+  color: #111827;
+}
+
+.subDetalle {
+  display: block;
+  font-size: 6.8pt;
+  font-weight: normal;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.2pt;
+}
+
+/* ---------------- Tabla ---------------- */
+
+.tabla {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  margin-bottom: 0.3cm;
+}
+
+.tabla thead {
+  display: table-header-group;
+}
+
+.tabla th {
+  background: #48151c;
+  color: #ffffff;
+  font-size: 6.8pt;
+  font-weight: bold;
+  letter-spacing: 0.2pt;
+  text-align: left;
+  padding: 0.16cm 0.12cm;
+  border: 0.4pt solid #48151c;
+}
+
+.tabla td {
+  font-size: 8pt;
+  padding: 0.14cm 0.12cm;
+  border: 0.4pt solid #d1d5db;
+  vertical-align: top;
+  word-wrap: break-word;
+}
+
+.tabla tbody tr {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.tabla tbody tr:nth-child(even) {
+  background: #f9fafb;
+}
+
+.colNumero {
+  width: 4%;
+}
+.colCodigo {
+  width: 14%;
+}
+.colProducto {
+  width: 36%;
+}
+.colCantidad {
+  width: 10%;
+}
+.colUnidad {
+  width: 9%;
+}
+.colPeso {
+  width: 9%;
+}
+.colUnidadPeso {
+  width: 8%;
+}
+.colVencimiento {
+  width: 10%;
+}
+
+.numero {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.codigo {
+  font-family: "Courier New", monospace;
+  font-size: 7.2pt;
+}
+
+.notaProducto {
+  font-size: 7pt;
+  color: #6b7280;
+  font-style: italic;
+}
+
+/* ---------------- Resumen ---------------- */
+
+.resumen {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.25cm;
+  border: 0.5pt solid #d1d5db;
+  padding: 0.22cm 0.3cm;
+  margin-bottom: 0.3cm;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.resumenItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+/* ---------------- Observaciones ---------------- */
+
+.observaciones {
+  border: 0.5pt solid #d1d5db;
+  padding: 0.22cm 0.3cm;
+  margin-bottom: 0.3cm;
+  min-height: 1.2cm;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.textoObservaciones {
+  font-size: 8pt;
+  margin-top: 0.1cm;
+  white-space: pre-wrap;
+  min-height: 0.7cm;
+}
+
+/* ---------------- Firmas ---------------- */
+
+.firmas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.9cm;
+  margin-top: 0.6cm;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.bloqueFirma {
+  display: flex;
+  flex-direction: column;
+}
+
+.tituloFirma {
+  font-size: 7.5pt;
+  font-weight: bold;
+  letter-spacing: 0.4pt;
+  color: #48151c;
+  text-align: center;
+  margin-bottom: 0.5cm;
+}
+
+.lineaFirma {
+  border-bottom: 0.5pt solid #111827;
+  height: 1.1cm;
+  margin-bottom: 0.1cm;
+}
+
+.lineaFirmaCorta {
+  border-bottom: 0.5pt solid #9ca3af;
+  height: 0.45cm;
+  margin-top: 0.15cm;
+}
+
+.campoFirma {
+  font-size: 7.2pt;
+  color: #111827;
+  line-height: 1.5;
+  text-align: left;
+  margin-top: 0.05cm;
+  min-height: 0.32cm;
+  border-bottom: 0.3pt dotted #d1d5db;
+  padding-bottom: 0.02cm;
+}
+
+.campoEtiqueta {
+  font-size: 6.4pt;
+  font-weight: bold;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.2pt;
+}
+
+/* ---------------- Pie ---------------- */
+
+.pie {
+  margin-top: 0.45cm;
+  padding-top: 0.15cm;
+  border-top: 0.5pt solid #d1d5db;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.4cm;
+  align-items: end;
+  font-size: 6.5pt;
+  color: #6b7280;
+  line-height: 1.3;
+}
+
+.pieDerecha {
+  font-weight: bold;
+  color: #48151c;
+  letter-spacing: 0.5pt;
+  white-space: nowrap;
+}
+
+/* ---------------- Impresión ---------------- */
+
+@media print {
+  .documento {
+    width: 100%;
+    max-width: 100%;
+    padding: 0;
+  }
+
+  .tabla th {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .tabla tbody tr:nth-child(even) {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .bloqueGeneral {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

@@ -6,12 +6,13 @@
  * disminuye cuando el despacho se marca como DISPATCHED (regla 7).
  */
 
-import { desc, eq, like } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { orderItems, orders, users } from "@/lib/db/schema";
 import type { DbExecutor } from "@/lib/db/client";
 import { conflictError, notFoundError } from "@/lib/utils/errors";
 import { parseDocumentDate, toIsoDate } from "@/lib/utils";
-import { DOCUMENT_PREFIX, formatDocumentNumber } from "@/lib/utils/numbers";
+import { DOCUMENT_PREFIX } from "@/lib/utils/numbers";
+import { nextYearlyDocumentCode } from "./sequence.service";
 import type { CreateOrderInput } from "@/lib/validations/schemas";
 import {
   assertActiveProduct,
@@ -76,24 +77,13 @@ export async function getOrder(executor: DbExecutor, id: string) {
 
 /**
  * Calcula el siguiente consecutivo de pedido del año.
+ * Consecutivo atómico: dos pedidos simultáneos nunca comparten número.
  */
 async function nextOrderNumber(
   executor: DbExecutor,
   date: Date
 ): Promise<string> {
-  const year = date.getFullYear();
-  const rows = await executor
-    .select({ number: orders.number })
-    .from(orders)
-    .where(like(orders.number, `${DOCUMENT_PREFIX.ORDER}-${year}-%`));
-
-  const sequence =
-    rows.reduce((max, row) => {
-      const value = Number(row.number.split("-").pop());
-      return Number.isFinite(value) && value > max ? value : max;
-    }, 0) + 1;
-
-  return formatDocumentNumber(DOCUMENT_PREFIX.ORDER, date, sequence);
+  return nextYearlyDocumentCode(executor, DOCUMENT_PREFIX.ORDER, date);
 }
 
 /**

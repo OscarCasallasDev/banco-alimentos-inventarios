@@ -8,11 +8,17 @@ import {
   TrendingDown,
   Download,
   Loader2,
+  Layers,
 } from "lucide-react";
-import { cn, formatDateOnly, todayIsoDate } from "@/lib/utils";
+import { cn, formatDateOnly, formatNumber, todayIsoDate } from "@/lib/utils";
 import { useApiQuery } from "@/hooks/useApiQuery";
 import QueryError from "@/components/ui/QueryError";
 import { useToast } from "@/components/ui/Toast";
+import {
+  ExpirationBadge,
+  LotStatusBadge,
+  type ExpirationSeverity,
+} from "@/components/lots/LotComponents";
 
 interface ReportData {
   inventoryByWarehouse: Array<{
@@ -58,6 +64,56 @@ export default function ReportesPage() {
     refetch,
   } = useApiQuery<ReportData>("/api/reportes");
   const [exporting, setExporting] = useState(false);
+  const [pestana, setPestana] = useState<"resumen" | "lotes">("resumen");
+
+  // Filtros del reporte de lotes por vencimiento.
+  const [expiration, setExpiration] = useState("all");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [page, setPage] = useState(1);
+
+  const lotQuery = new URLSearchParams();
+  lotQuery.set("expiration", expiration);
+  lotQuery.set("hasStock", "true");
+  if (expiration === "range") {
+    if (from) lotQuery.set("expirationFrom", from);
+    if (to) lotQuery.set("expirationTo", to);
+  }
+  lotQuery.set("page", String(page));
+  lotQuery.set("pageSize", "50");
+
+  const {
+    data: lotData,
+    isLoading: loadingLots,
+    isError: lotsError,
+    error: lotesQueryError,
+    refetch: refetchLotes,
+  } = useApiQuery<{
+    items: {
+      id: string;
+      code: string;
+      externalCode: string | null;
+      productCode: string;
+      productName: string;
+      presentation: string | null;
+      warehouseCode: string;
+      warehouseName: string;
+      status: string;
+      expirationDate: string | null;
+      receivedAt: string | null;
+      quantityReceived: number;
+      quantityAvailable: number;
+      stockUnit: string;
+      weightAvailableKg: number | null;
+      daysToExpire: number | null;
+      expirationSeverity: ExpirationSeverity;
+      expirationLabel: string;
+    }[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  }>(`/api/lotes?${lotQuery.toString()}`);
 
   async function handleExport() {
     if (!data) return;
@@ -146,21 +202,93 @@ export default function ReportesPage() {
             Análisis del inventario y exportación a Excel
           </p>
         </div>
+        <div className="flex gap-2">
+          {pestana === "lotes" && (
+            <button
+              type="button"
+              onClick={() =>
+                window.open(
+                  `/api/reportes/lotes/export?${lotQuery.toString()}`,
+                  "_blank"
+                )
+              }
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary-600 px-4 py-2.5 font-medium text-primary-700 transition-colors hover:bg-primary-50"
+            >
+              <Download className="h-4 w-4" />
+              Exportar lotes
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={!data || exporting}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {exporting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            {exporting ? "Generando..." : "Exportar Excel"}
+          </button>
+        </div>
+      </div>
+
+      {/* Pestañas */}
+      <div className="flex gap-2 border-b border-gray-200">
         <button
           type="button"
-          onClick={handleExport}
-          disabled={!data || exporting}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {exporting ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Download className="h-4 w-4" />
+          onClick={() => setPestana("resumen")}
+          className={cn(
+            "px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
+            pestana === "resumen"
+              ? "border-primary-600 text-primary-700"
+              : "border-transparent text-gray-500 hover:text-gray-700"
           )}
-          {exporting ? "Generando..." : "Exportar Excel"}
+        >
+          Resumen del inventario
+        </button>
+        <button
+          type="button"
+          onClick={() => setPestana("lotes")}
+          className={cn(
+            "px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors inline-flex items-center gap-2",
+            pestana === "lotes"
+              ? "border-primary-600 text-primary-700"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          )}
+        >
+          <Layers className="h-4 w-4" />
+          Lotes por vencimiento
         </button>
       </div>
 
+      {pestana === "lotes" ? (
+        <ReporteLotes
+          data={lotData}
+          loading={loadingLots}
+          error={lotsError ? lotesQueryError : null}
+          onRetry={() => void refetchLotes()}
+          expiration={expiration}
+          setExpiration={(value) => {
+            setExpiration(value);
+            setPage(1);
+          }}
+          from={from}
+          setFrom={(value) => {
+            setFrom(value);
+            setPage(1);
+          }}
+          to={to}
+          setTo={(value) => {
+            setTo(value);
+            setPage(1);
+          }}
+          page={page}
+          setPage={setPage}
+        />
+      ) : (
+        <>
       {isError && <QueryError error={error} onRetry={() => void refetch()} />}
 
       {/* Inventario por bodega */}
@@ -318,6 +446,279 @@ export default function ReportesPage() {
           </div>
         )}
       </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+interface LoteReporte {
+  id: string;
+  code: string;
+  externalCode: string | null;
+  productCode: string;
+  productName: string;
+  presentation: string | null;
+  warehouseCode: string;
+  warehouseName: string;
+  status: string;
+  expirationDate: string | null;
+  receivedAt: string | null;
+  quantityReceived: number;
+  quantityAvailable: number;
+  stockUnit: string;
+  weightAvailableKg: number | null;
+  daysToExpire: number | null;
+  expirationSeverity: ExpirationSeverity;
+  expirationLabel: string;
+}
+
+/**
+ * Reporte de lotes por fecha de vencimiento.
+ * Cada fila es un lote individual con su cantidad y su peso.
+ */
+function ReporteLotes({
+  data,
+  loading,
+  error,
+  onRetry,
+  expiration,
+  setExpiration,
+  from,
+  setFrom,
+  to,
+  setTo,
+  page,
+  setPage,
+}: {
+  data: {
+    items: LoteReporte[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  } | undefined;
+  loading: boolean;
+  error: Error | null;
+  onRetry: () => void;
+  expiration: string;
+  setExpiration: (value: string) => void;
+  from: string;
+  setFrom: (value: string) => void;
+  to: string;
+  setTo: (value: string) => void;
+  page: number;
+  setPage: (page: number) => void;
+}) {
+  const items = data?.items ?? [];
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Criterio de vencimiento
+            </label>
+            <select
+              value={expiration}
+              onChange={(e) => setExpiration(e.target.value)}
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg"
+            >
+              <option value="all">Todos los lotes</option>
+              <option value="today">Vencen hoy</option>
+              <option value="tomorrow">Vencen mañana</option>
+              <option value="soon">Próximos a vencer</option>
+              <option value="expired">Ya vencidos</option>
+              <option value="missing">Sin fecha de vencimiento</option>
+              <option value="range">Rango de fechas</option>
+            </select>
+          </div>
+
+          {expiration === "range" && (
+            <>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Vence desde
+                </label>
+                <input
+                  type="date"
+                  value={from}
+                  onChange={(e) => setFrom(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Vence hasta
+                </label>
+                <input
+                  type="date"
+                  value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg"
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {error && <QueryError error={error} onRetry={onRetry} />}
+
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="text-left py-2 px-3 font-medium text-gray-600">
+                  Lote
+                </th>
+                <th className="text-left py-2 px-3 font-medium text-gray-600">
+                  Producto
+                </th>
+                <th className="text-left py-2 px-3 font-medium text-gray-600">
+                  Presentación
+                </th>
+                <th className="text-left py-2 px-3 font-medium text-gray-600">
+                  Ingreso
+                </th>
+                <th className="text-left py-2 px-3 font-medium text-gray-600">
+                  Vencimiento
+                </th>
+                <th className="text-right py-2 px-3 font-medium text-gray-600">
+                  Recibido
+                </th>
+                <th className="text-right py-2 px-3 font-medium text-gray-600">
+                  Disponible
+                </th>
+                <th className="text-right py-2 px-3 font-medium text-gray-600">
+                  Peso disp.
+                </th>
+                <th className="text-left py-2 px-3 font-medium text-gray-600">
+                  Bodega
+                </th>
+                <th className="text-left py-2 px-3 font-medium text-gray-600">
+                  Estado
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td
+                    colSpan={10}
+                    className="py-12 text-center text-gray-500"
+                  >
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600" />
+                      Cargando...
+                    </div>
+                  </td>
+                </tr>
+              ) : items.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={10}
+                    className="py-12 text-center text-gray-500"
+                  >
+                    <Layers className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+                    No hay lotes con este criterio
+                  </td>
+                </tr>
+              ) : (
+                items.map((lote) => (
+                  <tr
+                    key={lote.id}
+                    className="border-b border-gray-100 hover:bg-gray-50"
+                  >
+                    <td className="py-2 px-3 font-mono text-xs text-gray-900">
+                      {lote.code}
+                    </td>
+                    <td className="py-2 px-3 text-gray-900">
+                      <span className="font-mono text-xs text-gray-500">
+                        {lote.productCode}
+                      </span>{" "}
+                      {lote.productName}
+                    </td>
+                    <td className="py-2 px-3 text-gray-600">
+                      {lote.presentation ?? "—"}
+                    </td>
+                    <td className="py-2 px-3 text-gray-600">
+                      {lote.receivedAt ? formatDateOnly(lote.receivedAt) : "—"}
+                    </td>
+                    <td className="py-2 px-3">
+                      <ExpirationBadge
+                        expirationDate={lote.expirationDate}
+                        severity={lote.expirationSeverity}
+                        label={
+                          lote.expirationDate
+                            ? formatDateOnly(lote.expirationDate)
+                            : lote.expirationLabel
+                        }
+                        daysToExpire={lote.daysToExpire}
+                      />
+                    </td>
+                    <td className="py-2 px-3 text-right text-gray-700">
+                      {formatNumber(lote.quantityReceived)}
+                      <span className="ml-1 text-xs text-gray-400">
+                        {lote.stockUnit}
+                      </span>
+                    </td>
+                    <td className="py-2 px-3 text-right font-medium text-gray-900">
+                      {formatNumber(lote.quantityAvailable)}
+                      <span className="ml-1 text-xs text-gray-400">
+                        {lote.stockUnit}
+                      </span>
+                    </td>
+                    <td className="py-2 px-3 text-right text-gray-700">
+                      {lote.weightAvailableKg === null ? (
+                        <span className="text-xs text-gray-400">sin dato</span>
+                      ) : (
+                        `${formatNumber(lote.weightAvailableKg)} kg`
+                      )}
+                    </td>
+                    <td className="py-2 px-3 text-gray-600">
+                      {lote.warehouseCode}
+                    </td>
+                    <td className="py-2 px-3">
+                      <LotStatusBadge status={lote.status} />
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {data && data.totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-gray-600">
+            {data.total} lote(s) · página {data.page} de {data.totalPages}
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setPage(Math.max(1, page - 1))}
+              disabled={data.page <= 1}
+              className="px-3 py-2 text-sm border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50"
+            >
+              Anterior
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setPage(Math.min(data.totalPages, page + 1))
+              }
+              disabled={data.page >= data.totalPages}
+              className="px-3 py-2 text-sm border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50"
+            >
+              Siguiente
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

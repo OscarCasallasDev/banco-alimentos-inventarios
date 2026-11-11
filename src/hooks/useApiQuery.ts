@@ -11,7 +11,11 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api/client";
-import { ROUTE_ENDPOINTS, STALE_TIME_MS } from "@/lib/routes";
+import {
+  ROUTE_ENDPOINTS,
+  STALE_TIME_MS,
+  STOCK_ENDPOINTS,
+} from "@/lib/routes";
 
 /**
  * Los datos de stock cambian con cada movimiento: no conviene reutilizarlos
@@ -21,6 +25,8 @@ const STALE_TIME_BY_ENDPOINT: Record<string, number> = {
   "/api/inventario": 10_000,
   "/api/dashboard": 30_000,
   "/api/reportes": 30_000,
+  "/api/lotes": 15_000,
+  "/api/movimientos": 15_000,
   "/api/configuracion": 30_000,
   "/api/productos": 5 * STALE_TIME_MS,
   "/api/bodegas": 5 * STALE_TIME_MS,
@@ -31,6 +37,25 @@ const STALE_TIME_BY_ENDPOINT: Record<string, number> = {
 
 function getStaleTime(endpoint: string): number {
   return STALE_TIME_BY_ENDPOINT[endpoint] ?? STALE_TIME_MS;
+}
+
+/**
+ * Invalida los datos que dependen de las existencias.
+ *
+ * Se llama después de una entrada, una salida, un despacho o un ajuste:
+ * el dashboard, el inventario, los lotes, los movimientos y los reportes
+ * dejan de mostrar cifras desactualizadas.
+ */
+export function useInvalidateStockQueries() {
+  const queryClient = useQueryClient();
+
+  return useCallback(async () => {
+    await Promise.all(
+      STOCK_ENDPOINTS.map((endpoint) =>
+        queryClient.invalidateQueries({ queryKey: [endpoint] })
+      )
+    );
+  }, [queryClient]);
 }
 
 /**

@@ -1,403 +1,466 @@
-"use client";
+/**
+ * Tablero operativo reorientado a la nueva prioridad:
+ * comunicación entre el almacenista y la persona encargada del despacho.
+ *
+ * Todos los indicadores provienen de consultas agregadas sobre datos reales.
+ * Las existencias se muestran明确 como «informadas por Siigo» cuando la fuente
+ * lo permite, y no se inventan saldos cuando la fuente no los trae.
+ */
 
 import Link from "next/link";
-import Image from "next/image";
 import {
-  Package,
-  Boxes,
-  ArrowDownToLine,
   ArrowUpFromLine,
+  Boxes,
   AlertTriangle,
-  ShieldCheck,
-  TrendingUp,
+  CheckCircle2,
+  Clock,
+  PackageCheck,
   TrendingDown,
-  ClipboardList,
-  FileText,
-  Receipt,
   Warehouse,
-  BarChart3,
-  Users,
-  Link2,
+  Plus,
+  Loader2,
+  FileText,
 } from "lucide-react";
-import { formatNumber } from "@/lib/utils";
-import { useApiQuery } from "@/hooks/useApiQuery";
-import QueryError from "@/components/ui/QueryError";
+import { getDb } from "@/lib/db/client";
+import { sql } from "drizzle-orm";
+import { getSalidasSummary, listRecentSalidas } from "@/lib/services/exit.service";
+import { getLastSuccessfulRun } from "@/lib/services/siigo-import.service";
+import { cn } from "@/lib/utils";
 
-interface DashboardData {
-  totalProducts: number;
-  totalUnits: number;
-  totalWarehouses: number;
-  totalUsers: number;
-  recentEntries: Array<{
-    id: string;
-    number: string;
-    date: string;
-    format: string;
-    status: string;
-    origin: string | null;
-  }>;
-  recentExits: Array<{
-    id: string;
-    number: string;
-    date: string;
-    status: string;
-    notes: string | null;
-  }>;
-  lowStockProducts: Array<{
-    id: string;
-    name: string;
-    code: string;
-    minStock: number;
-    quantity: number;
-  }>;
-  pendingAudits: number;
-  detectedDifferences: number;
+export const dynamic = "force-dynamic";
+
+interface StockSummary {
+  productCount: number;
+  totalQuantity: number;
+  totalWeightKg: number;
+  negativeCount: number;
+  reviewCount: number;
+  warehouseCount: number;
 }
 
-const modules = [
-  {
-    name: "Entradas",
-    description: "Registrar ingresos de productos al inventario",
-    href: "/entradas",
-    icon: ArrowDownToLine,
-    color: "bg-green-600",
-  },
-  {
-    name: "Salidas",
-    description: "Gestionar salidas y despachos de productos",
-    href: "/salidas",
-    icon: ArrowUpFromLine,
-    color: "bg-orange-600",
-  },
-  {
-    name: "Pedidos",
-    description: "Crear y gestionar pedidos de productos",
-    href: "/pedidos",
-    icon: ClipboardList,
-    color: "bg-blue-600",
-  },
-  {
-    name: "Facturas",
-    description: "Generar y consultar facturas",
-    href: "/facturas",
-    icon: FileText,
-    color: "bg-purple-600",
-  },
-  {
-    name: "Recibos",
-    description: "Gestionar recibos de entrega",
-    href: "/recibos",
-    icon: Receipt,
-    color: "bg-teal-600",
-  },
-  {
-    name: "Auditoría",
-    description: "Realizar auditorías de inventario",
-    href: "/auditoria",
-    icon: ShieldCheck,
-    color: "bg-red-600",
-  },
-  {
-    name: "Inventario",
-    description: "Consultar stock por producto y bodega",
-    href: "/inventario",
-    icon: Boxes,
-    color: "bg-indigo-600",
-  },
-  {
-    name: "Productos",
-    description: "Gestionar catálogo de productos",
-    href: "/productos",
-    icon: Package,
-    color: "bg-pink-600",
-  },
-  {
-    name: "Bodegas",
-    description: "Administrar bodegas y almacenes",
-    href: "/bodegas",
-    icon: Warehouse,
-    color: "bg-yellow-600",
-  },
-  {
-    name: "Reportes",
-    description: "Ver reportes y exportar datos",
-    href: "/reportes",
-    icon: BarChart3,
-    color: "bg-cyan-600",
-  },
-  {
-    name: "Usuarios",
-    description: "Gestionar usuarios del sistema",
-    href: "/usuarios",
-    icon: Users,
-    color: "bg-gray-600",
-  },
-  {
-    name: "Integración Siigo",
-    description: "Exportar datos a Siigo Pyme",
-    href: "/integracion-siigo",
-    icon: Link2,
-    color: "bg-emerald-600",
-  },
-];
+interface BodegaSummary {
+  total: number;
+  siigo: number;
+}
 
-export default function DashboardPage() {
-  const {
-    data,
-    isLoading,
-    isError,
-    error,
-    refetch,
-  } = useApiQuery<DashboardData>("/api/dashboard");
+async function getStockSummary(): Promise<StockSummary> {
+  const db = getDb();
+  const rows = await db.execute<{
+    product_count: number;
+    total_quantity: string;
+    total_weight: string;
+    negative_count: number;
+    review_count: number;
+    warehouse_count: number;
+  }>(sql`
+    SELECT
+      COUNT(DISTINCT sb.product_id)::int AS product_count,
+      COALESCE(SUM(sb.quantity), 0) AS total_quantity,
+      COALESCE(SUM(sb.quantity * COALESCE(p.net_weight_grams, 0) / 1000), 0) AS total_weight,
+      COUNT(*) FILTER (WHERE sb.is_negative)::int AS negative_count,
+      COUNT(*) FILTER (WHERE sb.review_required)::int AS review_count,
+      COUNT(DISTINCT sb.siigo_bodega_code)::int AS warehouse_count
+    FROM siigo_balances sb
+    JOIN products p ON p.id = sb.product_id
+    WHERE sb.is_active
+  `);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" />
-      </div>
-    );
+  const row = (rows as unknown as Record<string, number | string>[])[0];
+  return {
+    productCount: Number(row?.product_count ?? 0),
+    totalQuantity: Number(row?.total_quantity ?? 0),
+    totalWeightKg: Number(row?.total_weight ?? 0),
+    negativeCount: Number(row?.negative_count ?? 0),
+    reviewCount: Number(row?.review_count ?? 0),
+    warehouseCount: Number(row?.warehouse_count ?? 0),
+  };
+}
+
+async function getBodegaSummary(): Promise<BodegaSummary> {
+  const db = getDb();
+  const rows = await db.execute<{ total: number; siigo: number }>(sql`
+    SELECT
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE source = 'SIIGO')::int AS siigo
+    FROM warehouses
+    WHERE status = 'ACTIVE'
+  `);
+  const row = (rows as unknown as Record<string, number>[])[0];
+  return {
+    total: Number(row?.total ?? 0),
+    siigo: Number(row?.siigo ?? 0),
+  };
+}
+
+function formatNumber(value: number): string {
+  if (!Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat("es-CO", { maximumFractionDigits: 2 }).format(
+    value
+  );
+}
+
+function formatDateTime(value: string | Date | null): string {
+  if (!value) return "—";
+  const date = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("es-CO", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  DRAFT: "Borrador",
+  GENERATED: "Generada",
+  DELIVERED: "Recibida en despacho",
+  CONFIRMED_SIIGO: "Confirmada en Siigo",
+  CANCELLED: "Anulada",
+};
+
+export default async function DashboardPage() {
+  const now = new Date();
+
+  let stock: StockSummary = {
+    productCount: 0,
+    totalQuantity: 0,
+    totalWeightKg: 0,
+    negativeCount: 0,
+    reviewCount: 0,
+    warehouseCount: 0,
+  };
+  let bodegas: BodegaSummary = { total: 0, siigo: 0 };
+  let lastRun = null as Awaited<ReturnType<typeof getLastSuccessfulRun>>;
+  let summary = {
+    total: 0,
+    byStatus: {} as Record<string, number>,
+    todayCount: 0,
+    todayQuantity: 0,
+    pendingReconciliation: 0,
+  };
+  let recent: Awaited<ReturnType<typeof listRecentSalidas>> = [];
+
+  try {
+    [stock, bodegas, lastRun, summary, recent] = await Promise.all([
+      getStockSummary(),
+      getBodegaSummary(),
+      getLastSuccessfulRun(),
+      getSalidasSummary(),
+      listRecentSalidas(6),
+    ]);
+  } catch (error) {
+    console.error("No se pudo cargar el tablero:", error);
   }
 
-  const stats = [
-    {
-      name: "Total Productos",
-      value: data?.totalProducts || 0,
-      icon: Package,
-      color: "bg-primary-600",
-    },
-    {
-      name: "Total Unidades",
-      value: formatNumber(data?.totalUnits || 0),
-      icon: Boxes,
-      color: "bg-accent-500",
-    },
-    {
-      name: "Entradas Recientes",
-      value: data?.recentEntries?.length || 0,
-      icon: ArrowDownToLine,
-      color: "bg-green-600",
-    },
-    {
-      name: "Salidas Recientes",
-      value: data?.recentExits?.length || 0,
-      icon: ArrowUpFromLine,
-      color: "bg-orange-600",
-    },
-    {
-      name: "Stock Bajo",
-      value: data?.lowStockProducts?.length || 0,
-      icon: AlertTriangle,
-      color: "bg-yellow-600",
-    },
-    {
-      name: "Auditorías Pendientes",
-      value: data?.pendingAudits || 0,
-      icon: ShieldCheck,
-      color: "bg-purple-600",
-    },
-    {
-      name: "Bodegas",
-      value: data?.totalWarehouses || 0,
-      icon: Warehouse,
-      color: "bg-yellow-600",
-    },
-    {
-      name: "Usuarios",
-      value: data?.totalUsers || 0,
-      icon: Users,
-      color: "bg-gray-600",
-    },
-  ];
+  const staleMinutes = 60;
+  const minutesSince = lastRun?.finishedAt
+    ? (now.getTime() - new Date(lastRun.finishedAt).getTime()) / 60000
+    : null;
+  const stale = minutesSince === null || minutesSince > staleMinutes;
 
   return (
-    <div className="space-y-6">
-      {/* Banner con logo y colores del Banco */}
-      <div className="bg-gradient-to-r from-primary-600 to-primary-700 rounded-2xl p-6 lg:p-8 text-white">
-        <div className="flex flex-col lg:flex-row items-center gap-6">
-          <div className="flex-shrink-0">
-            <div className="w-20 h-20 lg:w-24 lg:h-24 bg-white rounded-2xl p-2 shadow-lg">
-              <Image
-                src="/logo2.jpeg"
-                alt="Banco de Alimentos"
-                width={96}
-                height={96}
-                unoptimized
-                className="w-full h-full object-contain rounded-xl"
-              />
-            </div>
-          </div>
-          <div className="text-center lg:text-left">
-            <h1 className="text-2xl lg:text-3xl font-bold">
-              Banco Arquidiocesano de Alimentos de Ibagué
-            </h1>
-            <p className="text-primary-100 mt-2 text-lg">
-              Sistema de Gestión, Trazabilidad y Conciliación de Inventarios
-            </p>
-            <p className="text-primary-200 mt-1 text-sm">
-              Bienvenido al sistema de gestión de inventarios
-            </p>
-          </div>
+    <div className="space-y-5">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Tablero operativo</h1>
+          <p className="text-sm text-gray-600 mt-1">
+            Órdenes de pedido del almacén y estado de la sincronización con
+            Siigo Pyme.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/salidas-almacen/nueva"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Nueva orden de pedido
+          </Link>
+          <Link
+            href="/inventario"
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 bg-white rounded-lg font-medium hover:bg-gray-50 transition-colors"
+          >
+            <Boxes className="w-4 h-4" />
+            Consultar inventario
+          </Link>
         </div>
       </div>
 
-      {isError && <QueryError error={error} onRetry={() => void refetch()} />}
-
-      {/* Tarjetas de estadísticas */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {stats.map((stat) => (
-          <div
-            key={stat.name}
-            className="bg-white rounded-xl border border-gray-200 p-5"
-          >
-            <div className="flex items-center gap-4">
-              <div
-                className={`w-12 h-12 ${stat.color} rounded-xl flex items-center justify-center`}
-              >
-                <stat.icon className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">{stat.name}</p>
-                <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
-              </div>
-            </div>
+      {/* Estado de la última importación */}
+      <div
+        className={cn(
+          "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-xl border",
+          stale
+            ? "bg-amber-50 border-amber-200"
+            : "bg-emerald-50 border-emerald-200"
+        )}
+      >
+        <div className="flex items-start gap-3">
+          {stale ? (
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          ) : (
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+          )}
+          <div>
+            <p
+              className={cn(
+                "font-semibold",
+                stale ? "text-amber-800" : "text-emerald-800"
+              )}
+            >
+              {stale
+                ? "El inventario está desactualizado"
+                : "El inventario está actualizado"}
+            </p>
+            <p
+              className={cn(
+                "text-sm mt-0.5",
+                stale ? "text-amber-700" : "text-emerald-700"
+              )}
+            >
+              {lastRun
+                ? `Última importación: ${formatDateTime(lastRun.finishedAt)}` +
+                  (lastRun.reportDate
+                    ? ` · Reporte del ${lastRun.reportDate}`
+                    : "") +
+                  (lastRun.reportFormat === "RESUMEN"
+                    ? " · Reporte resumen por bodega"
+                    : "") +
+                  (minutesSince !== null
+                    ? ` · hace ${Math.round(minutesSince)} minutos`
+                    : "")
+                : "Todavía no se ha importado ningún reporte de Siigo Pyme."}
+            </p>
           </div>
-        ))}
+        </div>
+
+        <Link
+          href="/integracion-siigo"
+          className="shrink-0 inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border border-gray-300 bg-white rounded-lg hover:bg-gray-50"
+        >
+          <Loader2 className="w-4 h-4" />
+          Ver importaciones
+        </Link>
       </div>
 
-      {/* Módulos del sistema */}
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
-          Módulos del Sistema
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {modules.map((module) => (
+      {/* Indicadores de órdenes de pedido */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Link
+          href="/salidas-almacen"
+          className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 hover:border-primary-300 transition-colors"
+        >
+          <p className="text-xs text-gray-500 flex items-center gap-1.5">
+            <ArrowUpFromLine className="w-3.5 h-3.5" /> Órdenes generadas
+          </p>
+          <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">
+            {summary.byStatus.GENERATED ?? 0}
+          </p>
+          <p className="text-xs text-gray-400 mt-0.5">esperando entrega</p>
+        </Link>
+
+        <Link
+          href="/salidas-almacen"
+          className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 hover:border-primary-300 transition-colors"
+        >
+          <p className="text-xs text-gray-500 flex items-center gap-1.5">
+            <PackageCheck className="w-3.5 h-3.5" /> Recibidas en despacho
+          </p>
+          <p className="text-2xl font-bold text-violet-700 mt-1 tabular-nums">
+            {summary.byStatus.DELIVERED ?? 0}
+          </p>
+          <p className="text-xs text-gray-400 mt-0.5">por confirmar en Siigo</p>
+        </Link>
+
+        <Link
+          href="/salidas-almacen"
+          className={cn(
+            "rounded-xl border shadow-sm p-4 hover:border-primary-300 transition-colors",
+            summary.pendingReconciliation > 0
+              ? "bg-amber-50 border-amber-200"
+              : "bg-white border-gray-200"
+          )}
+        >
+          <p className="text-xs text-gray-500 flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5" /> Pendientes de confirmar
+          </p>
+          <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">
+            {summary.pendingReconciliation}
+          </p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            aún no reflejadas en Siigo
+          </p>
+        </Link>
+
+        <Link
+          href="/salidas-almacen"
+          className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 hover:border-primary-300 transition-colors"
+        >
+          <p className="text-xs text-gray-500">Hoy</p>
+          <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">
+            {summary.todayCount}
+          </p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {formatNumber(summary.todayQuantity)} unidades entregadas
+          </p>
+        </Link>
+      </div>
+
+      {/* Indicadores de inventario y bodegas */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Link
+          href="/inventario"
+          className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 hover:border-primary-300 transition-colors"
+        >
+          <p className="text-xs text-gray-500 flex items-center gap-1.5">
+            <Boxes className="w-3.5 h-3.5" /> Referencias de producto
+          </p>
+          <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">
+            {formatNumber(stock.productCount)}
+          </p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            informadas por Siigo Pyme
+          </p>
+        </Link>
+
+        <Link
+          href="/inventario"
+          className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 hover:border-primary-300 transition-colors"
+        >
+          <p className="text-xs text-gray-500 flex items-center gap-1.5">
+            <TrendingDown className="w-3.5 h-3.5" /> Existencias informadas
+          </p>
+          <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">
+            {formatNumber(stock.totalQuantity)}
+          </p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            unidades según Siigo ({stock.warehouseCount} bodegas)
+          </p>
+        </Link>
+
+        <Link
+          href="/bodegas"
+          className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 hover:border-primary-300 transition-colors"
+        >
+          <p className="text-xs text-gray-500 flex items-center gap-1.5">
+            <Warehouse className="w-3.5 h-3.5" /> Bodegas disponibles
+          </p>
+          <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">
+            {bodegas.total}
+          </p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {bodegas.siigo} importadas de Siigo
+          </p>
+        </Link>
+
+        <div
+          className={cn(
+            "rounded-xl border shadow-sm p-4",
+            stock.negativeCount > 0
+              ? "bg-amber-50 border-amber-200"
+              : "bg-white border-gray-200"
+          )}
+        >
+          <p className="text-xs text-gray-500">Existencias negativas</p>
+          <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">
+            {formatNumber(stock.negativeCount)}
+          </p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            grupos con saldo negativo en Siigo
+          </p>
+        </div>
+      </div>
+
+      {/* Órdenes recientes */}
+      <section className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-900">
+            Órdenes recientes
+          </h2>
+          <Link
+            href="/salidas-almacen"
+            className="text-sm text-primary-600 hover:underline"
+          >
+            Ver todas
+          </Link>
+        </div>
+
+        {recent.length === 0 ? (
+          <div className="p-10 text-center">
+            <ArrowUpFromLine className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+            <p className="text-sm text-gray-600">
+              Todavía no hay órdenes de pedido registradas.
+            </p>
             <Link
-              key={module.href}
-              href={module.href}
-              className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md hover:border-primary-300 transition-all group"
+              href="/salidas-almacen/nueva"
+              className="inline-block mt-2 text-sm font-medium text-primary-600 hover:underline"
             >
-              <div className="flex items-start gap-4">
-                <div
-                  className={`w-12 h-12 ${module.color} rounded-xl flex items-center justify-center flex-shrink-0`}
-                >
-                  <module.icon className="w-6 h-6 text-white" />
-                </div>
+              Crear la primera orden
+            </Link>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {recent.map((salida) => (
+              <Link
+                key={salida.id}
+                href={`/salidas-almacen/${salida.id}`}
+                className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-4 hover:bg-gray-50"
+              >
                 <div className="min-w-0">
-                  <h3 className="font-semibold text-gray-900 group-hover:text-primary-700 transition-colors">
-                    {module.name}
-                  </h3>
-                  <p className="text-sm text-gray-500 mt-1 line-clamp-2">
-                    {module.description}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-sm font-bold text-gray-900">
+                      {salida.number}
+                    </span>
+                    <span className="text-[11px] font-medium text-gray-600 bg-gray-100 rounded-full px-2 py-0.5">
+                      {STATUS_LABELS[salida.status] ?? salida.status}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {salida.destinationName ?? salida.programName} ·{" "}
+                    {salida.userName} · {salida.itemCount} referencias
                   </p>
                 </div>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </div>
-
-      {/* Movimientos recientes */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <TrendingDown className="w-5 h-5 text-green-600" />
-            Entradas Recientes
-          </h2>
-          {data?.recentEntries?.length ? (
-            <ul className="space-y-3">
-              {data.recentEntries.slice(0, 5).map((entry) => (
-                <li
-                  key={entry.id}
-                  className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
-                >
-                  <div>
-                    <p className="font-medium text-gray-900">
-                      {entry.number} — {entry.format}
-                    </p>
-                    <p className="text-sm text-gray-500">{entry.date}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-gray-500 text-sm">No hay entradas recientes</p>
-          )}
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-orange-600" />
-            Salidas Recientes
-          </h2>
-          {data?.recentExits?.length ? (
-            <ul className="space-y-3">
-              {data.recentExits.slice(0, 5).map((exit) => (
-                <li
-                  key={exit.id}
-                  className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
-                >
-                  <div>
-                    <p className="font-medium text-gray-900">{exit.number}</p>
-                    <p className="text-sm text-gray-500">{exit.date}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-gray-500 text-sm">No hay salidas recientes</p>
-          )}
-        </div>
-      </div>
-
-      {/* Productos con stock bajo */}
-      {data?.lowStockProducts?.length ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-yellow-600" />
-            Productos con Stock Bajo
-          </h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-2 px-3 font-medium text-gray-600">
-                    Código
-                  </th>
-                  <th className="text-left py-2 px-3 font-medium text-gray-600">
-                    Producto
-                  </th>
-                  <th className="text-left py-2 px-3 font-medium text-gray-600">
-                    Existencia
-                  </th>
-                  <th className="text-left py-2 px-3 font-medium text-gray-600">
-                    Stock Mínimo
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.lowStockProducts.slice(0, 5).map((product) => (
-                  <tr key={product.id} className="border-b border-gray-100">
-                    <td className="py-2 px-3 font-mono text-gray-900">
-                      {product.code}
-                    </td>
-                    <td className="py-2 px-3 text-gray-900">{product.name}</td>
-                    <td className="py-2 px-3">
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                        {product.quantity}
-                      </span>
-                    </td>
-                    <td className="py-2 px-3">
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                        {product.minStock}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                <div className="flex items-center gap-4 text-xs text-gray-600">
+                  <span className="tabular-nums">
+                    {formatNumber(salida.totalQuantity)} und.
+                  </span>
+                  <FileText className="w-4 h-4 text-gray-400" />
+                </div>
+              </Link>
+            ))}
           </div>
-        </div>
-      ) : null}
+        )}
+      </section>
+
+      {/* Alertas de calidad */}
+      {(stock.reviewCount > 0 || stock.negativeCount > 0) && (
+        <section className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+          <h2 className="text-sm font-semibold text-gray-900 mb-2">
+            Alertas de calidad del inventario importado
+          </h2>
+          <ul className="space-y-1.5 text-sm text-gray-700">
+            {stock.reviewCount > 0 && (
+              <li className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span>
+                  <b>{stock.reviewCount}</b> grupo
+                  {stock.reviewCount === 1 ? "" : "s"} con el saldo recalculado
+                  distinto al reportado por Siigo. Revise la última importación.
+                </span>
+              </li>
+            )}
+            {stock.negativeCount > 0 && (
+              <li className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span>
+                  <b>{stock.negativeCount}</b> grupo
+                  {stock.negativeCount === 1 ? "" : "s"} con saldo negativo
+                  informado por Siigo Pyme.
+                </span>
+              </li>
+            )}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

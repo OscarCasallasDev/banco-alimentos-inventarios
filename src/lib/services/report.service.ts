@@ -79,7 +79,9 @@ export async function getReportSummary(
           warehouseName: warehouses.name,
           warehouseCode: warehouses.code,
           totalProducts: sql<number>`count(distinct ${inventory.productId})::int`,
-          totalUnits: sql<number>`coalesce(sum(${inventory.quantity}), 0)::int`,
+          // Sin truncar: hay productos que se manejan por peso (kg) o
+          // volumen (L) con decimales.
+          totalUnits: sql<number>`coalesce(sum(${inventory.quantity}), 0)`,
         })
         .from(warehouses)
         .leftJoin(inventory, eq(inventory.warehouseId, warehouses.id))
@@ -92,13 +94,13 @@ export async function getReportSummary(
           productName: products.name,
           productCode: products.code,
           warehouseName: warehouses.name,
-          quantity: inventory.quantity,
+          quantity: sql<number>`coalesce(${inventory.quantity}, 0)`,
           minStock: products.minStock,
         })
-        .from(inventory)
-        .innerJoin(products, eq(inventory.productId, products.id))
+        .from(products)
+        .leftJoin(inventory, eq(inventory.productId, products.id))
         .innerJoin(warehouses, eq(inventory.warehouseId, warehouses.id))
-        .where(sql`${inventory.quantity} < ${products.minStock}`)
+        .where(sql`coalesce(${inventory.quantity}, 0) < ${products.minStock}`)
         .orderBy(products.code),
 
       executor
@@ -135,9 +137,21 @@ export async function getReportSummary(
     ]);
 
   return {
-    inventoryByWarehouse,
-    lowStock,
+    inventoryByWarehouse: inventoryByWarehouse.map((row) => ({
+      ...row,
+      totalUnits: Number(row.totalUnits),
+    })),
+    lowStock: lowStock.map((row) => ({
+      ...row,
+      quantity: Number(row.quantity),
+      minStock: Number(row.minStock),
+    })),
     recentEntries,
-    auditDifferences,
+    auditDifferences: auditDifferences.map((row) => ({
+      ...row,
+      systemQuantity: Number(row.systemQuantity),
+      physicalQuantity: Number(row.physicalQuantity),
+      difference: Number(row.difference),
+    })),
   };
 }

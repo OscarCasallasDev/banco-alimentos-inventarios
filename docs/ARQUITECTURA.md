@@ -1,9 +1,4 @@
-# Arquitectura del Sistema
-
-## Sistema de Gestión, Trazabilidad y Conciliación de Inventarios
-### Banco Arquidiocesano de Alimentos de Ibagué
-
----
+﻿---
 
 ## 1. VISIÓN GENERAL
 
@@ -272,13 +267,103 @@ use la API REST de Supabase.
 | `npm run build` | Compilación de producción |
 | `npm run typecheck` | TypeScript estricto |
 | `npm run lint` | ESLint |
-| `npm run test:run` | Pruebas unitarias |
+| `npm run test:run` | Pruebas unitarias y de integración (con reversión) |
 | `npm run test:e2e` | Prueba end-to-end de todos los módulos |
 | `npm run check:ui` | Verificación del render de todas las páginas |
 | `npm run db:check` | Verifica la conexión y ajusta `DATABASE_URL` |
 | `npm run db:setup` | Aplica migraciones y carga la semilla |
 | `npm run db:setup:reset` | Reinicia la base de datos y recarga la semilla |
+| `npm run db:auditar` | Auditoría de trazabilidad por lotes (solo lectura) |
 
 ---
 
-*Documento actualizado en 2026-10-20 — FASE 9 (Pruebas) completada*
+## 11. DECISIONES ARQUITECTÓNICAS — TRAZABILIDAD POR LOTES (FASE 11)
+
+### 11.1 Una sola fuente de verdad
+
+El inventario tiene tres capas y **una sola es la verdad**:
+
+| Capa | Dónde vive | Papel |
+|---|---|---|
+| Existencias por lote | `lots.quantity_available` | **Verdad** |
+| Libro de movimientos | `inventory_movements` (inmutable) | **Verdad** (historial) |
+| Existencias por producto/bodega | `inventory.quantity` | Caché materializada |
+
+El agregado y los lotes se actualizan en la **misma transacción**, y la vista
+`v_inventory_reconciliation` verifica que coincidan. El dashboard, el
+inventario, los reportes y las alertas leen **los lotes**, nunca la suma de
+las dos capas.
+
+### 11.2 Cálculo de peso en el backend
+
+`src/lib/lots/weight.ts` es la única fuente de cálculo. Lo usan el servicio,
+la API y la interfaz, de modo que un kilo se calcula siempre igual.
+
+- La aritmética se hace con **enteros escalados** (`multiplyExact`) y los
+  agregados en SQL con `numeric`: sin errores de coma flotante.
+- Si el contenido neto no se conoce, el peso es `null`. **Nunca 0.**
+- El dashboard informa la **cobertura** del peso para que un total parcial no
+  se lea como si fuera el peso real.
+
+### 11.3 Los cálculos viven en el servidor
+
+El navegador nunca recibe lotes ni movimientos para sumar en memoria:
+
+- El dashboard se resuelve con **agregados en SQL** (`sum`, `count`,
+  `filter`) en paralelo.
+- Las alertas de vencimiento son dos consultas: un agregado y la lista de
+  ítems.
+- Las listas de lotes, inventario y movimientos van **paginadas** desde el
+  servidor.
+
+### 11.4 Fecha local del Banco
+
+Todas las fechas de vencimiento son columnas `date` (sin hora) y se comparan
+contra `bankTodayIso()` (America/Bogota). Nunca se convierten a `Date` con
+hora: en UTC-5 eso desplaza el día. Las vistas SQL usan
+`now() at time zone 'America/Bogota'`.
+
+### 11.5 Transacciones y concurrencia
+
+- Entradas, salidas y auditorías se aplican dentro de `withTransaction`.
+- El saldo agregado se bloquea con `pg_advisory_xact_lock` + `FOR UPDATE`.
+- Los lotes se bloquean con `FOR UPDATE` antes de consumirlos.
+- Los consecutivos (lotes y documentos) usan contadores atómicos en tabla
+  (`lot_sequences`, `document_sequences`), **nunca** `MAX()+1`.
+- `stock_applied_at` garantiza que un doble clic no aplique el stock dos
+  veces.
+
+### 11.6 Caché coherente
+
+React Query con `staleTime` corto para los datos de stock. Tras una entrada,
+una salida o un ajuste se invalidan **explícitamente** los endpoints
+dependientes (`useInvalidateStockQueries`): nunca se muestra una existencia
+obsoleta después de un movimiento.
+
+### 11.7 Código de lote estable
+
+El código `L-{PREFIJO}-{AAAAMMDD}-{NNNN}` no depende de la cantidad ni del
+vencimiento, y está protegido por trigger de inmutabilidad. El vencimiento se
+muestra aparte (etiqueta), porque puede ser desconocido o corregirse sin que
+el lote pierda su identidad.
+
+### 11.8 Un solo lugar para la lógica de vencimiento
+
+`src/lib/lots/expiration.ts` define la clasificación (`EXPIRED`,
+`EXPIRES_TODAY`, `CRITICAL`…). La usan el servicio, la API y los
+componentes `ExpirationBadge`: el color de la alerta y el cálculo coinciden
+por construcción.
+
+### 11.9 Datos históricos sin inventar trazabilidad
+
+- Los lotes de apertura (`origin='OPENING'`) no tienen vencimiento: se
+  prefirió un dato honesto a una fecha inventada.
+- Las entradas anteriores al modelo **no** recibieron lotes retroactivos: su
+  saldo ya está en los lotes de apertura.
+- Los movimientos sin `lot_id` se identifican como históricos en la
+  interfaz ("sin lote (histórico)").
+- `npm run db:auditar` revisa estas inconsistencias **sin modificar datos**.
+
+---
+
+*Documento actualizado en 2026-10-27 — FASE 11 (Trazabilidad por lotes, vencimientos y peso) completada*

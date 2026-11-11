@@ -64,7 +64,7 @@ export default async function ComprobantePage({
                   code: lot.code,
                   description: lot.description,
                   expirationDate: lot.expirationDate,
-                  quantity: lot.quantity,
+                  quantity: lot.quantityReceived,
                 })),
               })),
             }}

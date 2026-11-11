@@ -6,12 +6,13 @@
  * pedido en estado INVOICED.
  */
 
-import { desc, eq, like } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { invoiceItems, invoices, orderItems, orders, users } from "@/lib/db/schema";
 import type { DbExecutor } from "@/lib/db/client";
 import { conflictError, notFoundError } from "@/lib/utils/errors";
 import { parseDocumentDate, toIsoDate } from "@/lib/utils";
-import { DOCUMENT_PREFIX, formatDocumentNumber } from "@/lib/utils/numbers";
+import { DOCUMENT_PREFIX } from "@/lib/utils/numbers";
+import { nextYearlyDocumentCode } from "./sequence.service";
 import type { CreateInvoiceInput } from "@/lib/validations/schemas";
 import { createDocument } from "./document.service";
 import { recordAuditLog } from "./audit-log.service";
@@ -73,24 +74,13 @@ export async function getInvoice(executor: DbExecutor, id: string) {
 
 /**
  * Calcula el siguiente consecutivo de factura del año.
+ * Consecutivo atómico: dos facturas simultáneas nunca comparten número.
  */
 async function nextInvoiceNumber(
   executor: DbExecutor,
   date: Date
 ): Promise<string> {
-  const year = date.getFullYear();
-  const rows = await executor
-    .select({ number: invoices.number })
-    .from(invoices)
-    .where(like(invoices.number, `${DOCUMENT_PREFIX.INVOICE}-${year}-%`));
-
-  const sequence =
-    rows.reduce((max, row) => {
-      const value = Number(row.number.split("-").pop());
-      return Number.isFinite(value) && value > max ? value : max;
-    }, 0) + 1;
-
-  return formatDocumentNumber(DOCUMENT_PREFIX.INVOICE, date, sequence);
+  return nextYearlyDocumentCode(executor, DOCUMENT_PREFIX.INVOICE, date);
 }
 
 /**

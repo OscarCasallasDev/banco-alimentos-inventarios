@@ -16,7 +16,8 @@ import type { DbExecutor } from "@/lib/db/client";
 import { notFoundError } from "@/lib/utils/errors";
 import { toIsoDate } from "@/lib/utils";
 import type { CreateAuditInput } from "@/lib/validations/schemas";
-import { adjustStockToPhysical, getStock } from "./inventory.service";
+import { assertActiveProduct, getStock } from "./inventory.service";
+import { applyAuditAdjustment } from "./lot.service";
 import { recordAuditLog } from "./audit-log.service";
 
 /**
@@ -135,21 +136,48 @@ export async function createAudit(
     });
   }
 
-  await executor.insert(auditItems).values(
-    itemRows.map((item) => ({ ...item, auditId: audit.id }))
-  );
+  const createdItems = await executor
+    .insert(auditItems)
+    .values(itemRows.map((item) => ({ ...item, auditId: audit.id })))
+    .returning();
+
+  let updatedAudit = audit;
 
   if (input.status === "COMPLETED") {
-    for (const item of itemRows) {
-      await adjustStockToPhysical(executor, {
-        productId: item.productId,
+    for (const item of createdItems) {
+      const auditItemInput = input.items.find(
+        (candidate) => candidate.productId === item.productId
+      );
+
+      const hasLotDetail = Boolean(auditItemInput?.lots?.length);
+      const hasDifference = Math.abs(item.difference) >= 0.0005;
+
+      if (!hasLotDetail && !hasDifference) continue;
+
+      const product = await assertActiveProduct(executor, item.productId);
+
+      await applyAuditAdjustment(executor, {
+        auditId: audit.id,
+        auditItemId: item.id,
+        product,
         warehouseId: input.warehouseId,
+        systemQuantity: item.systemQuantity,
         physicalQuantity: item.physicalQuantity,
-        documentId: audit.id,
+        isoDate: audit.date,
         userId,
         notes: `Auditoría ${warehouse.code} — responsable: ${input.responsible}`,
+        lotCounts: auditItemInput?.lots?.map((lot) => ({
+          lotId: lot.lotId,
+          physicalQuantity: lot.physicalQuantity,
+        })),
       });
     }
+
+    [updatedAudit] = await executor
+      .update(audits)
+      .set({ stockAppliedAt: new Date(), updatedAt: new Date() })
+      .where(eq(audits.id, audit.id))
+      .returning();
   }
 
   await recordAuditLog(executor, {
@@ -160,10 +188,5 @@ export async function createAudit(
     details: `Auditoría en ${warehouse.name} con ${itemRows.length} item(s)`,
   });
 
-  const createdItems = await executor
-    .select()
-    .from(auditItems)
-    .where(eq(auditItems.auditId, audit.id));
-
-  return { ...audit, items: createdItems };
+  return { ...updatedAudit, items: createdItems };
 }

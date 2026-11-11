@@ -3,7 +3,7 @@
  * Banco Arquidiocesano de Alimentos de Ibagué
  */
 
-import { asc, eq } from "drizzle-orm";
+import { asc, eq , sql } from "drizzle-orm";
 import { warehouses } from "@/lib/db/schema";
 import type { DbExecutor } from "@/lib/db/client";
 import { cached, invalidate, DEFAULT_TTL_MS } from "@/lib/cache/memory-cache";
@@ -18,22 +18,35 @@ import type {
  *
  * El catálogo se cachea: se lee en cada pantalla y cambia muy pocas veces.
  */
-export async function listWarehouses(executor: DbExecutor) {
-  return cached("catalog:warehouses", DEFAULT_TTL_MS, () =>
-    executor
-      .select({
-        id: warehouses.id,
-        code: warehouses.code,
-        name: warehouses.name,
-        description: warehouses.description,
-        type: warehouses.type,
-        status: warehouses.status,
-        observations: warehouses.observations,
-        createdAt: warehouses.createdAt,
-        updatedAt: warehouses.updatedAt,
-      })
-      .from(warehouses)
-      .orderBy(asc(warehouses.code))
+export async function listWarehouses(
+  executor: DbExecutor,
+  includeInactive = false
+) {
+  return cached(
+    `catalog:warehouses:${includeInactive ? "all" : "active"}`,
+    DEFAULT_TTL_MS,
+    async () => {
+      const rows = await executor
+        .select({
+          id: warehouses.id,
+          code: warehouses.code,
+          name: warehouses.name,
+          description: warehouses.description,
+          type: warehouses.type,
+          status: warehouses.status,
+          observations: warehouses.observations,
+          source: warehouses.source,
+          siigoCode: warehouses.siigoCode,
+          createdAt: warehouses.createdAt,
+          updatedAt: warehouses.updatedAt,
+        })
+        .from(warehouses)
+        .orderBy(asc(warehouses.code));
+
+      return includeInactive
+        ? rows
+        : rows.filter((row) => row.status === "ACTIVE");
+    }
   );
 }
 
@@ -152,4 +165,68 @@ export async function deactivateWarehouse(
     .returning();
 
   return warehouse;
+}
+
+/**
+ * Resumen por bodega de las existencias importadas desde Siigo Pyme.
+ */
+export interface WarehouseSummary {
+  id: string;
+  siigoCode: number | null;
+  productCount: number;
+  locationCount: number;
+  totalQuantity: number;
+  lastSyncedAt: Date | null;
+}
+
+export async function listWarehouseSummary(
+  executor: DbExecutor
+): Promise<WarehouseSummary[]> {
+  return cached("catalog:warehouses:summary", DEFAULT_TTL_MS, async () => {
+    const rows = await executor.execute<{
+      id: string;
+      siigo_code: number | null;
+      product_count: number;
+      location_count: number;
+      total_quantity: string;
+      last_synced_at: Date | null;
+    }>(sql`
+      SELECT
+        w.id,
+        w.siigo_code,
+        COALESCE(b.products, 0) AS product_count,
+        COALESCE(b.locations, 0) AS location_count,
+        COALESCE(b.total, 0) AS total_quantity,
+        b.last_synced_at
+      FROM warehouses w
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(DISTINCT sb.product_id) AS products,
+          COUNT(DISTINCT sb.location_code) AS locations,
+          SUM(sb.quantity) AS total,
+          MAX(sb.synced_at) AS last_synced_at
+        FROM siigo_balances sb
+        WHERE sb.warehouse_id = w.id AND sb.is_active
+      ) b ON true
+      WHERE w.source = 'SIIGO'
+    `);
+
+    return (
+      rows as unknown as {
+        id: string;
+        siigo_code: number | null;
+        product_count: number;
+        location_count: number;
+        total_quantity: string;
+        last_synced_at: Date | null;
+      }[]
+    ).map((row) => ({
+      id: row.id,
+      siigoCode: row.siigo_code === null ? null : Number(row.siigo_code),
+      productCount: Number(row.product_count ?? 0),
+      locationCount: Number(row.location_count ?? 0),
+      totalQuantity: Number(row.total_quantity ?? 0),
+      lastSyncedAt: row.last_synced_at,
+    }));
+  });
 }

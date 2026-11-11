@@ -26,6 +26,12 @@ export async function listProducts(executor: DbExecutor) {
         presentation: products.presentation,
         weight: products.weight,
         unit: products.unit,
+        stockUnit: products.stockUnit,
+        unitKind: products.unitKind,
+        netWeightGrams: products.netWeightGrams,
+        netVolumeMl: products.netVolumeMl,
+        weightIsEstimate: products.weightIsEstimate,
+        tracksExpiration: products.tracksExpiration,
         categoryId: products.categoryId,
         status: products.status,
         minStock: products.minStock,
@@ -63,6 +69,12 @@ export async function searchProducts(executor: DbExecutor, term: string) {
       presentation: products.presentation,
       weight: products.weight,
       unit: products.unit,
+      stockUnit: products.stockUnit,
+      unitKind: products.unitKind,
+      netWeightGrams: products.netWeightGrams,
+      netVolumeMl: products.netVolumeMl,
+      weightIsEstimate: products.weightIsEstimate,
+      tracksExpiration: products.tracksExpiration,
       categoryId: products.categoryId,
       status: products.status,
       minStock: products.minStock,
@@ -101,6 +113,12 @@ export async function getProduct(executor: DbExecutor, id: string) {
       presentation: products.presentation,
       weight: products.weight,
       unit: products.unit,
+      stockUnit: products.stockUnit,
+      unitKind: products.unitKind,
+      netWeightGrams: products.netWeightGrams,
+      netVolumeMl: products.netVolumeMl,
+      weightIsEstimate: products.weightIsEstimate,
+      tracksExpiration: products.tracksExpiration,
       categoryId: products.categoryId,
       status: products.status,
       minStock: products.minStock,
@@ -121,6 +139,54 @@ export async function getProduct(executor: DbExecutor, id: string) {
 }
 
 /**
+ * Completa la unidad de manejo y el contenido neto cuando el cliente no los
+ * envía. No convierte la cantidad de stock: solo describe cuánto contiene
+ * una unidad de manejo.
+ */
+function resolveProductMeasure(input: {
+  unit: string;
+  weight: number;
+  stockUnit?: string;
+  unitKind?: "COUNT" | "MASS" | "VOLUME" | "UNKNOWN";
+  netWeightGrams?: number | null;
+  netVolumeMl?: number | null;
+}) {
+  const unit = input.unit.toLowerCase();
+  const stockUnit = (input.stockUnit ?? "").toUpperCase();
+
+  const inferredStockUnit =
+    stockUnit && stockUnit !== "UND"
+      ? stockUnit
+      : unit.startsWith("kg")
+        ? "KG"
+        : unit === "l" || unit.startsWith("litro")
+          ? "L"
+          : "UND";
+
+  const inferredKind =
+    input.unitKind && input.unitKind !== "UNKNOWN"
+      ? input.unitKind
+      : inferredStockUnit === "KG" || inferredStockUnit === "LB"
+        ? "MASS"
+        : inferredStockUnit === "L" || inferredStockUnit === "ML"
+          ? "VOLUME"
+          : "COUNT";
+
+  return {
+    stockUnit: inferredStockUnit,
+    unitKind: inferredKind,
+    netWeightGrams:
+      input.netWeightGrams ??
+      (unit.startsWith("kg") ? Math.round(input.weight * 1000 * 1000) / 1000 : null),
+    netVolumeMl:
+      input.netVolumeMl ??
+      (unit === "l" || unit.startsWith("litro")
+        ? Math.round(input.weight * 1000 * 1000) / 1000
+        : null),
+  };
+}
+
+/**
  * Crea un producto. El código debe ser único.
  */
 export async function createProduct(
@@ -137,6 +203,8 @@ export async function createProduct(
     throw conflictError("El código del producto ya existe");
   }
 
+  const measure = resolveProductMeasure(input);
+
   const [product] = await executor
     .insert(products)
     .values({
@@ -146,12 +214,19 @@ export async function createProduct(
       presentation: input.presentation ?? null,
       weight: input.weight,
       unit: input.unit,
+      stockUnit: measure.stockUnit,
+      unitKind: measure.unitKind,
+      netWeightGrams: measure.netWeightGrams,
+      netVolumeMl: measure.netVolumeMl,
+      weightIsEstimate: input.weightIsEstimate,
+      tracksExpiration: input.tracksExpiration,
       categoryId: input.categoryId ?? null,
       status: input.status,
       minStock: input.minStock,
     })
     .returning();
 
+  invalidateProductsCache();
   return product;
 }
 
@@ -177,6 +252,29 @@ export async function updateProduct(
     }
   }
 
+  const nextUnit = input.unit ?? current.unit;
+  const nextWeight = input.weight ?? current.weight;
+  const measure =
+    input.weight !== undefined ||
+    input.unit !== undefined ||
+    input.stockUnit !== undefined ||
+    input.unitKind !== undefined ||
+    input.netWeightGrams !== undefined ||
+    input.netVolumeMl !== undefined
+      ? resolveProductMeasure({
+          unit: nextUnit,
+          weight: nextWeight,
+          stockUnit: input.stockUnit ?? current.stockUnit,
+          unitKind: input.unitKind ?? current.unitKind,
+          netWeightGrams:
+            input.netWeightGrams !== undefined
+              ? input.netWeightGrams
+              : undefined,
+          netVolumeMl:
+            input.netVolumeMl !== undefined ? input.netVolumeMl : undefined,
+        })
+      : null;
+
   const [product] = await executor
     .update(products)
     .set({
@@ -190,6 +288,18 @@ export async function updateProduct(
       }),
       ...(input.weight !== undefined && { weight: input.weight }),
       ...(input.unit !== undefined && { unit: input.unit }),
+      ...(measure && {
+        stockUnit: measure.stockUnit,
+        unitKind: measure.unitKind,
+        netWeightGrams: measure.netWeightGrams,
+        netVolumeMl: measure.netVolumeMl,
+      }),
+      ...(input.weightIsEstimate !== undefined && {
+        weightIsEstimate: input.weightIsEstimate,
+      }),
+      ...(input.tracksExpiration !== undefined && {
+        tracksExpiration: input.tracksExpiration,
+      }),
       ...(input.categoryId !== undefined && {
         categoryId: input.categoryId || null,
       }),
@@ -200,6 +310,7 @@ export async function updateProduct(
     .where(eq(products.id, id))
     .returning();
 
+  invalidateProductsCache();
   return product;
 }
 
@@ -219,6 +330,7 @@ export async function deactivateProduct(
     .where(eq(products.id, id))
     .returning();
 
+  invalidateProductsCache();
   return product;
 }
 

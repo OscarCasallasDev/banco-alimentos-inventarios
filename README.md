@@ -8,13 +8,21 @@ Sistema integral para la gestión de inventarios, trazabilidad de movimientos y 
 
 ## Características
 
-- **Gestión de Productos**: CRUD completo del catálogo de productos
+- **Gestión de Productos**: CRUD completo del catálogo con unidad de stock,
+  contenido neto por unidad y control de vencimiento
 - **Gestión de Bodegas**: Administración de bodegas y almacenes
-- **Inventario en Tiempo Real**: Consulta de stock por producto y bodega
+- **Trazabilidad por lotes**: cada ingreso genera lotes únicos con cantidad,
+  peso, fecha de vencimiento y código visible (`L-ARR001-20261027-0001`)
+- **Salidas por lote**: FEFO (primero vence, primero sale) con selección
+  manual por el usuario; los lotes vencidos no se despachan
+- **Inventario en Tiempo Real**: existencias por producto, lote y bodega, con
+  peso disponible y conciliación contra el libro de movimientos
 - **Entradas**: Registro de ingresos al inventario con trazabilidad
 - **Salidas**: Flujo completo (Pedido → Factura → Recibo → Despacho)
-- **Auditoría**: Control y conciliación de inventarios
-- **Reportes**: Análisis y exportación de datos
+- **Alertas de vencimiento**: vencen hoy, mañana, próximos y ya vencidos
+- **Auditoría**: Control y conciliación de inventarios, con conteo por lote
+- **Movimientos**: libro de existencias con el lote afectado y su saldo
+- **Reportes**: análisis, reporte de lotes por vencimiento y exportación
 - **Integración Siigo**: Preparado para integración con Siigo Pyme (pendiente validación)
 
 ---
@@ -37,6 +45,28 @@ Sistema integral para la gestión de inventarios, trazabilidad de movimientos y 
 | Despliegue | Vercel + Supabase |
 
 ---
+
+## ?? Primera etapa: Almac?n ? Despacho
+
+El sistema prioriza la **comunicaci?n entre el almacenista y la persona
+encargada del despacho**:
+
+| M?dulo | Ruta | Qu? hace |
+|---|---|---|
+| **Orden de pedido** | `/salidas-almacen` | Crear la orden, elegir destino y bodega, agregar productos con cantidad, peso y vencimiento, generar el documento |
+| **Comprobante** | `/salidas-almacen/[id]/comprobante` | Documento **ORDEN DE PEDIDO** imprimible (carta, logo, firmas, reimpresi?n id?ntica) |
+| **Inventario** | `/inventario` | Existencias informadas por Siigo, por producto y bodega, con lo comprometido |
+| **Bodegas** | `/bodegas` | Bodegas del sistema y las importadas de Siigo Pyme |
+| **Integraci?n Siigo** | `/integracion-siigo` | Importar reportes, ver el historial y el estado de la sincronizaci?n |
+
+**Importaci?n de Siigo Pyme** ? el sistema procesa los dos reportes que genera
+Siigo:
+
+- **Detallado** (65.832 filas): actualiza existencias y movimientos.
+- **Resumen por bodega** (2.209 filas): actualiza bodegas, ubicaciones y
+  productos. *No trae saldos*, as? que no modifica las existencias.
+
+Detalle en [docs/IMPORTACION_SIIGO.md](./docs/IMPORTACION_SIIGO.md).
 
 ## Inicio Rápido
 
@@ -107,7 +137,7 @@ SESSION_SECRET="tu-secreto-seguro-de-64-caracteres"
 | `npm run build` | Compilación de producción |
 | `npm run typecheck` | TypeScript estricto |
 | `npm run lint` | ESLint |
-| `npm run test:run` | Pruebas unitarias |
+| `npm run test:run` | Pruebas unitarias y de integración (con reversión) |
 | `npm run test:e2e` | Prueba end-to-end de todos los módulos |
 | `npm run verify` | **Verificación integral**: conexión + esquema + un test por módulo, dejando los datos visibles en Supabase |
 | `npm run verify:server` | Lo mismo, pero levanta el servidor de desarrollo él mismo |
@@ -117,6 +147,7 @@ SESSION_SECRET="tu-secreto-seguro-de-64-caracteres"
 | `npm run db:check` | Verifica la conexión a Supabase |
 | `npm run db:setup` | Aplica migraciones y carga la semilla |
 | `npm run db:setup:reset` | Reinicia la base de datos y recarga la semilla |
+| `npm run db:auditar` | Auditoría de trazabilidad por lotes (solo lectura) |
 
 ---
 
