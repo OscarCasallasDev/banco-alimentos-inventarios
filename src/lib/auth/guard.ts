@@ -17,20 +17,28 @@ import {
 } from "@/lib/auth/permissions";
 import { MODULES, type ModuleKey } from "@/lib/config/modules";
 import { isFeatureEnabled } from "@/lib/config/features";
+import { cached } from "@/lib/cache/memory-cache";
 
-/** Permisos almacenados en la base de datos para un rol. */
+/**
+ * Permisos almacenados en la base de datos para un rol.
+ *
+ * Se cachean 30 s: cambian muy rara vez y as? se evita una consulta a la base
+ * en CADA petici?n (era una de las causas de la latencia de ~1 s).
+ */
 export async function storedPermissions(role: string): Promise<string[] | null> {
-  try {
-    const db = getDb();
-    const [row] = await db
-      .select({ permissions: rolesTable.permissions })
-      .from(rolesTable)
-      .where(eq(rolesTable.name, role as never))
-      .limit(1);
-    return row?.permissions ?? null;
-  } catch {
-    return null;
-  }
+  return cached(`role-permissions:${role}`, 30_000, async () => {
+    try {
+      const db = getDb();
+      const [row] = await db
+        .select({ permissions: rolesTable.permissions })
+        .from(rolesTable)
+        .where(eq(rolesTable.name, role as never))
+        .limit(1);
+      return row?.permissions ?? null;
+    } catch {
+      return null;
+    }
+  });
 }
 
 /** Permisos efectivos del usuario de la sesión. */

@@ -328,6 +328,8 @@ export async function getAlertsSummary(
 export async function getDiscrepancies(
   executor: DbExecutor = getDb()
 ): Promise<Discrepancy[]> {
+  // Consultas de CONJUNTO (no correlacionadas): la versi?n anterior hac?a
+  // una b?squeda por cada fila y tardaba minutos.
   const rows = await executor.execute<{
     sin_codigo: number;
     sin_descripcion: number;
@@ -335,18 +337,21 @@ export async function getDiscrepancies(
     rechazos: number;
     vencimiento_sin_fecha: number;
   }>(sql`
+    WITH bodegas_conocidas AS (
+      SELECT DISTINCT siigo_bodega_code FROM siigo_locations
+    )
     SELECT
-      (SELECT COUNT(*)::int FROM siigo_balances b
-        JOIN products p ON p.id = b.product_id
+      (SELECT COUNT(*)::int
+         FROM siigo_balances b JOIN products p ON p.id = b.product_id
         WHERE b.is_active AND btrim(p.code) = '') AS sin_codigo,
-      (SELECT COUNT(*)::int FROM siigo_balances b
-        JOIN products p ON p.id = b.product_id
+      (SELECT COUNT(*)::int
+         FROM siigo_balances b JOIN products p ON p.id = b.product_id
         WHERE b.is_active AND btrim(p.name) = '') AS sin_descripcion,
-      (SELECT COUNT(*)::int FROM siigo_balances b
-        WHERE b.is_active AND NOT EXISTS (
-          SELECT 1 FROM siigo_locations l
-          WHERE l.siigo_bodega_code = b.siigo_bodega_code
-        )) AS bodega_desconocida,
+      (SELECT COUNT(*)::int
+         FROM siigo_balances b
+        WHERE b.is_active
+          AND b.siigo_bodega_code NOT IN (SELECT siigo_bodega_code FROM bodegas_conocidas)
+      ) AS bodega_desconocida,
       (SELECT COUNT(*)::int FROM siigo_import_rejections
         WHERE reason_code IN ('CANTIDAD_INCONSISTENTE', 'DIFERENCIA_NO_COINCIDE')) AS rechazos,
       (SELECT COUNT(*)::int FROM vencimiento_lotes
@@ -358,38 +363,38 @@ export async function getDiscrepancies(
   const items: Discrepancy[] = [
     {
       code: "SIN_CODIGO",
-      label: "Registros sin código de producto",
+      label: "Registros sin c?digo de producto",
       count: Number(row.sin_codigo ?? 0),
       detail:
-        "Filas del inventario cuyo producto no tiene código de Siigo. No se pueden relacionar con una orden.",
+        "Filas del inventario cuyo producto no tiene c?digo de Siigo. No se pueden relacionar con una orden.",
     },
     {
       code: "SIN_DESCRIPCION",
-      label: "Registros sin descripción",
+      label: "Registros sin descripci?n",
       count: Number(row.sin_descripcion ?? 0),
       detail:
-        "Filas del inventario sin nombre de producto. Se conservan, pero no se pueden consolidar por descripción.",
+        "Filas del inventario sin nombre de producto. Se conservan, pero no se pueden consolidar por descripci?n.",
     },
     {
       code: "BODEGA_DESCONOCIDA",
       label: "Bodegas desconocidas",
       count: Number(row.bodega_desconocida ?? 0),
       detail:
-        "Existencias en un código de bodega que no aparece en el catálogo importado.",
+        "Existencias en un c?digo de bodega que no aparece en el cat?logo importado.",
     },
     {
       code: "CANTIDAD_NO_INTERPRETABLE",
       label: "Cantidades no interpretables",
       count: Number(row.rechazos ?? 0),
       detail:
-        "Filas rechazadas por cantidades inconsistentes o por una diferencia que no coincide con entradas − salidas.",
+        "Filas rechazadas por cantidades inconsistentes o por una diferencia que no coincide con entradas ? salidas.",
     },
     {
       code: "VENCIMIENTO_SIN_FECHA",
       label: "Lotes sin fecha de vencimiento",
       count: Number(row.vencimiento_sin_fecha ?? 0),
       detail:
-        "Registros del archivo de vencimientos sin fecha válida (cuando el archivo esté disponible).",
+        "Registros del archivo de vencimientos sin fecha v?lida (cuando el archivo est? disponible).",
     },
   ];
 

@@ -144,53 +144,50 @@ export async function listConsolidatedStock(
   const pageSize = Math.min(query.pageSize ?? 25, 200);
   const where = buildConditions(query);
 
+  // Una sola consulta: los totales se calculan con funciones de ventana sobre
+  // el conjunto filtrado (antes eran dos viajes a la base por pantalla).
   const rows = await executor.execute(sql`
+    WITH filtrado AS (
+      SELECT v.*
+      FROM v_stock_consolidated v
+      WHERE ${where}
+    )
     SELECT
-      v.description,
-      v.unit,
-      v.siigo_bodega_code,
-      v.warehouse_id,
+      f.description,
+      f.unit,
+      f.siigo_bodega_code,
+      f.warehouse_id,
       w.name AS warehouse_name,
-      v.representative_code,
-      v.representative_product_id,
-      v.product_codes,
-      v.product_count,
-      v.location_count,
-      v.quantity,
-      v.reserved,
-      (v.quantity - v.reserved) AS available,
-      v.is_negative,
-      v.review_required,
-      v.net_weight_grams,
-      v.synced_at
-    FROM v_stock_consolidated v
-    LEFT JOIN warehouses w ON w.id = v.warehouse_id
-    WHERE ${where}
-    ORDER BY v.description, v.siigo_bodega_code
+      f.representative_code,
+      f.representative_product_id,
+      f.product_codes,
+      f.product_count,
+      f.location_count,
+      f.quantity,
+      f.reserved,
+      (f.quantity - f.reserved) AS available,
+      f.is_negative,
+      f.review_required,
+      f.net_weight_grams,
+      f.synced_at,
+      COUNT(*) OVER ()::int AS total_registros,
+      COUNT(*) FILTER (WHERE (f.quantity - f.reserved) > 0) OVER ()::int AS total_positivos,
+      COUNT(*) FILTER (WHERE (f.quantity - f.reserved) = 0) OVER ()::int AS total_cero,
+      COUNT(*) FILTER (WHERE (f.quantity - f.reserved) < 0) OVER ()::int AS total_negativos,
+      COALESCE(SUM(f.quantity) OVER (), 0) AS total_cantidad,
+      COALESCE(SUM(f.quantity - f.reserved) OVER (), 0) AS total_disponible
+    FROM filtrado f
+    LEFT JOIN warehouses w ON w.id = f.warehouse_id
+    ORDER BY f.description, f.siigo_bodega_code
     LIMIT ${pageSize} OFFSET ${page * pageSize}
   `);
 
-  const summaryRows = await executor.execute(sql`
-    SELECT
-      COUNT(*)::int AS groups,
-      COUNT(*) FILTER (WHERE (v.quantity - v.reserved) > 0)::int AS positive,
-      COUNT(*) FILTER (WHERE (v.quantity - v.reserved) = 0)::int AS zero,
-      COUNT(*) FILTER (WHERE (v.quantity - v.reserved) < 0)::int AS negative,
-      COALESCE(SUM(v.quantity), 0) AS total_quantity,
-      COALESCE(SUM(v.quantity - v.reserved), 0) AS total_available
-    FROM v_stock_consolidated v
-    WHERE ${where}
-  `);
+  const list = (rows as unknown as Record<string, unknown>[]) ?? [];
 
-  const summary = (summaryRows as unknown as Record<string, number | string>[])[0];
-
-  const items: ConsolidatedStockItem[] = (
-    rows as unknown as Record<string, unknown>[]
-  ).map((row) => {
+  const items: ConsolidatedStockItem[] = list.map((row) => {
     const quantity = Number(row.quantity ?? 0);
     const reserved = Number(row.reserved ?? 0);
     const available = Number(row.available ?? quantity - reserved);
-    const codes = (row.product_codes as string[] | null) ?? [];
     return {
       description: String(row.description ?? ""),
       unit: String(row.unit ?? ""),
@@ -199,7 +196,7 @@ export async function listConsolidatedStock(
       warehouseName: (row.warehouse_name as string | null) ?? null,
       representativeCode: String(row.representative_code ?? ""),
       representativeProductId: String(row.representative_product_id ?? ""),
-      productCodes: codes,
+      productCodes: (row.product_codes as string[] | null) ?? [],
       productCount: Number(row.product_count ?? 1),
       locationCount: Number(row.location_count ?? 1),
       quantity: round3(quantity),
@@ -216,19 +213,21 @@ export async function listConsolidatedStock(
     };
   });
 
+  const first = list[0];
   return {
     items,
-    total: Number(summary?.groups ?? 0),
+    total: Number(first?.total_registros ?? 0),
     totals: {
-      groups: Number(summary?.groups ?? 0),
-      positive: Number(summary?.positive ?? 0),
-      zero: Number(summary?.zero ?? 0),
-      negative: Number(summary?.negative ?? 0),
-      totalQuantity: round3(Number(summary?.total_quantity ?? 0)),
-      totalAvailable: round3(Number(summary?.total_available ?? 0)),
+      groups: Number(first?.total_registros ?? 0),
+      positive: Number(first?.total_positivos ?? 0),
+      zero: Number(first?.total_cero ?? 0),
+      negative: Number(first?.total_negativos ?? 0),
+      totalQuantity: round3(Number(first?.total_cantidad ?? 0)),
+      totalAvailable: round3(Number(first?.total_disponible ?? 0)),
     },
   };
 }
+
 
 /**
  * Resuelve el grupo consolidado al que pertenece un producto y una bodega.

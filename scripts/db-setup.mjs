@@ -122,6 +122,8 @@ const MIGRATION_CHECKS = {
       where table_schema = 'public' and table_name = 'siigo_reservations'
         and column_name = 'group_key'
     ) as done`,
+  "0014_rendimiento_existencias.sql": `
+    select to_regclass('public.mv_stock_consolidated') is not null as done`,
 };
 
 async function isAlreadyApplied(sql, file) {

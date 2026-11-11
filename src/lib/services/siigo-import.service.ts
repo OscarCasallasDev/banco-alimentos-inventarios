@@ -727,6 +727,8 @@ export async function finalizeRun(
           importResumen(tx, runId, resumenReport)
         );
 
+        await refreshConsolidatedView(tx);
+
         const [updated] = await tx
           .update(siigoImportRuns)
           .set({
@@ -828,6 +830,10 @@ export async function finalizeRun(
       );
 
       // ---------- 6. Cierre ----------
+      // Se refresca la vista materializada para que el inventario y el
+      // buscador de la orden vean los datos nuevos de inmediato.
+      await refreshConsolidatedView(tx);
+
       const [updated] = await tx
         .update(siigoImportRuns)
         .set({
@@ -2149,4 +2155,24 @@ export async function listStockBalances(options: {
       negativeCount: Number(totals?.negative_count ?? 0),
     },
   };
+}
+
+
+/**
+ * Refresca la vista materializada de existencias consolidadas.
+ *
+ * Se ejecuta al cerrar cada importaci?n. Es r?pida (5.000 filas) y evita que
+ * el inventario y el buscador de la orden paguen el costo de la agregaci?n
+ * en cada consulta.
+ */
+export async function refreshConsolidatedView(
+  executor: DbExecutor = getDb()
+): Promise<void> {
+  try {
+    await executor.execute(sql`REFRESH MATERIALIZED VIEW mv_stock_consolidated`);
+  } catch (error) {
+    // Si la vista no existe todav?a (base sin migrar), no se interrumpe la
+    // importaci?n: los datos ya quedaron guardados.
+    console.warn("No se pudo refrescar mv_stock_consolidated:", error);
+  }
 }

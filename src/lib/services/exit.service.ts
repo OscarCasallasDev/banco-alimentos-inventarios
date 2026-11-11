@@ -1086,30 +1086,107 @@ export async function listSalidas(
 
   const where = sql.join(conditions, sql` AND `);
 
-  const rows = await db.execute(sql`
-    SELECT s.id
-    FROM salidas s
-    WHERE ${where}
-    ORDER BY s.created_at DESC
-    LIMIT ${filters.pageSize} OFFSET ${filters.page * filters.pageSize}
+  // Una sola consulta devuelve la cabecera de todas las ?rdenes de la p?gina
+  // y, con una subconsulta agregada, el conteo de l?neas y los totales.
+  // Antes se hac?a una consulta por cada orden (N+1) y tardaba segundos.
+  const rows = await db.execute<Record<string, unknown>>(sql`
+    WITH pagina AS (
+      SELECT s.id, s.number, s.date, s.time, s.status, s.reconciliation_status,
+             s.program_id, s.destination_id, s.warehouse_id,
+             s.siigo_bodega_code, s.location_code,
+             s.user_id, s.created_at, s.document_generated_at, s.delivered_at,
+             s.confirmed_at, s.cancelled_at, s.total_quantity, s.total_weight_kg,
+             s.weight_partial, s.item_count, s.receiver_name, s.deliverer_name,
+             s.notes, s.siigo_document_ref
+      FROM salidas s
+      WHERE ${where}
+      ORDER BY s.created_at DESC
+      LIMIT ${filters.pageSize} OFFSET ${filters.page * filters.pageSize}
+    ),
+    lineas AS (
+      SELECT si.salida_id,
+             COUNT(*)::int AS n,
+             COALESCE(SUM(si.quantity), 0) AS unidades
+      FROM salida_items si
+      WHERE si.salida_id IN (SELECT id FROM pagina)
+      GROUP BY si.salida_id
+    )
+    SELECT
+      p.*, 
+      pr.name AS program_name, pr.code AS program_code,
+      d.id AS destination_id, d.name AS destination_name, d.type AS destination_type,
+      w.name AS warehouse_name,
+      u.first_name || ' ' || u.last_name AS user_name,
+      COALESCE(l.n, p.item_count) AS line_count,
+      COALESCE(l.unidades, p.total_quantity) AS line_units,
+      (SELECT COUNT(*)::int FROM salidas s WHERE ${where}) AS total_registros
+    FROM pagina p
+    JOIN programs pr ON pr.id = p.program_id
+    LEFT JOIN destinations d ON d.id = p.destination_id
+    LEFT JOIN warehouses w ON w.id = p.warehouse_id
+    JOIN users u ON u.id = p.user_id
+    LEFT JOIN lineas l ON l.salida_id = p.id
+    ORDER BY p.created_at DESC
   `);
 
-  const countRow = await db.execute<{ count: number }>(sql`
-    SELECT COUNT(*)::int AS count FROM salidas s WHERE ${where}
-  `);
+  const list = (rows as unknown as Record<string, unknown>[]) ?? [];
 
-  const ids = (rows as unknown as { id: string }[]).map((r) => r.id);
-  if (ids.length === 0) {
-    return { items: [], total: Number((countRow as unknown as { count: number }[])[0]?.count ?? 0) };
-  }
-
-  const items = await Promise.all(ids.map((id) => getSalida(db, id)));
+  const items: SalidaDetail[] = list.map((row) => ({
+    id: String(row.id),
+    number: String(row.number),
+    date: String(row.date),
+    time: String(row.time),
+    status: String(row.status),
+    reconciliationStatus: String(row.reconciliation_status),
+    reconciliationNote: null,
+    notes: (row.notes as string | null) ?? null,
+    delivererName: (row.deliverer_name as string | null) ?? null,
+    delivererDocument: null,
+    receiverName: (row.receiver_name as string | null) ?? null,
+    receiverDocument: null,
+    receiverTime: null,
+    siigoDocumentRef: (row.siigo_document_ref as string | null) ?? null,
+    totalQuantity: Number(row.line_units ?? 0),
+    totalWeightKg:
+      row.total_weight_kg === null || row.total_weight_kg === undefined
+        ? null
+        : Number(row.total_weight_kg),
+    weightPartial: Boolean(row.weight_partial),
+    itemCount: Number(row.line_count ?? 0),
+    programId: String(row.program_id),
+    programName: String(row.program_name),
+    programCode: String(row.program_code),
+    destinationId: (row.destination_id as string | null) ?? null,
+    destinationName: (row.destination_name as string | null) ?? null,
+    destinationType: (row.destination_type as string | null) ?? null,
+    warehouseId: (row.warehouse_id as string | null) ?? null,
+    warehouseName: (row.warehouse_name as string | null) ?? null,
+    siigoBodegaCode:
+      row.siigo_bodega_code === null || row.siigo_bodega_code === undefined
+        ? null
+        : Number(row.siigo_bodega_code),
+    locationCode:
+      row.location_code === null || row.location_code === undefined
+        ? null
+        : Number(row.location_code),
+    userId: String(row.user_id),
+    userName: String(row.user_name),
+    createdAt: row.created_at as Date,
+    documentGeneratedAt: (row.document_generated_at as Date | null) ?? null,
+    deliveredAt: (row.delivered_at as Date | null) ?? null,
+    confirmedAt: (row.confirmed_at as Date | null) ?? null,
+    cancelledAt: (row.cancelled_at as Date | null) ?? null,
+    // El listado no necesita el detalle de las l?neas: se carga al abrir la
+    // orden. As? la pantalla responde en una sola consulta.
+    items: [],
+  }));
 
   return {
     items,
-    total: Number((countRow as unknown as { count: number }[])[0]?.count ?? 0),
+    total: Number(list[0]?.total_registros ?? 0),
   };
 }
+
 
 /** Totales del tablero de salidas. */
 export async function getSalidasSummary(): Promise<{
