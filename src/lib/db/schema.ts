@@ -1469,9 +1469,10 @@ export const salidas = pgTable(
     number: varchar("number", { length: 50 }).notNull().unique(),
     date: text("date").notNull(),
     time: text("time").notNull(),
-    programId: uuid("program_id")
-      .notNull()
-      .references(() => programs.id),
+    /** Programa del catálogo. Nulo cuando se usa un programa propio. */
+    programId: uuid("program_id").references(() => programs.id),
+    /** Nombre del programa escrito por el usuario (opción «Otro programa»). */
+    customProgramName: text("custom_program_name"),
     /** Destino (parroquia / grupo de familia) del catálogo configurable. */
     destinationId: uuid("destination_id").references(() => destinations.id, {
       onDelete: "set null",
@@ -1504,6 +1505,11 @@ export const salidas = pgTable(
     deliveredAt: timestamp("delivered_at"),
     confirmedAt: timestamp("confirmed_at"),
     cancelledAt: timestamp("cancelled_at"),
+    /** Borrado l?gico: la orden se oculta pero no se destruye el historial. */
+    deletedAt: timestamp("deleted_at"),
+    deletedBy: uuid("deleted_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
     siigoDocumentRef: text("siigo_document_ref"),
     reconciliationStatus: varchar("reconciliation_status", { length: 20 })
       .notNull()

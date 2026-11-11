@@ -43,6 +43,7 @@ import { groupKeyForProduct } from "@/lib/services/stock.service";
 
 export interface SalidaItemInput {
   productId: string;
+  /** Bodega de SALIDA de esta l?nea (debe tener existencia del producto). */
   siigoBodegaCode: number;
   /** Ubicaci?n de origen (0 = consolidado / cualquiera). */
   locationCode?: number;
@@ -59,7 +60,10 @@ export interface SalidaItemInput {
 }
 
 export interface CreateSalidaInput {
-  programId: string;
+  /** Programa del cat?logo. Puede ser nulo si se usa un programa propio. */
+  programId?: string | null;
+  /** Nombre del programa escrito por el usuario ("Otro programa"). */
+  customProgramName?: string | null;
   /** Destino (parroquia / grupo de familia) del cat?logo configurable. */
   destinationId?: string | null;
   warehouseId?: string | null;
@@ -105,9 +109,13 @@ export interface SalidaDetail {
   totalWeightKg: number | null;
   weightPartial: boolean;
   itemCount: number;
-  programId: string;
+  programId: string | null;
   programName: string;
-  programCode: string;
+  programCode: string | null;
+  /** Programa escrito por el usuario (opci?n ?Otro programa?). */
+  customProgramName: string | null;
+  /** Bodega de cada l?nea de la orden. */
+  deletedAt: Date | null;
   destinationId: string | null;
   destinationName: string | null;
   destinationType: string | null;
@@ -138,6 +146,9 @@ export interface SalidaItemDetail {
   consolidatedDescription: string | null;
   /** Códigos de Siigo del grupo consolidado (foto histórica). */
   consolidatedCodes: string[] | null;
+  /** Bodega de salida de ESTA línea. */
+  warehouseId: string | null;
+  warehouseName: string | null;
   siigoBodegaCode: number;
   locationCode: number;
   quantity: number;
@@ -345,15 +356,26 @@ export async function createSalida(
     throw businessRuleError("La salida debe tener al menos un producto.");
   }
 
-  // Programa válido y activo.
-  const [program] = await db
-    .select()
-    .from(programs)
-    .where(eq(programs.id, input.programId))
-    .limit(1);
-  if (!program) throw notFoundError("Programa");
-  if (program.status !== "ACTIVE") {
-    throw businessRuleError(`El programa "${program.name}" no está activo.`);
+  // Programa del catálogo o programa propio ("Otro programa").
+  const programId = input.programId ?? null;
+  const customProgramName = (input.customProgramName ?? "").trim() || null;
+
+  if (!programId && !customProgramName) {
+    throw businessRuleError(
+      "Seleccione un programa o indique el nombre del programa."
+    );
+  }
+
+  if (programId) {
+    const [program] = await db
+      .select()
+      .from(programs)
+      .where(eq(programs.id, programId))
+      .limit(1);
+    if (!program) throw notFoundError("Programa");
+    if (program.status !== "ACTIVE") {
+      throw businessRuleError(`El programa "${program.name}" no está activo.`);
+    }
   }
 
   return withTransaction(async (tx) => {
@@ -377,11 +399,13 @@ export async function createSalida(
         number: `BORRADOR-${Date.now()}`,
         date: input.date ?? todayIso(),
         time: input.time ?? nowTime(),
-        programId: input.programId,
+        programId,
+        customProgramName,
         destinationId: input.destinationId ?? null,
-        warehouseId: input.warehouseId ?? null,
-        siigoBodegaCode: input.siigoBodegaCode ?? null,
-        locationCode: input.locationCode ?? null,
+        // La bodega general qued? vac?a: cada producto define la suya.
+        warehouseId: null,
+        siigoBodegaCode: null,
+        locationCode: null,
         userId,
         delivererName: input.delivererName ?? null,
         delivererDocument: input.delivererDocument ?? null,
@@ -417,13 +441,14 @@ export async function createSalida(
       // Solo se pueden agregar productos con disponibilidad > 0.
       if (availability.availableQuantity <= 0) {
         throw insufficientStockError(
-          `Este producto no tiene unidades disponibles para agregar a la orden de pedido (${availability.consolidatedDescription}).`
+          `Este producto no tiene unidades disponibles para agregar a la orden de pedido (${availability.productName}).`
         );
       }
 
       if (item.quantity > availability.availableQuantity + 0.0005) {
         throw insufficientStockError(
-          `La cantidad solicitada supera las unidades disponibles de ${availability.consolidatedDescription}: ` +
+          `La cantidad solicitada supera las unidades disponibles de ${availability.productName} ` +
+            `en la bodega ${availability.warehouseName ?? item.siigoBodegaCode}: ` +
             `disponible ${availability.availableQuantity} (existencia ${availability.siigoQuantity} ? comprometido ${availability.reservedQuantity}); ` +
             `solicitado ${item.quantity}.`
         );
@@ -437,6 +462,8 @@ export async function createSalida(
         salidaId,
         lineNo,
         productId: item.productId,
+        // La bodega es de la L?NEA: cada producto sale de la bodega que
+        // se eligi? para ?l.
         warehouseId: availability.warehouseId,
         siigoBodegaCode: item.siigoBodegaCode,
         locationCode: item.locationCode ?? 0,
@@ -445,8 +472,8 @@ export async function createSalida(
         presentation: availability.presentation,
         productName: availability.productName,
         productReference: availability.productCode,
-        consolidatedDescription: availability.consolidatedDescription,
-        consolidatedCodes: availability.consolidatedCodes,
+        consolidatedDescription: availability.productName,
+        consolidatedCodes: [availability.productCode],
         unitWeightKg: availability.unitWeightKg,
         totalWeightKg,
         weightKnown: totalWeightKg !== null,
@@ -487,45 +514,39 @@ async function resolveAvailability(
   executor: DbExecutor,
   item: SalidaItemInput
 ): Promise<{
+  productId: string;
   productCode: string;
   productName: string;
   unit: string;
   presentation: string | null;
-  consolidatedDescription: string;
-  consolidatedCodes: string[];
   warehouseId: string | null;
+  warehouseName: string | null;
   siigoQuantity: number;
   reservedQuantity: number;
   availableQuantity: number;
   unitWeightKg: number | null;
 } | null> {
-  // La disponibilidad se valida sobre el GRUPO CONSOLIDADO
-  // (descripci?n + unidad + bodega), no sobre una ubicaci?n concreta.
-  // As? una orden puede tomar existencias de cualquier ubicaci?n del
-  // mismo producto y no se permite pedir m?s de lo que hay en total.
+  // La disponibilidad se valida sobre el GRUPO PRODUCTO + BODEGA.
+  //
+  // No se suman existencias de bodegas diferentes: la cantidad que se
+  // puede despachar de un producto se compara contra lo que ese
+  // producto tiene en la bodega elegida, y solo contra esa.
   const rows = await executor.execute<Record<string, unknown>>(sql`
     SELECT
-      v.representative_product_id AS product_id,
+      v.product_id,
+      v.product_code,
+      v.description AS product_name,
+      v.unit,
+      v.presentation,
       v.warehouse_id,
-      v.description AS consolidated_description,
-      v.product_codes,
+      v.warehouse_name,
       v.quantity,
       v.reserved,
       (v.quantity - v.reserved) AS available,
-      p.code AS product_code,
-      p.name AS product_name,
-      p.unit,
-      p.presentation,
-      p.net_weight_grams
-    FROM siigo_balances b
-    JOIN products p ON p.id = b.product_id
-    JOIN v_stock_consolidated v
-      ON v.description = btrim(regexp_replace(p.name, '\s+', ' ', 'g'))
-     AND v.unit = upper(btrim(p.unit))
-     AND v.siigo_bodega_code = b.siigo_bodega_code
-    WHERE b.product_id = ${item.productId}::uuid
-      AND b.siigo_bodega_code = ${item.siigoBodegaCode}
-      AND b.is_active
+      v.net_weight_grams
+    FROM v_stock_by_bodega v
+    WHERE v.product_id = ${item.productId}::uuid
+      AND v.siigo_bodega_code = ${item.siigoBodegaCode}
     LIMIT 1
   `);
 
@@ -541,20 +562,19 @@ async function resolveAvailability(
       : Number(row.net_weight_grams);
 
   return {
+    productId: String(row.product_id ?? ""),
     productCode: String(row.product_code ?? ""),
     productName: String(row.product_name ?? ""),
     unit: String(row.unit ?? ""),
     presentation: (row.presentation as string | null) ?? null,
-    consolidatedDescription: String(row.consolidated_description ?? ""),
-    consolidatedCodes: (row.product_codes as string[] | null) ?? [],
     warehouseId: (row.warehouse_id as string | null) ?? null,
+    warehouseName: (row.warehouse_name as string | null) ?? null,
     siigoQuantity: quantity,
     reservedQuantity: reserved,
     availableQuantity: round3(available),
     unitWeightKg: unitGrams === null ? null : round3(unitGrams / 1000),
   };
 }
-
 
 // ============================================================
 // TRANSICIONES DE ESTADO
@@ -670,8 +690,7 @@ export async function generateSalida(
 export async function deliverSalida(
   salidaId: string,
   receiverName?: string | null,
-  receiverDocument?: string | null,
-  receiverTime?: string | null
+  receiverDocument?: string | null
 ): Promise<SalidaDetail> {
   const db = getDb();
 
@@ -701,7 +720,9 @@ export async function deliverSalida(
       deliveredAt: new Date(),
       receiverName: receiverName ?? salida.receiverName,
       receiverDocument: receiverDocument ?? salida.receiverDocument,
-      receiverTime: receiverTime ?? salida.receiverTime ?? nowTime(),
+      // La hora de recepci?n la pone el sistema. Si ya hab?a una, se
+      // conserva: es un dato hist?rico y no se reescribe.
+      receiverTime: salida.receiverTime ?? nowTime(),
       receiverSignedAt: new Date(),
       updatedAt: new Date(),
     })
@@ -836,12 +857,13 @@ export async function updateSalidaDraft(
         }
         if (availability.availableQuantity <= 0) {
           throw insufficientStockError(
-            `Este producto no tiene unidades disponibles para agregar a la orden de pedido (${availability.consolidatedDescription}).`
+            `Este producto no tiene unidades disponibles para agregar a la orden de pedido (${availability.productName}).`
           );
         }
         if (item.quantity > availability.availableQuantity + 0.0005) {
           throw insufficientStockError(
-            `La cantidad solicitada supera las unidades disponibles de ${availability.consolidatedDescription}: ` +
+            `La cantidad solicitada supera las unidades disponibles de ${availability.productName} ` +
+              `en la bodega ${availability.warehouseName ?? item.siigoBodegaCode}: ` +
               `disponible ${availability.availableQuantity}; solicitado ${item.quantity}.`
           );
         }
@@ -864,8 +886,8 @@ export async function updateSalidaDraft(
             presentation: availability.presentation,
             productName: availability.productName,
             productReference: availability.productCode,
-            consolidatedDescription: availability.consolidatedDescription,
-            consolidatedCodes: availability.consolidatedCodes,
+            consolidatedDescription: availability.productName,
+            consolidatedCodes: [availability.productCode],
             unitWeightKg: availability.unitWeightKg,
             totalWeightKg,
             weightKnown: totalWeightKg !== null,
@@ -949,15 +971,16 @@ export async function getSalida(
       s.deliverer_name, s.deliverer_document,
       s.receiver_name, s.receiver_document, s.receiver_time,
       s.siigo_document_ref, s.total_quantity, s.total_weight_kg, s.weight_partial,
-      s.item_count, s.program_id, s.warehouse_id, s.siigo_bodega_code, s.location_code,
+      s.item_count, s.program_id, s.custom_program_name,
+      s.warehouse_id, s.siigo_bodega_code, s.location_code,
       s.user_id, s.created_at, s.document_generated_at, s.delivered_at, s.confirmed_at,
-      s.cancelled_at,
+      s.cancelled_at, s.deleted_at,
       p.name AS program_name, p.code AS program_code,
       d.id AS destination_id, d.name AS destination_name, d.type AS destination_type,
       w.name AS warehouse_name,
       u.first_name || ' ' || u.last_name AS user_name
     FROM salidas s
-    JOIN programs p ON p.id = s.program_id
+    LEFT JOIN programs p ON p.id = s.program_id
     LEFT JOIN destinations d ON d.id = s.destination_id
     LEFT JOIN warehouses w ON w.id = s.warehouse_id
     JOIN users u ON u.id = s.user_id
@@ -976,9 +999,12 @@ export async function getSalida(
       si.weight, si.weight_unit, si.expiration_date,
       si.consolidated_description, si.consolidated_codes,
       si.available_at_creation, si.notes,
-      p.code AS product_code
+      si.warehouse_id,
+      p.code AS product_code,
+      w.name AS warehouse_name
     FROM salida_items si
     JOIN products p ON p.id = si.product_id
+    LEFT JOIN warehouses w ON w.id = si.warehouse_id
     WHERE si.salida_id = ${salidaId}::uuid
     ORDER BY si.line_no
   `);
@@ -1005,9 +1031,11 @@ export async function getSalida(
         : Number(row.total_weight_kg),
     weightPartial: Boolean(row.weight_partial),
     itemCount: Number(row.item_count ?? 0),
-    programId: String(row.program_id),
-    programName: String(row.program_name),
-    programCode: String(row.program_code),
+    programId: row.program_id === null || row.program_id === undefined ? null : String(row.program_id),
+    programName: (row.custom_program_name as string | null) ?? String(row.program_name ?? ""),
+    programCode: (row.program_code as string | null) ?? null,
+    customProgramName: (row.custom_program_name as string | null) ?? null,
+    deletedAt: row.deleted_at ? (row.deleted_at as Date) : null,
     destinationId: (row.destination_id as string | null) ?? null,
     destinationName: (row.destination_name as string | null) ?? null,
     destinationType: (row.destination_type as string | null) ?? null,
@@ -1043,6 +1071,8 @@ export async function getSalida(
       weight: item.weight === null || item.weight === undefined ? null : Number(item.weight),
       weightUnit: (item.weight_unit as string | null) ?? null,
       expirationDate: (item.expiration_date as string | null) ?? null,
+      warehouseId: (item.warehouse_id as string | null) ?? null,
+      warehouseName: (item.warehouse_name as string | null) ?? null,
       siigoBodegaCode: Number(item.siigo_bodega_code),
       locationCode: Number(item.location_code),
       quantity: Number(item.quantity),
@@ -1066,7 +1096,7 @@ export async function listSalidas(
   filters: SalidaListFilters
 ): Promise<{ items: SalidaDetail[]; total: number }> {
   const db = getDb();
-  const conditions = [sql`1 = 1`];
+  const conditions = [sql`s.deleted_at IS NULL`];
 
   if (filters.status) {
     conditions.push(sql`s.status = ${filters.status}`);
@@ -1092,8 +1122,8 @@ export async function listSalidas(
   const rows = await db.execute<Record<string, unknown>>(sql`
     WITH pagina AS (
       SELECT s.id, s.number, s.date, s.time, s.status, s.reconciliation_status,
-             s.program_id, s.destination_id, s.warehouse_id,
-             s.siigo_bodega_code, s.location_code,
+             s.program_id, s.custom_program_name, s.destination_id, s.warehouse_id,
+             s.siigo_bodega_code, s.location_code, s.deleted_at,
              s.user_id, s.created_at, s.document_generated_at, s.delivered_at,
              s.confirmed_at, s.cancelled_at, s.total_quantity, s.total_weight_kg,
              s.weight_partial, s.item_count, s.receiver_name, s.deliverer_name,
@@ -1121,7 +1151,7 @@ export async function listSalidas(
       COALESCE(l.unidades, p.total_quantity) AS line_units,
       (SELECT COUNT(*)::int FROM salidas s WHERE ${where}) AS total_registros
     FROM pagina p
-    JOIN programs pr ON pr.id = p.program_id
+    LEFT JOIN programs pr ON pr.id = p.program_id
     LEFT JOIN destinations d ON d.id = p.destination_id
     LEFT JOIN warehouses w ON w.id = p.warehouse_id
     JOIN users u ON u.id = p.user_id
@@ -1153,9 +1183,11 @@ export async function listSalidas(
         : Number(row.total_weight_kg),
     weightPartial: Boolean(row.weight_partial),
     itemCount: Number(row.line_count ?? 0),
-    programId: String(row.program_id),
-    programName: String(row.program_name),
-    programCode: String(row.program_code),
+    programId: row.program_id === null || row.program_id === undefined ? null : String(row.program_id),
+    programName: (row.custom_program_name as string | null) ?? String(row.program_name ?? ""),
+    programCode: (row.program_code as string | null) ?? null,
+    customProgramName: (row.custom_program_name as string | null) ?? null,
+    deletedAt: row.deleted_at ? (row.deleted_at as Date) : null,
     destinationId: (row.destination_id as string | null) ?? null,
     destinationName: (row.destination_name as string | null) ?? null,
     destinationType: (row.destination_type as string | null) ?? null,
@@ -1255,3 +1287,116 @@ export async function listRecentSalidas(limit = 8): Promise<SalidaDetail[]> {
 }
 
 export { salidas, salidaItems, siigoReservations, siigoBalances, and, desc };
+
+/**
+ * Elimina una salida de almacén.
+ *
+ * INTEGRIDAD HISTÓRICA
+ *
+ *   - Si la orden está CONFIRMADA_EN_SIIGO (ya se procesó en Siigo Pyme),
+ *     NO se borra físicamente: se marca con `deleted_at` y se conservan
+ *     todos sus datos, sus reservas y su historial para la auditoría.
+ *   - Si la orden está en DRAFT o GENERATED (nunca llegó a Siigo), se
+ *     elimina de forma definitiva: no dejó rastro operativo.
+ *
+ * En ambos casos se liberan las reservas para que las existencias
+ * vuelvan a estar disponibles.
+ */
+export async function deleteSalida(
+  salidaId: string,
+  userId: string
+): Promise<{ deleted: boolean; logical: boolean; message: string }> {
+  const db = getDb();
+
+  const [salida] = await db
+    .select()
+    .from(salidas)
+    .where(eq(salidas.id, salidaId))
+    .limit(1);
+
+  if (!salida) throw notFoundError("Salida");
+  if (salida.deletedAt) {
+    return {
+      deleted: true,
+      logical: true,
+      message: "La orden ya estaba eliminada.",
+    };
+  }
+
+  // Una orden ya confirmada en Siigo Pyme no se borra físicamente: sus
+  // movimientos ya existen en el sistema contable.
+  const logical = salida.status === "CONFIRMED_SIIGO";
+
+  if (logical) {
+    await withTransaction(async (tx) => {
+      await tx
+        .update(salidas)
+        .set({
+          deletedAt: new Date(),
+          deletedBy: userId,
+          updatedAt: new Date(),
+        })
+        .where(eq(salidas.id, salidaId));
+    });
+
+    return {
+      deleted: true,
+      logical: true,
+      message:
+        "La orden se ocultó del listado (borrado lógico) porque ya está confirmada en Siigo Pyme. Su historial se conserva.",
+    };
+  }
+
+  await withTransaction(async (tx) => {
+    await releaseReservations(tx, salidaId, "Orden eliminada");
+    await tx.delete(salidaItems).where(eq(salidaItems.salidaId, salidaId));
+    await tx.delete(salidas).where(eq(salidas.id, salidaId));
+  });
+
+  return {
+    deleted: true,
+    logical: false,
+    message: "La orden se eliminó definitivamente.",
+  };
+}
+
+/**
+ * Actualiza los datos de quién recibe en despacho.
+ *
+ * Solo la identificación (nombre y cédula). La fecha y la hora de la
+ * orden las registra el sistema de forma automática y no son editables:
+ * así el almacenista no decide cuándo se "registra" una recepción.
+ */
+export async function updateReceiver(
+  salidaId: string,
+  receiverName?: string | null,
+  receiverDocument?: string | null
+): Promise<SalidaDetail> {
+  const db = getDb();
+
+  const [salida] = await db
+    .select()
+    .from(salidas)
+    .where(eq(salidas.id, salidaId))
+    .limit(1);
+
+  if (!salida) throw notFoundError("Salida");
+  if (salida.deletedAt) {
+    throw conflictError("La orden está eliminada.");
+  }
+  if (salida.status === "CANCELLED") {
+    throw conflictError("La orden está anulada.");
+  }
+
+  const [updated] = await db
+    .update(salidas)
+    .set({
+      receiverName: receiverName ?? salida.receiverName,
+      receiverDocument: receiverDocument ?? salida.receiverDocument,
+      updatedAt: new Date(),
+    })
+    .where(eq(salidas.id, salidaId))
+    .returning();
+
+  return getSalida(db, updated.id);
+}

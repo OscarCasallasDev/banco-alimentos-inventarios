@@ -43,12 +43,13 @@ export async function POST(request: NextRequest, context: Context) {
       }
       case "entregar": {
         await requireModulePermission("salidas_almacen", "salidas.receive");
+        // La hora de recepción la registra el sistema: no se recibe del
+        // cliente para que el almacenista no pueda escribirla a mano.
         return jsonOk(
           await deliverSalida(
             id,
             input.receiverName,
-            input.receiverDocument,
-            input.receiverTime
+            input.receiverDocument
           )
         );
       }

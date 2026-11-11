@@ -38,30 +38,48 @@ interface Program {
   status: string;
 }
 
+/** Una existencia: un producto (código de Siigo) en una bodega. */
 interface StockRow {
+  productId: string;
+  productCode: string;
   description: string;
   unit: string;
   siigoBodegaCode: number;
   warehouseId: string | null;
   warehouseName: string | null;
-  representativeCode: string;
-  representativeProductId: string;
-  productCodes: string[];
-  productCount: number;
-  locationCount: number;
   quantity: number;
   reserved: number;
   available: number;
+  locationCount: number;
   canAdd: boolean;
   isNegative: boolean;
   reviewRequired: boolean;
 }
 
+/** Bodega donde un producto existe con disponibilidad positiva. */
+interface BodegaOpcion {
+  siigoBodegaCode: number;
+  warehouseId: string | null;
+  warehouseName: string | null;
+  available: number;
+}
+
 interface Linea {
   key: string;
-  stock: StockRow;
-  quantity: string;
+  /** Producto de la línea (inmutable: el producto no cambia de código). */
+  productId: string;
+  productCode: string;
+  description: string;
   unit: string;
+  /** Bodega elegida para esta línea. */
+  siigoBodegaCode: number;
+  warehouseId: string | null;
+  warehouseName: string | null;
+  /** Disponibilidad del producto en la bodega elegida. */
+  available: number;
+  /** Bodegas donde este producto tiene disponibilidad. */
+  opciones: BodegaOpcion[];
+  quantity: string;
   weight: string;
   weightUnit: string;
   expirationDate: string;
@@ -75,6 +93,9 @@ interface Linea {
 
 const UNIDADES_PESO = ["kg", "g", "ml", "l"];
 
+/** Valor sentinela para la opción «Otro programa». */
+const PROGRAMA_OTRO = "__OTRO__";
+
 function formatNumber(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
   return new Intl.NumberFormat("es-CO", { maximumFractionDigits: 3 }).format(
@@ -86,8 +107,8 @@ export default function NuevaOrdenPedidoPage() {
   const router = useRouter();
 
   const [programId, setProgramId] = useState("");
+  const [customProgramName, setCustomProgramName] = useState("");
   const [destination, setDestination] = useState<AutocompleteOption | null>(null);
-  const [warehouseId, setWarehouseId] = useState("");
   const [delivererName, setDelivererName] = useState("");
   const [delivererDocument, setDelivererDocument] = useState("");
   const [notes, setNotes] = useState("");
@@ -107,24 +128,10 @@ export default function NuevaOrdenPedidoPage() {
     "/api/programas"
   );
   const programs = useMemo(() => programsData?.items ?? [], [programsData]);
-  const effectiveProgramId = programId || programs[0]?.id || "";
 
-  // Bodegas: SOLO las importadas de Siigo Pyme (catálogo oficial).
-  const { data: warehousesData } = useApiQuery<{
-    items: {
-      id: string;
-      code: string;
-      name: string;
-      source: string;
-      siigoCode: number | null;
-      status: string;
-    }[];
-  }>("/api/bodegas/importadas");
-
-  const warehouses = useMemo(
-    () => warehousesData?.items ?? [],
-    [warehousesData]
-  );
+  // Programa elegido: el del catálogo o la opción «Otro programa».
+  const esProgramaPropio = programId === PROGRAMA_OTRO;
+  const effectiveProgramId = esProgramaPropio ? "" : programId || programs[0]?.id || "";
 
   // Búsqueda de productos con retardo y cancelación.
   useEffect(() => {
@@ -156,21 +163,52 @@ export default function NuevaOrdenPedidoPage() {
 
   const resultados = results.term === search.trim() ? results.items : [];
 
-  function agregar(stock: StockRow) {
+  /**
+   * Carga las bodegas donde el producto tiene existencia (para el selector
+   * de bodega de la línea). Se consulta una sola vez por producto.
+   */
+  async function cargarBodegas(productId: string): Promise<BodegaOpcion[]> {
+    try {
+      const response = await fetch(`/api/existencias/producto/${productId}`);
+      if (!response.ok) return [];
+      const payload = await response.json();
+      const items: StockRow[] = payload?.data?.items ?? [];
+      return items.map((item) => ({
+        siigoBodegaCode: item.siigoBodegaCode,
+        warehouseId: item.warehouseId,
+        warehouseName: item.warehouseName,
+        available: item.available,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  async function agregar(stock: StockRow) {
     if (!stock.canAdd) {
       setError(MESSAGES.noStock);
       return;
     }
-    const key = `${stock.representativeProductId}-${stock.siigoBodegaCode}-${stock.description}`;
+    const key = `${stock.productId}-${stock.siigoBodegaCode}`;
     if (lineas.some((line) => line.key === key)) return;
     setError(null);
+
+    const opciones = await cargarBodegas(stock.productId);
+
     setLineas((prev) => [
       ...prev,
       {
         key,
-        stock,
-        quantity: "",
+        productId: stock.productId,
+        productCode: stock.productCode,
+        description: stock.description,
         unit: stock.unit || "UND",
+        siigoBodegaCode: stock.siigoBodegaCode,
+        warehouseId: stock.warehouseId,
+        warehouseName: stock.warehouseName,
+        available: stock.available,
+        opciones,
+        quantity: "",
         weight: "",
         weightUnit: "kg",
         expirationDate: "",
@@ -193,6 +231,31 @@ export default function NuevaOrdenPedidoPage() {
     );
   }
 
+  /** Cambia la bodega de una línea y recalcula su disponibilidad. */
+  function cambiarBodega(key: string, siigoBodegaCode: number) {
+    setLineas((prev) =>
+      prev.map((line) => {
+        if (line.key !== key) return line;
+        const opcion = line.opciones.find(
+          (o) => o.siigoBodegaCode === siigoBodegaCode
+        );
+        return {
+          ...line,
+          siigoBodegaCode,
+          warehouseId: opcion?.warehouseId ?? null,
+          warehouseName: opcion?.warehouseName ?? null,
+          available: opcion?.available ?? 0,
+          // Si la cantidad supera la nueva disponibilidad, se limpia para
+          // que el almacenista la vuelva a escribir.
+          quantity:
+            Number(line.quantity.replace(",", ".")) > (opcion?.available ?? 0)
+              ? ""
+              : line.quantity,
+        };
+      })
+    );
+  }
+
   /** Marca el campo como tocado (para mostrar el error al salir de él). */
   function tocar(
     key: string,
@@ -210,10 +273,7 @@ export default function NuevaOrdenPedidoPage() {
   const lineasCalculadas = useMemo(
     () =>
       lineas.map((line) => {
-        const quantityError = validateQuantity(
-          line.quantity,
-          line.stock.available
-        );
+        const quantityError = validateQuantity(line.quantity, line.available);
         const weightError = validateWeight(line.weight);
         const expirationError = validateExpiration(line.expirationDate);
         const quantity = Number(line.quantity.replace(",", ".")) || 0;
@@ -262,6 +322,9 @@ export default function NuevaOrdenPedidoPage() {
   );
 
   const nombreValido = delivererName.trim().length > 0;
+  const programaValido = esProgramaPropio
+    ? customProgramName.trim().length > 0
+    : effectiveProgramId.length > 0;
 
   async function guardar() {
     setError(null);
@@ -269,6 +332,14 @@ export default function NuevaOrdenPedidoPage() {
 
     if (!destination) {
       setError("Seleccione el destino de la orden.");
+      return;
+    }
+    if (!programaValido) {
+      setError(
+        esProgramaPropio
+          ? "Escriba el nombre del programa."
+          : "Seleccione el programa de la orden."
+      );
       return;
     }
     if (!nombreValido) {
@@ -290,8 +361,9 @@ export default function NuevaOrdenPedidoPage() {
     try {
       // La validación definitiva la hace el backend: aquí solo se envía.
       const items = lineasCalculadas.map((line) => ({
-        productId: line.stock.representativeProductId,
-        siigoBodegaCode: line.stock.siigoBodegaCode,
+        productId: line.productId,
+        // La bodega es de la LÍNEA, no de la orden.
+        siigoBodegaCode: line.siigoBodegaCode,
         locationCode: 0,
         quantity: line.quantity,
         unit: line.unit,
@@ -302,9 +374,11 @@ export default function NuevaOrdenPedidoPage() {
       }));
 
       const orden = await apiSend<{ id: string }>("/api/salidas", "POST", {
-        programId: effectiveProgramId,
+        programId: esProgramaPropio ? null : effectiveProgramId,
+        customProgramName: esProgramaPropio
+          ? customProgramName.trim()
+          : null,
         destinationId: destination.id,
-        warehouseId: warehouseId || null,
         delivererName: delivererName.trim(),
         delivererDocument: delivererDocument.trim() || null,
         notes: notes.trim() || null,
@@ -374,12 +448,18 @@ export default function NuevaOrdenPedidoPage() {
               />
 
               <label className="block">
-                <span className="text-xs font-medium text-gray-700">
-                  Programa
-                </span>
+                <span className="text-xs font-medium text-gray-700">Programa</span>
                 <select
-                  value={effectiveProgramId}
-                  onChange={(event) => setProgramId(event.target.value)}
+                  value={esProgramaPropio ? PROGRAMA_OTRO : effectiveProgramId}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (value === PROGRAMA_OTRO) {
+                      setProgramId(PROGRAMA_OTRO);
+                    } else {
+                      setProgramId(value);
+                      setCustomProgramName("");
+                    }
+                  }}
                   className="mt-1 w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary-500 outline-none"
                 >
                   {programs.map((program) => (
@@ -387,30 +467,29 @@ export default function NuevaOrdenPedidoPage() {
                       {program.name}
                     </option>
                   ))}
+                  <option value={PROGRAMA_OTRO}>Otro programa</option>
                 </select>
               </label>
 
-              <label className="block">
-                <span className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
-                  <Warehouse className="w-3.5 h-3.5" /> Bodega de salida
-                </span>
-                <select
-                  value={warehouseId}
-                  onChange={(event) => setWarehouseId(event.target.value)}
-                  className="mt-1 w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary-500 outline-none"
-                >
-                  <option value="">Según el producto</option>
-                  {warehouses.map((warehouse) => (
-                    <option key={warehouse.id} value={warehouse.id}>
-                      {warehouse.name}
-                    </option>
-                  ))}
-                </select>
-                <span className="mt-1 block text-[11px] text-gray-500">
-                  Solo se muestran las bodegas del catálogo importado desde
-                  Siigo Pyme.
-                </span>
-              </label>
+              {esProgramaPropio && (
+                <label className="block sm:col-span-2">
+                  <span className="text-xs font-medium text-gray-700">
+                    Nombre del programa *
+                  </span>
+                  <input
+                    type="text"
+                    value={customProgramName}
+                    onChange={(event) => setCustomProgramName(event.target.value)}
+                    placeholder="Ej.: Jornada de atención especial"
+                    className={cn(
+                      "mt-1 w-full px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none",
+                      submitAttempted && customProgramName.trim().length === 0
+                        ? "border-amber-400"
+                        : "border-gray-300"
+                    )}
+                  />
+                </label>
+              )}
 
               <label className="block">
                 <span className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
@@ -431,7 +510,7 @@ export default function NuevaOrdenPedidoPage() {
                 />
               </label>
 
-              <label className="block sm:col-span-2">
+              <label className="block">
                 <span className="text-xs font-medium text-gray-700">
                   Cédula del almacenista (opcional)
                 </span>
@@ -443,24 +522,10 @@ export default function NuevaOrdenPedidoPage() {
                   className="mt-1 w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
                 />
               </label>
-
-              <label className="block sm:col-span-2">
-                <span className="text-xs font-medium text-gray-700">
-                  Observaciones
-                </span>
-                <textarea
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  rows={2}
-                  placeholder="Ej.: Entregar los productos en el área de despacho"
-                  className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none resize-y"
-                />
-              </label>
             </div>
             <p className="mt-2 text-[11px] text-gray-500">
-              La fecha y la hora se registran automáticamente (hora de Colombia).
-              Los datos de quien <b>recibe</b> se diligencan al confirmar la
-              recepción en despacho.
+              La fecha y la hora de la orden se registran automáticamente. La
+              bodega de salida se elige en cada producto.
             </p>
           </section>
 
@@ -499,11 +564,11 @@ export default function NuevaOrdenPedidoPage() {
                 {resultados.length > 0 && (
                   <ul className="mt-2 divide-y divide-gray-100 border border-gray-200 rounded-lg max-h-80 overflow-y-auto">
                     {resultados.map((stock) => {
-                      const key = `${stock.representativeProductId}-${stock.siigoBodegaCode}-${stock.description}`;
+                      const key = `${stock.productId}-${stock.siigoBodegaCode}`;
                       const yaAgregado = lineas.some((line) => line.key === key);
                       return (
                         <li
-                          key={`${key}-${stock.description}`}
+                          key={`${key}-${stock.productCode}`}
                           className={cn(
                             "flex items-center justify-between gap-3 p-3",
                             stock.canAdd ? "hover:bg-gray-50" : "bg-gray-50/60"
@@ -511,17 +576,13 @@ export default function NuevaOrdenPedidoPage() {
                         >
                           <div className="min-w-0">
                             <p className="font-mono text-[11px] text-gray-500">
-                              {stock.representativeCode}
-                              {stock.productCount > 1 &&
-                                ` (+${stock.productCount - 1} código(s))`}
+                              {stock.productCode}
                             </p>
                             <p className="text-sm font-medium text-gray-900 truncate">
                               {stock.description}
                             </p>
                             <p className="text-xs text-gray-500">
-                              {stock.warehouseName ??
-                                `Siigo ${stock.siigoBodegaCode}`}{" "}
-                              ·{" "}
+                              {stock.warehouseName ?? "Bodega sin asignar"} ·{" "}
                               <span
                                 className={cn(
                                   "font-semibold",
@@ -599,31 +660,57 @@ export default function NuevaOrdenPedidoPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="font-mono text-[11px] text-gray-500">
-                          {line.stock.representativeCode}
+                          {line.productCode}
                         </p>
                         <p className="text-sm font-medium text-gray-900">
-                          {line.stock.description}
-                        </p>
-                        <p className="text-[11px] text-gray-500 mt-0.5">
-                          {line.stock.warehouseName ??
-                            `Siigo ${line.stock.siigoBodegaCode}`}{" "}
-                          · disponible{" "}
-                          {formatNumber(line.stock.available)} {line.stock.unit}
-                          {line.stock.locationCount > 1 &&
-                            ` · consolidado de ${line.stock.locationCount} ubicaciones`}
+                          {line.description}
                         </p>
                       </div>
                       <button
                         type="button"
                         onClick={() => quitar(line.key)}
                         className="shrink-0 p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50"
-                        aria-label={`Quitar ${line.stock.description}`}
+                        aria-label={`Quitar ${line.description}`}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
 
-                    <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+                    <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                      <label className="block col-span-2 lg:col-span-2">
+                        <span className="text-[11px] font-medium text-gray-600 flex items-center gap-1">
+                          <Warehouse className="w-3 h-3" /> Bodega de salida *
+                        </span>
+                        <select
+                          value={line.siigoBodegaCode}
+                          onChange={(event) =>
+                            cambiarBodega(
+                              line.key,
+                              Number(event.target.value)
+                            )
+                          }
+                          className="mt-1 w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary-500 outline-none"
+                          aria-label="Bodega de salida"
+                        >
+                          {line.opciones.length === 0 && (
+                            <option value={line.siigoBodegaCode}>
+                              {line.warehouseName ?? "Bodega sin asignar"}
+                            </option>
+                          )}
+                          {line.opciones.map((opcion) => (
+                            <option
+                              key={opcion.siigoBodegaCode}
+                              value={opcion.siigoBodegaCode}
+                            >
+                              {opcion.warehouseName ?? `Bodega ${opcion.siigoBodegaCode}`}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="mt-1 block text-[11px] text-gray-500">
+                          Disponible: {formatNumber(line.available)} {line.unit}
+                        </span>
+                      </label>
+
                       <label className="block">
                         <span className="text-[11px] font-medium text-gray-600">
                           Cantidad *
@@ -660,7 +747,7 @@ export default function NuevaOrdenPedidoPage() {
                           className="mt-1 w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary-500 outline-none"
                           aria-label="Unidad"
                         >
-                          {[...new Set([line.stock.unit || "UND", "UND", "KG", "GR", "ML", "L", "CAJA", "PAQUETE"])]
+                          {[...new Set([line.unit || "UND", "UND", "KG", "GR", "ML", "L", "CAJA", "PAQUETE"])]
                             .filter(Boolean)
                             .map((unidad) => (
                               <option key={unidad} value={unidad}>
@@ -778,6 +865,40 @@ export default function NuevaOrdenPedidoPage() {
               </div>
             )}
           </section>
+
+          {/* Observaciones generales: después de la tabla de productos */}
+          <section className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+            <h2 className="text-sm font-semibold text-gray-900 mb-2">
+              Observaciones generales
+            </h2>
+            <textarea
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              rows={3}
+              placeholder="Ej.: Entregar los productos en el área de despacho (opcional)"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none resize-y"
+            />
+          </section>
+
+          {/* Acciones */}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={guardar}
+              disabled={saving || lineas.length === 0}
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-40 disabled:bg-gray-400 transition-colors"
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Guardando…
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4" /> Guardar y generar orden
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Resumen */}
@@ -793,22 +914,30 @@ export default function NuevaOrdenPedidoPage() {
                 </dd>
               </div>
               <div className="flex justify-between gap-2">
+                <dt className="text-gray-600">Programa</dt>
+                <dd className="font-medium text-gray-900 text-right">
+                  {esProgramaPropio
+                    ? customProgramName.trim() || "—"
+                    : (programs.find((p) => p.id === effectiveProgramId)?.name ??
+                      "—")}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-2">
                 <dt className="text-gray-600">Almacenista</dt>
                 <dd className="font-medium text-gray-900 text-right">
                   {delivererName.trim() || "—"}
                 </dd>
               </div>
               <div className="flex justify-between gap-2">
-                <dt className="text-gray-600">Bodega</dt>
-                <dd className="font-medium text-gray-900 text-right">
-                  {warehouses.find((w) => w.id === warehouseId)?.name ??
-                    "Según el producto"}
-                </dd>
-              </div>
-              <div className="flex justify-between gap-2">
                 <dt className="text-gray-600">Líneas</dt>
                 <dd className="font-medium text-gray-900 tabular-nums">
                   {lineas.length}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-gray-600">Bodegas</dt>
+                <dd className="font-medium text-gray-900 text-right">
+                  {new Set(lineas.map((l) => l.siigoBodegaCode)).size || "—"}
                 </dd>
               </div>
               <div className="flex justify-between gap-2">
@@ -829,23 +958,6 @@ export default function NuevaOrdenPedidoPage() {
               La orden no descuenta existencias: las cantidades quedan
               comprometidas hasta que Siigo Pyme refleje el movimiento.
             </p>
-
-            <button
-              type="button"
-              onClick={guardar}
-              disabled={saving || lineas.length === 0}
-              className="mt-4 w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-40 disabled:bg-gray-400 transition-colors"
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Guardando…
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="w-4 h-4" /> Guardar orden
-                </>
-              )}
-            </button>
 
             {lineas.length > 0 && (
               <button

@@ -124,6 +124,8 @@ const MIGRATION_CHECKS = {
     ) as done`,
   "0014_rendimiento_existencias.sql": `
     select to_regclass('public.mv_stock_consolidated') is not null as done`,
+  "0015_stock_por_bodega.sql": `
+    select to_regclass('public.mv_stock_by_bodega') is not null as done`,
 };
 
 async function isAlreadyApplied(sql, file) {

@@ -705,7 +705,13 @@ export const salidaItemSchema = z.object({
 });
 
 export const createSalidaSchema = z.object({
-  programId: z.string().uuid("El programa es requerido"),
+  /** Programa del cat?logo. Puede ser nulo si se usa "Otro programa". */
+  programId: z.string().uuid().nullish(),
+  /** Nombre del programa escrito por el usuario (opci?n "Otro programa"). */
+  customProgramName: z
+    .string()
+    .max(150, "El nombre del programa es muy largo")
+    .nullish(),
   /** Destino (parroquia / grupo de familia) del cat?logo configurable. */
   destinationId: z.string().uuid("El destino es requerido").nullish(),
   warehouseId: z.string().uuid().nullish(),
@@ -731,15 +737,22 @@ export const createSalidaSchema = z.object({
 
 export const updateSalidaSchema = createSalidaSchema.partial();
 
-export const salidaEstadoSchema = z.object({
-  action: z.enum(["generar", "entregar", "confirmar_siigo", "anular"]),
-  /** Datos de quien RECIBE (se diligencian al confirmar la recepci?n). */
+/** Datos de qui?n recibe en despacho (solo identificaci?n). */
+export const recepcionSchema = z.object({
   receiverName: z.string().max(150).nullish(),
   receiverDocument: z.string().max(60).nullish(),
-  receiverTime: z
-    .string()
-    .regex(/^\d{2}:\d{2}$/, "La hora debe tener el formato HH:MM")
-    .nullish(),
+});
+
+export const salidaEstadoSchema = z.object({
+  action: z.enum(["generar", "entregar", "confirmar_siigo", "anular"]),
+  /**
+   * Datos de qui?n RECIBE en despacho.
+   *
+   * No se acepta una hora de recepci?n: el sistema la registra sola y no
+   * es modificable por el almacenista.
+   */
+  receiverName: z.string().max(150).nullish(),
+  receiverDocument: z.string().max(60).nullish(),
   siigoDocumentRef: z.string().max(80).nullish(),
   reason: z.string().max(500).nullish(),
 });

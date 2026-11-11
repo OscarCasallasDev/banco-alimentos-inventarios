@@ -5,7 +5,11 @@
 import { NextRequest } from "next/server";
 import { jsonOk, handleRouteError } from "@/lib/api/response";
 import { requireModulePermission } from "@/lib/auth/guard";
-import { getSalida, updateSalidaDraft } from "@/lib/services/exit.service";
+import {
+  deleteSalida,
+  getSalida,
+  updateSalidaDraft,
+} from "@/lib/services/exit.service";
 import { updateSalidaSchema } from "@/lib/validations/schemas";
 import { getDb } from "@/lib/db/client";
 
@@ -34,5 +38,22 @@ export async function PUT(request: NextRequest, context: Context) {
     return jsonOk(await updateSalidaDraft(id, input));
   } catch (error) {
     return handleRouteError(error, "salidas:update");
+  }
+}
+
+/**
+ * Elimina una salida.
+ *
+ * Las órdenes ya confirmadas en Siigo Pyme no se borran físicamente: se
+ * ocultan del listado y conservan su historial (borrado lógico).
+ */
+export async function DELETE(request: NextRequest, context: Context) {
+  try {
+    const user = await requireModulePermission("salidas_almacen", "salidas.edit");
+    const { id } = await context.params;
+    const result = await deleteSalida(id, user.id);
+    return jsonOk(result);
+  } catch (error) {
+    return handleRouteError(error, "salidas:delete");
   }
 }
