@@ -41,6 +41,8 @@ interface VencimientoRow {
   productName: string | null;
   lotCode: string | null;
   siigoBodegaCode: number | null;
+  /** Nombre legible de la bodega. */
+  warehouseName: string | null;
   locationCode: number | null;
   quantity: number | null;
   unit: string | null;
@@ -368,7 +370,10 @@ export default function VencimientosPage() {
                           {item.lotCode ?? "—"}
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-700">
-                          {item.siigoBodegaCode ?? "—"}
+                          {item.warehouseName ??
+                            (item.siigoBodegaCode !== null
+                              ? `Bodega ${item.siigoBodegaCode}`
+                              : "—")}
                           {item.locationCode !== null && ` · Ub. ${item.locationCode}`}
                         </td>
                         <td className="px-4 py-3 text-right tabular-nums text-gray-900">

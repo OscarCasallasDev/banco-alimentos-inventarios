@@ -102,6 +102,8 @@ export interface VencimientoRow {
   productName: string | null;
   lotCode: string | null;
   siigoBodegaCode: number | null;
+  /** Nombre legible de la bodega (PRINCIPAL, ALMACEN, ...). */
+  warehouseName: string | null;
   locationCode: number | null;
   quantity: number | null;
   unit: string | null;
@@ -209,10 +211,12 @@ export async function listVencimientos(
     SELECT
       v.id, v.product_code, v.product_name, v.lot_code,
       v.siigo_bodega_code, v.location_code, v.quantity, v.unit,
+      w.name AS warehouse_name,
       to_char(v.expiration_date, 'YYYY-MM-DD') AS expiration_date,
       (v.expiration_date - ${ranges.today}::date) AS days_left,
       v.synced_at
     FROM vencimiento_lotes v
+    LEFT JOIN warehouses w ON w.siigo_code = v.siigo_bodega_code
     WHERE ${where}
     ORDER BY
       CASE WHEN v.expiration_date < ${ranges.today}::date THEN 1 ELSE 0 END,
@@ -224,6 +228,7 @@ export async function listVencimientos(
   const countRows = await executor.execute<{ total: number }>(sql`
     SELECT COUNT(*)::int AS total
     FROM vencimiento_lotes v
+    LEFT JOIN warehouses w ON w.siigo_code = v.siigo_bodega_code
     WHERE ${where}
   `);
 
@@ -236,6 +241,7 @@ export async function listVencimientos(
       row.siigo_bodega_code === null || row.siigo_bodega_code === undefined
         ? null
         : Number(row.siigo_bodega_code),
+    warehouseName: (row.warehouse_name as string | null) ?? null,
     locationCode:
       row.location_code === null || row.location_code === undefined
         ? null
@@ -297,9 +303,9 @@ export async function getAlertsSummary(
       (SELECT COUNT(*)::int FROM vencimiento_lotes
         WHERE expiration_date < ${ranges.today}::date) AS expired,
       (SELECT COUNT(*)::int FROM vencimiento_lotes) AS expiration_records,
-      (SELECT COUNT(*)::int FROM v_stock_consolidated
+      (SELECT COUNT(*)::int FROM v_stock_by_bodega
         WHERE (quantity - reserved) < 0) AS negative_stock,
-      (SELECT COUNT(*)::int FROM v_stock_consolidated
+      (SELECT COUNT(*)::int FROM v_stock_by_bodega
         WHERE (quantity - reserved) = 0) AS zero_stock
   `);
 

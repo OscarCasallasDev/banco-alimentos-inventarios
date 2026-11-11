@@ -6,9 +6,10 @@
  * contable continúa en Siigo Pyme.
  *
  * Los datos del detalle son una FOTO de lo que se registró al guardar la
- * orden (nombre, presentación, peso y vencimiento quedaron guardados en la
- * línea), de modo que reimprimir una orden histórica reproduce exactamente el
- * documento original aunque el inventario haya cambiado.
+ * orden (nombre, presentación, peso, vencimiento y bodega quedaron
+ * guardados en la línea), de modo que reimprimir una orden histórica
+ * reproduce exactamente el documento original aunque el inventario haya
+ * cambiado.
  */
 
 import Image from "next/image";
@@ -21,6 +22,8 @@ export interface OrdenPedidoItem {
   productName: string;
   presentation: string | null;
   unitCode: string | null;
+  /** Bodega de salida de ESTA línea. */
+  warehouseName: string | null;
   quantity: number;
   weight: number | null;
   weightUnit: string | null;
@@ -36,11 +39,10 @@ export interface OrdenPedido {
   programName: string;
   destinationName: string | null;
   destinationType: string | null;
-  warehouseName: string | null;
   /** Nombre del almacenista que ENTREGA (registrado al crear la orden). */
   delivererName: string | null;
   delivererDocument: string | null;
-  /** Nombre de quien recibe (se diligencia al confirmar la recepción). */
+  /** Nombre de quien recibe (se diligencia en despacho). */
   receiverName: string | null;
   receiverDocument: string | null;
   /** Fecha y hora de la recepción (null si aún no se ha recibido). */
@@ -95,7 +97,20 @@ export default function OrdenPedidoDocumento({
 
   return (
     <div className={styles.documento}>
-      {/* Encabezado */}
+      {/* Encabezado superior: fecha y hora del navegador + título del sistema */}
+      <div className={styles.encabezadoSuperior}>
+        <p className={styles.tituloSistema}>
+          Sistema de Gestión de Inventarios | Banco de Alimentos Ibagué
+        </p>
+        <p className={styles.fechaNavegador}>
+          Fecha: {formatDate(orden.date)} &nbsp;·&nbsp; Hora: {orden.time}
+        </p>
+      </div>
+
+      {/* Separación vertical entre el encabezado superior y el institucional */}
+      <div className={styles.separacionSuperior} />
+
+      {/* Encabezado institucional */}
       <header className={styles.encabezado}>
         <div className={styles.encabezadoInstitucion}>
           <Image
@@ -107,7 +122,7 @@ export default function OrdenPedidoDocumento({
             priority
             className={styles.logo}
           />
-          <div>
+          <div className={styles.textoInstitucion}>
             <p className={styles.banco}>{INSTITUTION.nameLines[0]}</p>
             <p className={styles.banco}>{INSTITUTION.nameLines[1]}</p>
             <p className={styles.datosInstitucion}>
@@ -122,9 +137,6 @@ export default function OrdenPedidoDocumento({
         <div className={styles.encabezadoDocumento}>
           <p className={styles.tituloDocumento}>ORDEN DE PEDIDO</p>
           <p className={styles.numeroDocumento}>{orden.number}</p>
-          <p className={styles.fechaDocumento}>
-            Fecha: {formatDate(orden.date)} &nbsp;·&nbsp; Hora: {orden.time}
-          </p>
           <p className={styles.estadoDocumento}>
             Estado: {STATUS_LABELS[orden.status] ?? orden.status}
           </p>
@@ -149,16 +161,30 @@ export default function OrdenPedidoDocumento({
           </span>
         </div>
         <div className={styles.datoGeneral}>
-          <span className={styles.etiqueta}>BODEGA DE SALIDA</span>
-          <span className={styles.valor}>{orden.warehouseName ?? "—"}</span>
+          <span className={styles.etiqueta}>PROGRAMA</span>
+          <span className={styles.valor}>{orden.programName || "—"}</span>
         </div>
         <div className={styles.datoGeneral}>
           <span className={styles.etiqueta}>ALMACENISTA (QUIEN ENTREGA)</span>
-          <span className={styles.valor}>{orden.delivererName ?? "—"}</span>
+          <span className={styles.valor}>
+            {orden.delivererName ?? "—"}
+            {orden.delivererDocument && (
+              <span className={styles.subDetalle}>
+                Cédula: {orden.delivererDocument}
+              </span>
+            )}
+          </span>
         </div>
         <div className={styles.datoGeneral}>
           <span className={styles.etiqueta}>RECIBE EN DESPACHO</span>
-          <span className={styles.valor}>{orden.receiverName ?? ""}</span>
+          <span className={styles.valor}>
+            {orden.receiverName ?? ""}
+            {orden.receiverDocument && (
+              <span className={styles.subDetalle}>
+                Cédula: {orden.receiverDocument}
+              </span>
+            )}
+          </span>
         </div>
       </section>
 
@@ -169,6 +195,7 @@ export default function OrdenPedidoDocumento({
             <th className={styles.colNumero}>#</th>
             <th className={styles.colCodigo}>CÓDIGO</th>
             <th className={styles.colProducto}>PRODUCTO</th>
+            <th className={styles.colBodega}>BODEGA DE SALIDA</th>
             <th className={styles.colCantidad}>CANTIDAD</th>
             <th className={styles.colUnidad}>UNIDAD</th>
             <th className={styles.colPeso}>PESO</th>
@@ -186,6 +213,9 @@ export default function OrdenPedidoDocumento({
                 {item.notes && (
                   <span className={styles.notaProducto}> · {item.notes}</span>
                 )}
+              </td>
+              <td className={styles.bodega}>
+                {item.warehouseName ?? "—"}
               </td>
               <td className={styles.numero}>{formatNumber(item.quantity)}</td>
               <td>{item.unitCode ?? "—"}</td>
@@ -222,9 +252,7 @@ export default function OrdenPedidoDocumento({
       {/* Observaciones */}
       <section className={styles.observaciones}>
         <p className={styles.etiqueta}>OBSERVACIONES</p>
-        <p className={styles.textoObservaciones}>
-          {orden.notes ?? ""}
-        </p>
+        <p className={styles.textoObservaciones}>{orden.notes ?? ""}</p>
       </section>
 
       {/* Firmas */}

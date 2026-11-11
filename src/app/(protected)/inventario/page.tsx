@@ -1,10 +1,13 @@
 /**
- * Módulo de Inventario — existencias CONSOLIDADAS.
+ * Módulo de Inventario — existencias por producto y bodega.
  *
- * Un mismo producto puede estar registrado en varias ubicaciones de la misma
- * bodega. Esta pantalla muestra el total consolidado por
- * (descripción exacta + unidad + bodega); los registros originales por
- * ubicación se conservan intactos en la base.
+ * Cada fila es un producto (código de Siigo) en una bodega concreta. Dos
+ * productos con el MISMO nombre en bodegas distintas aparecen separados y
+ * sus cantidades nunca se suman entre sí.
+ *
+ * Un mismo producto puede estar en varias ubicaciones de una misma bodega:
+ * esas ubicaciones sí se suman (es el mismo stock) y se muestran en la
+ * columna "Ubicaciones". Los registros originales se conservan intactos.
  */
 
 "use client";
@@ -26,15 +29,13 @@ import { useApiQuery } from "@/hooks/useApiQuery";
 import { cn } from "@/lib/utils";
 
 interface StockRow {
+  productId: string;
+  productCode: string;
   description: string;
   unit: string;
   siigoBodegaCode: number;
   warehouseId: string | null;
   warehouseName: string | null;
-  representativeCode: string;
-  representativeProductId: string;
-  productCodes: string[];
-  productCount: number;
   locationCount: number;
   quantity: number;
   reserved: number;
@@ -122,9 +123,7 @@ export default function InventarioPage() {
     for (const item of items) {
       map.set(
         item.siigoBodegaCode,
-        item.warehouseName
-          ? `${item.warehouseName} (Siigo ${item.siigoBodegaCode})`
-          : `Siigo ${item.siigoBodegaCode} (sin asignar)`
+        item.warehouseName ?? `Bodega ${item.siigoBodegaCode}`
       );
     }
     return [...map.entries()].sort((a, b) => a[0] - b[0]);
@@ -304,7 +303,7 @@ export default function InventarioPage() {
                       Ubicaciones
                     </th>
                     <th className="px-4 py-3 font-semibold text-gray-700 text-right">
-                      Siigo
+                      Existencia
                     </th>
                     <th className="px-4 py-3 font-semibold text-gray-700 text-right">
                       Comprometido
@@ -320,19 +319,14 @@ export default function InventarioPage() {
                 <tbody className="divide-y divide-gray-100">
                   {items.map((item) => (
                     <tr
-                      key={`${item.representativeProductId}-${item.siigoBodegaCode}-${item.description}`}
+                      key={`${item.productId}-${item.siigoBodegaCode}`}
                       className={cn(
                         "hover:bg-gray-50",
                         item.reviewRequired && "bg-amber-50/60"
                       )}
                     >
                       <td className="px-4 py-3 font-mono text-xs text-gray-700 whitespace-nowrap">
-                        {item.representativeCode}
-                        {item.productCount > 1 && (
-                          <span className="ml-1 text-[10px] text-gray-400">
-                            (+{item.productCount - 1})
-                          </span>
-                        )}
+                        {item.productCode}
                         {item.reviewRequired && (
                           <span
                             className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-100 rounded px-1.5 py-0.5"
@@ -346,16 +340,12 @@ export default function InventarioPage() {
                         <p className="font-medium text-gray-900">
                           {item.description}
                         </p>
-                        <p className="text-[11px] text-gray-500">
-                          {item.unit}
-                          {item.productCount > 1 &&
-                            ` · ${item.productCount} códigos consolidados`}
-                        </p>
+                        <p className="text-[11px] text-gray-500">{item.unit}</p>
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-700 whitespace-nowrap">
                         <span className="inline-flex items-center gap-1">
                           <Warehouse className="w-3 h-3 text-gray-400" />
-                          {item.warehouseName ?? `Siigo ${item.siigoBodegaCode}`}
+                          {item.warehouseName ?? `Bodega ${item.siigoBodegaCode}`}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center text-xs text-gray-600">
@@ -402,19 +392,19 @@ export default function InventarioPage() {
             <div className="lg:hidden divide-y divide-gray-100">
               {items.map((item) => (
                 <div
-                  key={`${item.representativeProductId}-${item.siigoBodegaCode}-${item.description}`}
+                  key={`${item.productId}-${item.siigoBodegaCode}`}
                   className={cn("p-4", item.reviewRequired && "bg-amber-50/60")}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-mono text-[11px] text-gray-500">
-                        {item.representativeCode}
+                        {item.productCode}
                       </p>
                       <p className="font-medium text-gray-900 text-sm leading-snug">
                         {item.description}
                       </p>
                       <p className="text-xs text-gray-500">
-                        {item.warehouseName ?? `Siigo ${item.siigoBodegaCode}`} ·{" "}
+                        {item.warehouseName ?? `Bodega ${item.siigoBodegaCode}`} ·{" "}
                         {item.locationCount} ubicación(es)
                       </p>
                     </div>
@@ -427,7 +417,7 @@ export default function InventarioPage() {
 
                   <div className="mt-2 grid grid-cols-3 gap-2 text-center">
                     <div className="bg-gray-50 rounded-lg py-2">
-                      <p className="text-[10px] text-gray-500">Siigo</p>
+                      <p className="text-[10px] text-gray-500">Existencia</p>
                       <p
                         className={cn(
                           "font-semibold tabular-nums",
@@ -458,7 +448,7 @@ export default function InventarioPage() {
               <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
                 <p className="text-xs text-gray-600">
                   Página {pagination.page} de {pagination.totalPages} ·{" "}
-                  {pagination.total} productos consolidados
+                  {pagination.total} productos por bodega
                 </p>
                 <div className="flex gap-2">
                   <button

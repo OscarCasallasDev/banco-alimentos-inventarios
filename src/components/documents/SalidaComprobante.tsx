@@ -130,7 +130,7 @@ export default function SalidaComprobante({
           <span className={styles.valor}>
             {salida.warehouseName ??
               (salida.siigoBodegaCode !== null
-                ? `Siigo ${salida.siigoBodegaCode}`
+                ? `Bodega ${salida.siigoBodegaCode}`
                 : "—")}
             {salida.locationCode !== null && ` · Ub. ${salida.locationCode}`}
           </span>

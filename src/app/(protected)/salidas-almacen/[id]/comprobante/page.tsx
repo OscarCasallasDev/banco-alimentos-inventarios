@@ -65,7 +65,6 @@ export default async function OrdenPedidoPage({
             programName: salida.programName,
             destinationName: salida.destinationName,
             destinationType: salida.destinationType,
-            warehouseName: salida.warehouseName,
             delivererName: salida.delivererName,
             delivererDocument: salida.delivererDocument,
             receiverName: salida.receiverName,
@@ -83,6 +82,8 @@ export default async function OrdenPedidoPage({
               productName: item.productName,
               presentation: item.presentation,
               unitCode: item.unitCode,
+              // La bodega de salida es de cada línea.
+              warehouseName: item.warehouseName,
               quantity: item.quantity,
               weight: item.weight,
               weightUnit: item.weightUnit,

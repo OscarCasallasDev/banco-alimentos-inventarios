@@ -62,11 +62,15 @@ describe("Geometría de impresión de la orden de pedido", () => {
   });
 
   it("el encabezado reparte el ancho sin desbordarse", () => {
-    const columnas = /\.encabezado\s*\{[^}]*grid-template-columns:\s*([\d.]+)%\s+([\d.]+)%/
-      .exec(css);
+    // Usa unidades `fr` con `minmax(0, …)`: es lo que impide que el
+    // bloque superior derecho se salga del área imprimible (el `gap` se
+    // descuenta del espacio disponible en lugar de sumar).
+    const columnas =
+      /\.encabezado\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*([\d.]+)fr\)\s*minmax\(0,\s*([\d.]+)fr\)/
+        .exec(css);
     expect(columnas).not.toBeNull();
     const suma = Number(columnas![1]) + Number(columnas![2]);
-    expect(suma).toBeLessThanOrEqual(100);
+    expect(suma).toBeCloseTo(100, 5);
   });
 
   it("el bloque derecho del encabezado puede partir el texto en vez de salirse", () => {
@@ -74,12 +78,64 @@ describe("Geometría de impresión de la orden de pedido", () => {
     expect(bloque).not.toBeNull();
     expect(bloque![1]).toMatch(/min-width:\s*0/);
     expect(bloque![1]).toMatch(/overflow-wrap:\s*break-word/);
+    // Holgura extra a la derecha frente al borde de la hoja.
+    expect(bloque![1]).toMatch(/padding-right/);
   });
 
   it("el número de orden no se parte en dos líneas", () => {
     const numero = /\.numeroDocumento\s*\{([^}]*)\}/.exec(css);
     expect(numero).not.toBeNull();
     expect(numero![1]).toMatch(/white-space:\s*nowrap/);
+  });
+
+  it("recupera la separación superior: fecha/hora del sistema y 2 cm de aire", () => {
+    // Encabezado superior con la fecha y hora y el título del sistema.
+    expect(css).toMatch(/\.encabezadoSuperior\s*\{/);
+    expect(css).toMatch(/\.tituloSistema\s*\{/);
+    expect(css).toMatch(/\.fechaNavegador\s*\{/);
+    // Separación vertical de aproximadamente 2 cm antes del encabezado
+    // institucional.
+    const separacion = /\.separacionSuperior\s*\{[^}]*height:\s*([\d.]+)cm/.exec(
+      css
+    );
+    expect(separacion).not.toBeNull();
+    expect(Number(separacion![1])).toBeGreaterThanOrEqual(1.5);
+    expect(Number(separacion![1])).toBeLessThanOrEqual(2.5);
+  });
+
+  it("la columna de código es más ancha que la de cantidad", () => {
+    const ancho = (clase: string): number => {
+      const match = new RegExp(
+        `\\.${clase}\\s*\\{[^}]*width:\\s*([\\d.]+)%`
+      ).exec(css);
+      expect(match).not.toBeNull();
+      return Number(match![1]);
+    };
+    // El código de Siigo tiene 15 caracteres: necesita más espacio.
+    expect(ancho("colCodigo")).toBeGreaterThan(ancho("colCantidad"));
+    expect(ancho("colCodigo")).toBeGreaterThanOrEqual(14);
+  });
+
+  it("el código no se parte en dos líneas", () => {
+    const codigo = /\.codigo\s*\{([^}]*)\}/.exec(css);
+    expect(codigo).not.toBeNull();
+    expect(codigo![1]).toMatch(/white-space:\s*nowrap/);
+    // Si aun así no cabe, se recorta en vez de aumentar la altura de la fila.
+    expect(codigo![1]).toMatch(/overflow:\s*hidden/);
+    expect(codigo![1]).toMatch(/text-overflow:\s*ellipsis/);
+  });
+
+  it("la tabla tiene columna de bodega de salida", () => {
+    expect(css).toMatch(/\.colBodega\s*\{/);
+    expect(css).toMatch(/\.bodega\s*\{/);
+  });
+
+  it("los anchos de columna suman 100 %", () => {
+    const anchos = [...css.matchAll(/\.col\w+\s*\{[^}]*width:\s*([\d.]+)%/g)]
+      .map((m) => Number(m[1]));
+    expect(anchos.length).toBeGreaterThanOrEqual(9);
+    const suma = anchos.reduce((a, b) => a + b, 0);
+    expect(Math.abs(suma - 100)).toBeLessThan(0.01);
   });
 
   it("la tabla repite el encabezado en cada página", () => {
@@ -152,6 +208,48 @@ describe("Campos del bloque de firmas", () => {
     expect(tsx).toContain("orden.receiverName ?? \"\"");
     expect(tsx).toContain("orden.receiverDocument ?? \"\"");
     expect(tsx).toContain("orden.receivedTime ?? \"____ : ____\"");
+  });
+});
+
+describe("Contenido del documento impreso", () => {
+  const tsx = readFileSync(
+    path.join(
+      process.cwd(),
+      "src",
+      "components",
+      "documents",
+      "OrdenPedidoDocumento.tsx"
+    ),
+    "utf8"
+  );
+
+  it("muestra la columna BODEGA DE SALIDA con la bodega de cada producto", () => {
+    expect(tsx).toContain("BODEGA DE SALIDA");
+    expect(tsx).toContain("colBodega");
+    expect(tsx).toContain("item.warehouseName");
+  });
+
+  it("muestra la fecha y hora en el encabezado superior", () => {
+    expect(tsx).toContain("encabezadoSuperior");
+    expect(tsx).toContain("tituloSistema");
+    expect(tsx).toContain("Fecha: {formatDate(orden.date)}");
+    expect(tsx).toContain("Hora: {orden.time}");
+  });
+
+  it("muestra el nombre del programa (incluido el programa propio)", () => {
+    expect(tsx).toContain("PROGRAMA");
+    expect(tsx).toContain("orden.programName");
+  });
+
+  it("conserva el logotipo, el nombre institucional y el texto del pie", () => {
+    expect(tsx).toContain("/logo1.jpeg");
+    expect(tsx).toContain("INSTITUTION.nameLines[0]");
+    expect(tsx).toContain("No constituye comprobante contable");
+  });
+
+  it("ya no muestra la bodega general de la orden en el bloque de información", () => {
+    // La bodega ahora es de cada línea de producto.
+    expect(tsx).not.toContain("orden.warehouseName");
   });
 });
 

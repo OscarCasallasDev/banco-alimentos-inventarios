@@ -1,8 +1,19 @@
 /**
  * Detalle de una salida de almacén.
  *
- * Permite revisar el documento generado, registrar la recepción en despacho
+ * Permite revisar el documento generado, registrar quién recibe en despacho
  * y confirmar que la salida ya quedó anotada en Siigo Pyme.
+ *
+ * FLUJO PARA EL ALMACENISTA
+ *
+ * El almacenista solo se ocupa de:
+ *   1. Generar el documento (imprimir).
+ *   2. Anotar quién recibe en despacho (nombre y cédula).
+ *   3. Editar o eliminar la orden si quedó mal.
+ *
+ * NO hay un botón de "registrar recepción" ni una hora manual: la fecha y
+ * la hora las registra el sistema y no son editables. Tampoco hay acciones
+ * de anulación: una orden incorrecta se corrige editándola o eliminándola.
  */
 
 "use client";
@@ -18,8 +29,10 @@ import {
   Clock,
   AlertTriangle,
   Loader2,
-  Ban,
   FileText,
+  Pencil,
+  Trash2,
+  Warehouse,
 } from "lucide-react";
 import { useApiQuery } from "@/hooks/useApiQuery";
 import { apiSend } from "@/lib/api/client";
@@ -33,6 +46,9 @@ interface SalidaItem {
   productReference: string | null;
   unitCode: string | null;
   presentation: string | null;
+  /** Bodega de salida de esta línea. */
+  warehouseId: string | null;
+  warehouseName: string | null;
   siigoBodegaCode: number;
   locationCode: number;
   quantity: number;
@@ -63,6 +79,7 @@ interface Salida {
   weightPartial: boolean;
   itemCount: number;
   programName: string;
+  customProgramName: string | null;
   warehouseName: string | null;
   userName: string;
   createdAt: string;
@@ -116,11 +133,8 @@ export default function SalidaDetallePage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [receiverName, setReceiverName] = useState("");
   const [receiverDocument, setReceiverDocument] = useState("");
-  const [receiverTime, setReceiverTime] = useState(
-    new Date().toTimeString().slice(0, 5)
-  );
   const [siigoRef, setSiigoRef] = useState("");
-  const [cancelReason, setCancelReason] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   async function ejecutar(nombre: string, body: Record<string, unknown>) {
     setAction(nombre);
@@ -132,6 +146,43 @@ export default function SalidaDetallePage() {
     } catch (err) {
       setActionError((err as Error).message);
     } finally {
+      setAction(null);
+    }
+  }
+
+  /** Guarda la identificación de quién recibe (sin hora manual). */
+  async function guardarRecepcion() {
+    setAction("recepcion");
+    setActionError(null);
+    try {
+      await apiSend(`/api/salidas/${id}/recepcion`, "PUT", {
+        receiverName: receiverName.trim() || undefined,
+        receiverDocument: receiverDocument.trim() || undefined,
+      });
+      await refetch();
+      router.refresh();
+    } catch (err) {
+      setActionError((err as Error).message);
+    } finally {
+      setAction(null);
+    }
+  }
+
+  /** Elimina la orden (con borrado lógico si ya está confirmada en Siigo). */
+  async function eliminar() {
+    setAction("eliminar");
+    setActionError(null);
+    try {
+      const result = await apiSend<{ message: string }>(
+        `/api/salidas/${id}`,
+        "DELETE"
+      );
+      setConfirmDelete(false);
+      router.push("/salidas-almacen");
+      router.refresh();
+      void result;
+    } catch (err) {
+      setActionError((err as Error).message);
       setAction(null);
     }
   }
@@ -162,10 +213,16 @@ export default function SalidaDetallePage() {
   }
 
   const puedeGenerar = data.status === "DRAFT";
-  const puedeEntregar =
+  const puedeRecibir =
     data.status === "GENERATED" || data.status === "DELIVERED";
-  const puedeConfirmar = data.status === "DELIVERED";
-  const puedeAnular = data.status === "DRAFT" || data.status === "GENERATED";
+  const puedeConfirmar =
+    data.status === "GENERATED" || data.status === "DELIVERED";
+  // Solo se puede eliminar una orden que no llegó a Siigo Pyme; las demás
+  // se ocultan del listado conservando su historial.
+  const puedeEliminar =
+    data.status === "DRAFT" ||
+    data.status === "GENERATED" ||
+    data.status === "DELIVERED";
 
   return (
     <div className="space-y-4">
@@ -204,15 +261,26 @@ export default function SalidaDetallePage() {
           </p>
         </div>
 
-        {data.status !== "DRAFT" && (
-          <Link
-            href={`/salidas-almacen/${data.id}/comprobante`}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700"
-          >
-            <Printer className="w-4 h-4" />
-            <span className="hidden sm:inline">Ver comprobante</span>
-          </Link>
-        )}
+        <div className="flex items-center gap-2">
+          {data.status !== "DRAFT" && (
+            <Link
+              href={`/salidas-almacen/${data.id}/comprobante`}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700"
+            >
+              <Printer className="w-4 h-4" />
+              <span className="hidden sm:inline">Ver comprobante</span>
+            </Link>
+          )}
+          {data.status === "DRAFT" && (
+            <Link
+              href={`/salidas-almacen/${data.id}/editar`}
+              className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 bg-white rounded-lg font-medium hover:bg-gray-50"
+            >
+              <Pencil className="w-4 h-4" />
+              <span className="hidden sm:inline">Editar</span>
+            </Link>
+          )}
+        </div>
       </div>
 
       {actionError && (
@@ -252,6 +320,9 @@ export default function SalidaDetallePage() {
                       Producto
                     </th>
                     <th className="px-4 py-2.5 font-semibold text-gray-700">
+                      Bodega de salida
+                    </th>
+                    <th className="px-4 py-2.5 font-semibold text-gray-700">
                       Unidad
                     </th>
                     <th className="px-4 py-2.5 font-semibold text-gray-700 text-right">
@@ -268,7 +339,7 @@ export default function SalidaDetallePage() {
                       <td className="px-4 py-2.5 text-gray-500 tabular-nums">
                         {item.lineNo}
                       </td>
-                      <td className="px-4 py-2.5 font-mono text-xs text-gray-700">
+                      <td className="px-4 py-2.5 font-mono text-xs text-gray-700 whitespace-nowrap">
                         {item.productCode}
                       </td>
                       <td className="px-4 py-2.5 text-gray-900">
@@ -276,6 +347,12 @@ export default function SalidaDetallePage() {
                         {item.notes && (
                           <p className="text-xs text-gray-500">{item.notes}</p>
                         )}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-gray-700 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1">
+                          <Warehouse className="w-3 h-3 text-gray-400" />
+                          {item.warehouseName ?? `Bodega ${item.siigoBodegaCode}`}
+                        </span>
                       </td>
                       <td className="px-4 py-2.5 text-gray-600">
                         {item.unitCode ?? "—"}
@@ -305,6 +382,9 @@ export default function SalidaDetallePage() {
                       </p>
                       <p className="text-sm font-medium text-gray-900">
                         {item.productName}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {item.warehouseName ?? `Bodega ${item.siigoBodegaCode}`}
                       </p>
                     </div>
                     <p className="shrink-0 font-semibold tabular-nums text-gray-900">
@@ -351,12 +431,6 @@ export default function SalidaDetallePage() {
                 </dd>
               </div>
               <div className="flex justify-between gap-2">
-                <dt className="text-gray-600">Bodega</dt>
-                <dd className="font-medium text-gray-900 text-right">
-                  {data.warehouseName ?? "—"}
-                </dd>
-              </div>
-              <div className="flex justify-between gap-2">
                 <dt className="text-gray-600">Almacenista (entrega)</dt>
                 <dd className="font-medium text-gray-900 text-right">
                   {data.delivererName ?? data.userName}
@@ -389,9 +463,9 @@ export default function SalidaDetallePage() {
                 </dd>
               </div>
               <div className="flex justify-between gap-2">
-                <dt className="text-gray-600">Generada</dt>
+                <dt className="text-gray-600">Creada</dt>
                 <dd className="text-gray-700 text-right text-xs">
-                  {formatDateTime(data.documentGeneratedAt)}
+                  {formatDateTime(data.createdAt)}
                 </dd>
               </div>
               {data.deliveredAt && (
@@ -426,56 +500,50 @@ export default function SalidaDetallePage() {
                 </button>
               )}
 
-              {puedeEntregar && (
+              {puedeRecibir && (
                 <div className="space-y-2">
                   <p className="text-xs text-gray-600">
-                    Registre quién recibe en despacho.
+                    Identifique a quién recibe la orden en despacho. La fecha y la
+                    hora las registra el sistema automáticamente.
                   </p>
-                  <input
-                    type="text"
-                    value={receiverName}
-                    onChange={(event) => setReceiverName(event.target.value)}
-                    placeholder="Nombre de quien recibe"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                  />
-                  <input
-                    type="text"
-                    value={receiverDocument}
-                    onChange={(event) =>
-                      setReceiverDocument(event.target.value)
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                  />
                   <label className="block">
                     <span className="text-[11px] font-medium text-gray-600">
-                      Hora de recepci?n
+                      Nombre de quien recibe en despacho
                     </span>
                     <input
-                      type="time"
-                      value={receiverTime}
-                      onChange={(event) => setReceiverTime(event.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                      type="text"
+                      value={receiverName}
+                      onChange={(event) => setReceiverName(event.target.value)}
+                      placeholder="Nombre de quien recibe"
+                      className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-[11px] font-medium text-gray-600">
+                      Cédula de quien recibe en despacho
+                    </span>
+                    <input
+                      type="text"
+                      value={receiverDocument}
+                      onChange={(event) =>
+                        setReceiverDocument(event.target.value)
+                      }
+                      placeholder="Documento de identificación"
+                      className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
                     />
                   </label>
                   <button
                     type="button"
-                    onClick={() =>
-                      ejecutar("entregar", {
-                        action: "entregar",
-                        receiverName: receiverName || undefined,
-                        receiverDocument: receiverDocument || undefined,
-                        receiverTime: receiverTime || undefined,
-                      })
-                    }
+                    onClick={guardarRecepcion}
                     disabled={action !== null}
-                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-violet-600 text-white rounded-lg font-medium hover:bg-violet-700 disabled:opacity-40"
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-40"
                   >
-                    {action === "entregar" ? (
+                    {action === "recepcion" ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <PackageCheck className="w-4 h-4" />
                     )}
-                    Registrar recepción en despacho
+                    Guardar datos de recepción
                   </button>
                 </div>
               )}
@@ -519,33 +587,58 @@ export default function SalidaDetallePage() {
                 </div>
               )}
 
-              {puedeAnular && (
-                <div className="space-y-2 border-t border-gray-200 pt-4">
-                  <input
-                    type="text"
-                    value={cancelReason}
-                    onChange={(event) => setCancelReason(event.target.value)}
-                    placeholder="Motivo de la anulación"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      ejecutar("anular", {
-                        action: "anular",
-                        reason: cancelReason || "Anulada por el usuario",
-                      })
-                    }
-                    disabled={action !== null}
-                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 border border-red-300 text-red-700 rounded-lg font-medium hover:bg-red-50 disabled:opacity-40"
+              {/* Gestión de la orden: editar o eliminar */}
+              {data.status === "DRAFT" && (
+                <div className="border-t border-gray-200 pt-4">
+                  <Link
+                    href={`/salidas-almacen/${data.id}/editar`}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-300 rounded-lg font-medium hover:bg-gray-50"
                   >
-                    {action === "anular" ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Ban className="w-4 h-4" />
-                    )}
-                    Anular salida
-                  </button>
+                    <Pencil className="w-4 h-4" /> Editar orden
+                  </Link>
+                </div>
+              )}
+
+              {puedeEliminar && (
+                <div className="border-t border-gray-200 pt-4">
+                  {confirmDelete ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-700">
+                        ¿Eliminar la orden {data.number}? Esta acción no se puede
+                        deshacer.
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={eliminar}
+                          disabled={action !== null}
+                          className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 disabled:opacity-40"
+                        >
+                          {action === "eliminar" ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                          Sí, eliminar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDelete(false)}
+                          className="px-4 py-2.5 border border-gray-300 rounded-lg font-medium hover:bg-gray-50"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(true)}
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 border border-red-300 text-red-700 rounded-lg font-medium hover:bg-red-50"
+                    >
+                      <Trash2 className="w-4 h-4" /> Eliminar orden
+                    </button>
+                  )}
                 </div>
               )}
             </section>

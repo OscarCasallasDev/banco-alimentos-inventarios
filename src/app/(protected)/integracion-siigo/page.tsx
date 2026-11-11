@@ -790,7 +790,7 @@ function BodegasPanel() {
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-sm font-bold text-primary-700 bg-primary-50 rounded px-2 py-0.5">
-                        Siigo {item.siigoBodegaCode}
+                        C?digo Siigo {item.siigoBodegaCode}
                       </span>
                       {item.warehouseName ? (
                         <span className="text-sm font-medium text-gray-900">

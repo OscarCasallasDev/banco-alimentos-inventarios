@@ -5,12 +5,22 @@
  *   - `table-header-group` repite el encabezado de la tabla en cada página.
  *   - `break-inside: avoid` evita que una fila o el bloque de firmas se partan.
  *   - Cifras con `tabular-nums` para que las columnas no se descuadren.
+ *
+ * GEOMETRÍA (tamaño carta)
+ *
+ *   Hoja carta: 21,59 cm de ancho. Con 1 cm de margen a cada lado quedan
+ *   19,59 cm imprimibles. El documento mide 19,2 cm, así que el encabezado
+ *   nunca queda cortado por el borde.
+ *
+ *   El bloque superior derecho (ORDEN DE PEDIDO, número y estado) usa
+ *   `minmax(0, ...)` para que nunca desborde la rejilla, y el documento
+ *   tiene un margen de seguridad a la derecha.
  */
 
 @page {
   size: 21.59cm 27.94cm;
   /* 1 cm de margen a cada lado deja ~19,59 cm imprimibles. El documento
-     usa 19,2 cm, as? que el encabezado nunca queda cortado por el borde. */
+     usa 19,2 cm, así que el encabezado nunca queda cortado por el borde. */
   margin: 1cm 1cm;
 }
 
@@ -19,7 +29,7 @@
   font-size: 8.5pt;
   color: #111827;
   background: #ffffff;
-  /* Cabe dentro del ?rea imprimible (19,59 cm) con holgura. */
+  /* Cabe dentro del área imprimible (19,59 cm) con holgura. */
   width: 19.2cm;
   max-width: 100%;
   padding: 0 0.2cm;
@@ -27,14 +37,45 @@
   overflow-wrap: break-word;
 }
 
-/* ---------------- Encabezado ---------------- */
+/* ---------------- Encabezado superior (fecha/hora + sistema) ---------------- */
+
+.encabezadoSuperior {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.4cm;
+  font-size: 7pt;
+  color: #6b7280;
+  /* Margen de seguridad a la derecha: el bloque nunca toca el borde. */
+  padding-right: 0.25cm;
+}
+
+.tituloSistema {
+  font-weight: bold;
+  letter-spacing: 0.3pt;
+  color: #48151c;
+  text-transform: uppercase;
+  min-width: 0;
+}
+
+.fechaNavegador {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Separación vertical entre el encabezado superior y el institucional. */
+.separacionSuperior {
+  height: 2cm;
+}
+
+/* ---------------- Encabezado institucional ---------------- */
 
 .encabezado {
   display: grid;
   /* El bloque del documento tiene 44 % y el institucional 56 %; con el
      gap y el padding, el texto de la derecha queda holgado dentro del
-     margen de impresi?n. */
-  grid-template-columns: 56% 44%;
+     margen de impresión. `minmax(0, …)` evita que el contenido desborde. */
+  grid-template-columns: minmax(0, 56fr) minmax(0, 44fr);
   gap: 0.2cm;
   align-items: center;
   border-bottom: 1.5pt solid #48151c;
@@ -59,6 +100,11 @@
   width: 2.4cm;
   height: 1.95cm;
   object-fit: contain;
+  flex-shrink: 0;
+}
+
+.textoInstitucion {
+  min-width: 0;
 }
 
 .banco {
@@ -79,10 +125,12 @@
   text-align: right;
   min-width: 0;
   max-width: 100%;
-  /* Permite que el n?mero y el estado largos bajen de l?nea en vez de
-     salirse del ?rea imprimible. */
+  /* Permite que el número y el estado largos bajen de línea en vez de
+     salirse del área imprimible. */
   overflow-wrap: break-word;
   word-break: break-word;
+  /* Margen extra a la derecha: holgura de seguridad frente al borde. */
+  padding-right: 0.2cm;
 }
 
 .tituloDocumento {
@@ -129,6 +177,7 @@
 .datoGeneral {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .etiqueta {
@@ -170,17 +219,19 @@
 .tabla th {
   background: #48151c;
   color: #ffffff;
-  font-size: 6.8pt;
+  font-size: 6.4pt;
   font-weight: bold;
-  letter-spacing: 0.2pt;
+  letter-spacing: 0.1pt;
   text-align: left;
-  padding: 0.16cm 0.12cm;
+  padding: 0.16cm 0.1cm;
   border: 0.4pt solid #48151c;
+  /* El encabezado puede partirse en dos líneas sin romper la tabla. */
+  overflow-wrap: break-word;
 }
 
 .tabla td {
-  font-size: 8pt;
-  padding: 0.14cm 0.12cm;
+  font-size: 7.6pt;
+  padding: 0.14cm 0.1cm;
   border: 0.4pt solid #d1d5db;
   vertical-align: top;
   word-wrap: break-word;
@@ -195,29 +246,35 @@
   background: #f9fafb;
 }
 
+/* Anchos de columna (suma 100 %).
+   La columna CÓDIGO es más ancha para que los códigos de Siigo
+   (15 caracteres) quepan en una sola línea. */
 .colNumero {
-  width: 4%;
+  width: 3.5%;
 }
 .colCodigo {
-  width: 14%;
+  width: 16%;
 }
 .colProducto {
-  width: 36%;
+  width: 24%;
+}
+.colBodega {
+  width: 13%;
 }
 .colCantidad {
-  width: 10%;
+  width: 9%;
 }
 .colUnidad {
-  width: 9%;
-}
-.colPeso {
-  width: 9%;
-}
-.colUnidadPeso {
   width: 8%;
 }
+.colPeso {
+  width: 8%;
+}
+.colUnidadPeso {
+  width: 7.5%;
+}
 .colVencimiento {
-  width: 10%;
+  width: 11%;
 }
 
 .numero {
@@ -227,7 +284,16 @@
 
 .codigo {
   font-family: "Courier New", monospace;
-  font-size: 7.2pt;
+  font-size: 7pt;
+  /* El código NO se parte: preferiblemente una sola línea. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bodega {
+  font-size: 6.8pt;
+  line-height: 1.25;
 }
 
 .notaProducto {
