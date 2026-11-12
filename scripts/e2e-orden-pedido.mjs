@@ -214,7 +214,7 @@ async function main() {
     fail("No hay datos suficientes para crear la orden de prueba");
   } else {
     const items = candidatas.slice(0, 2).map((i) => ({
-      productId: i.representativeProductId,
+      productId: i.productId,
       siigoBodegaCode: i.siigoBodegaCode,
       locationCode: 0,
       quantity: 1,
@@ -257,7 +257,7 @@ async function main() {
           delivererName: "Almacenista de prueba",
           items: [
             {
-              productId: candidatas[0].representativeProductId,
+              productId: candidatas[0].productId,
               siigoBodegaCode: candidatas[0].siigoBodegaCode,
               locationCode: 0,
               quantity: 999999,
@@ -279,7 +279,7 @@ async function main() {
           delivererName: "Almacenista de prueba",
           items: [
             {
-              productId: candidatas[0].representativeProductId,
+              productId: candidatas[0].productId,
               siigoBodegaCode: candidatas[0].siigoBodegaCode,
               locationCode: 0,
               quantity: 0,
@@ -398,7 +398,7 @@ async function main() {
       // ------------------------------------------------------------------
       section("18. No hay doble disminución del inventario");
       const conReserva = await api(
-        `/api/existencias?search=${encodeURIComponent(candidatas[0].representativeCode)}&pageSize=5`
+        `/api/existencias?search=${encodeURIComponent(candidatas[0].productCode)}&pageSize=5`
       );
       const linea = conReserva.body?.data?.items?.find(
         (i) =>
@@ -446,7 +446,7 @@ async function main() {
       }
 
       const trasConfirmar = await api(
-        `/api/existencias?search=${encodeURIComponent(candidatas[0].representativeCode)}&pageSize=5`
+        `/api/existencias?search=${encodeURIComponent(candidatas[0].productCode)}&pageSize=5`
       );
       const linea2 = trasConfirmar.body?.data?.items?.find(
         (i) =>
