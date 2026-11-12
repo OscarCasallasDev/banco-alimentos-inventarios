@@ -1393,6 +1393,11 @@ export async function updateReceiver(
     .set({
       receiverName: receiverName ?? salida.receiverName,
       receiverDocument: receiverDocument ?? salida.receiverDocument,
+      // La hora de recepción la genera el sistema: el almacenista solo
+      // escribe el nombre y la cédula. Si ya había una, se conserva
+      // porque es un dato histórico y no se reescribe.
+      receiverTime: salida.receiverTime ?? nowTime(),
+      receiverSignedAt: salida.receiverSignedAt ?? new Date(),
       updatedAt: new Date(),
     })
     .where(eq(salidas.id, salidaId))

@@ -248,18 +248,19 @@
 
 /* Anchos de columna (suma 100 %).
    La columna CÓDIGO es más ancha para que los códigos de Siigo
-   (15 caracteres) quepan en una sola línea. */
+   (15 caracteres) quepan en una sola línea, y la de BODEGA DE SALIDA
+   también, para que los nombres de bodega no se partan. */
 .colNumero {
   width: 3.5%;
 }
 .colCodigo {
-  width: 16%;
+  width: 15%;
 }
 .colProducto {
-  width: 24%;
+  width: 22%;
 }
 .colBodega {
-  width: 13%;
+  width: 16%;
 }
 .colCantidad {
   width: 9%;
