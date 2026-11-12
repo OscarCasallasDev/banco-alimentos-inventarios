@@ -556,6 +556,90 @@ volumen_disponible_l = quantity_available × net_volume_ml / 1000
 | `audit_item_lots` | Conteo/ajuste por lote con cantidad anterior, física y diferencia |
 | `system_settings` | Parámetros del Banco (horizonte de alertas) |
 
+---
+
+## Existencias por producto y bodega (ajustes de noviembre 2026)
+
+### La idea
+
+La dirección del Banco pidió identificar **de qué bodega sale cada
+producto**. Por eso la disponibilidad ya **no** se agrupa por descripción
+sino por:
+
+```
+CÓDIGO DE SIIGO  +  BODEGA
+```
+
+Dos productos con el mismo nombre en bodegas distintas son existencias
+**distintas** y sus cantidades **nunca se suman entre sí**.
+
+### Objetos de base de datos
+
+| Objeto | Tipo | Propósito |
+|---|---|---|
+| `mv_stock_by_bodega` | Vista materializada | Existencias por producto y bodega (5 257 filas) |
+| `v_stock_by_bodega` | Vista | Lo anterior + las reservas pendientes del grupo |
+| `v_stock_consolidated` | Vista | **Histórico**: agrupaba por descripción + unidad + bodega. Se conserva como registro, ya no se usa para disponibilidad ni selección |
+
+La vista materializada se refresca al cerrar cada importación
+(`REFRESH MATERIALIZED VIEW mv_stock_by_bodega`).
+
+### Reglas
+
+- Un **mismo código** en la **misma bodega** sí suma sus ubicaciones: es el
+  mismo stock repartido en el almacén (`location_count` indica cuántas).
+- Un total **cero o negativo** se conserva tal cual y se muestra.
+- Los registros originales de `siigo_balances` (producto, bodega, ubicación y
+  cantidad) **no se modifican**: son la fuente de verdad.
+
+### Clave de grupo de reservas y conciliaciones
+
+La clave pasó de `descripción|unidad|bodega` a `código|bodega`:
+
+```sql
+lower(btrim(p.code)) || '|' || b.siigo_bodega_code::text
+```
+
+El cambio es **más preciso**: antes una salida de un producto podía liberar
+la reserva de otro producto con el mismo nombre. Ahora cada salida se
+descuenta exactamente del saldo de su producto en su bodega.
+
+Las reservas pendientes existentes se actualizaron en la migración `0015`.
+
+### Bodega por línea de salida
+
+`salida_items` ya tenía `warehouse_id`, `siigo_bodega_code` y
+`location_code`: la bodega **es de cada línea de producto**, no de la orden.
+El nivel de orden (`salidas.warehouse_id`, `salidas.siigo_bodega_code`) queda
+sin uso para las órdenes nuevas y se conserva para las históricas.
+
+### Cambios en `salidas` (migración `0015`)
+
+| Columna | Cambio | Motivo |
+|---|---|---|
+| `program_id` | Deja de ser `NOT NULL` | Permite la opción «Otro programa» |
+| `custom_program_name` | Nueva (`text`) | Nombre del programa escrito por el usuario |
+| `deleted_at` | Nueva (`timestamp`) | Borrado lógico: la orden se oculta sin destruir su historial |
+| `deleted_by` | Nueva (`uuid` → `users`) | Quién eliminó la orden |
+
+### Bodega real de cada existencia
+
+`siigo_balances.warehouse_id` estaba en `NULL` en las 5 528 filas, por lo que
+el nombre de la bodega nunca se resolvía y la interfaz mostraba
+«Siigo 1», «Siigo 2», etc. La migración `0015` lo completa con el catálogo
+importado:
+
+```sql
+UPDATE siigo_balances b
+SET warehouse_id = w.id
+FROM warehouses w
+WHERE b.warehouse_id IS NULL
+  AND w.siigo_code = b.siigo_bodega_code;
+```
+
+La vista `mv_stock_by_bodega` une por `siigo_code`, de modo que el nombre
+está disponible aunque `warehouse_id` vuelva a venir vacío.
+
 ### Datos históricos
 
 - Los lotes de apertura (`origin = 'OPENING'`, `is_historical = true`)

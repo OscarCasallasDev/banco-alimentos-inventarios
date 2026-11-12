@@ -194,6 +194,34 @@ ni ventana de gasto doble.
 **Estados de la orden:** `DRAFT` → `GENERATED` → `DELIVERED` →
 `CONFIRMED_SIIGO` → (opcional) `CANCELLED`.
 
+### La reserva se identifica por producto y bodega
+
+La clave de grupo (`siigo_reservations.group_key`,
+`siigo_balance_diffs.group_key`) es:
+
+```sql
+lower(btrim(p.code)) || '|' || b.siigo_bodega_code::text
+```
+
+Es decir, **código de Siigo + bodega**, no descripción. Esto es más preciso
+que la clave anterior (`descripción|unidad|bodega`): antes, una salida de un
+producto podía liberar la reserva de **otro producto con el mismo nombre**.
+Ahora cada salida se descuenta exactamente del saldo de su producto en su
+bodega.
+
+Las reservas pendientes que existían con la clave antigua se actualizaron en
+la migración `0015`.
+
+### Vista de existencias vigente
+
+La importación refresca `mv_stock_by_bodega` (vista materializada de
+existencias por **código de producto + bodega**), que es la que usan el
+inventario y el buscador de la orden de pedido.
+
+La vista `v_stock_consolidated` (agrupada por descripción + unidad + bodega)
+**se conserva** como registro histórico, pero ya no participa en la
+disponibilidad ni en la selección de productos.
+
 ---
 
 ## 4. Automatización (preparada, no simulada)

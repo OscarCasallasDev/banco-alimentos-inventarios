@@ -68,6 +68,32 @@ Siigo:
 
 Detalle en [docs/IMPORTACION_SIIGO.md](./docs/IMPORTACION_SIIGO.md).
 
+## ✨ Ajustes del Banco (noviembre 2026)
+
+La versión actual incorpora los ajustes solicitados por la dirección:
+
+- **Existencias separadas por producto y bodega** (se revirtió la
+  consolidación por descripción): dos productos con el mismo nombre en
+  bodegas distintas **nunca se suman**.
+- **Bodega de salida por línea de producto**, con selector limitado al
+  catálogo importado de Siigo y validación de disponibilidad **por bodega**.
+- **Programa «Otro»**: se puede escribir el nombre del programa si no está en
+  el catálogo.
+- **Recepción simplificada**: solo nombre y cédula de quien recibe; la hora
+  la genera el sistema. Sin hora manual, sin botón morado y sin acciones de
+  anulación.
+- **CRUD de órdenes**: crear, consultar, **editar** y **eliminar** (con
+  borrado lógico si la orden ya está confirmada en Siigo).
+- **Impresión corregida**: separación superior recuperada, encabezado
+  superior derecho sin cortes, códigos de Siigo en una sola línea y columna
+  **BODEGA DE SALIDA** por producto.
+- **Configuración simplificada**: conserva «Control de vencimientos» y
+  «Módulos del sistema».
+- **Fin de los indicadores «Siigo 1 / 2 / 4»**: era el código de bodega sin
+  resolver; ahora se muestran los nombres reales (PRINCIPAL, ALMACEN, …).
+
+Detalle completo en [docs/AJUSTES_BANCO_2026-11.md](./docs/AJUSTES_BANCO_2026-11.md).
+
 ## Inicio Rápido
 
 ### Requisitos
