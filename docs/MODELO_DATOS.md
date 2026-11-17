@@ -558,53 +558,64 @@ volumen_disponible_l = quantity_available × net_volume_ml / 1000
 
 ---
 
-## Existencias por producto y bodega (ajustes de noviembre 2026)
+## Existencias consolidadas por descripción y bodega (ajustes de noviembre 2026)
 
 ### La idea
 
-La dirección del Banco pidió identificar **de qué bodega sale cada
-producto**. Por eso la disponibilidad ya **no** se agrupa por descripción
-sino por:
+Siigo registra un mismo producto en varias **ubicaciones** de una bodega, y
+el mismo **nombre** puede aparecer en distintas bodegas. El Banco pidió
+consolidar por **descripción exacta y bodega**, sumando las existencias de
+las distintas ubicaciones:
 
 ```
-CÓDIGO DE SIIGO  +  BODEGA
+ACEITE DE OLIVA / Bodega 1 / Ubicación 1 / 30 unidades.
+ACEITE DE OLIVA / Bodega 1 / Ubicación 4 / 20 unidades.
+  → ACEITE DE OLIVA / Bodega 1 / 50 unidades.
 ```
 
-Dos productos con el mismo nombre en bodegas distintas son existencias
-**distintas** y sus cantidades **nunca se suman entre sí**.
+La consolidación es un **cálculo derivado**: la tabla `siigo_balances`
+(producto, bodega, ubicación y cantidad) **no se modifica**.
 
 ### Objetos de base de datos
 
 | Objeto | Tipo | Propósito |
 |---|---|---|
-| `mv_stock_by_bodega` | Vista materializada | Existencias por producto y bodega (5 257 filas) |
+| `mv_stock_consolidated` | Vista materializada | Consolidación por descripción y bodega (5 225 grupos) |
+| `v_stock_consolidated` | Vista | Lo anterior + las reservas pendientes del grupo |
+| `mv_stock_by_bodega` | Vista materializada | Detalle original por código de Siigo y bodega |
 | `v_stock_by_bodega` | Vista | Lo anterior + las reservas pendientes del grupo |
-| `v_stock_consolidated` | Vista | **Histórico**: agrupaba por descripción + unidad + bodega. Se conserva como registro, ya no se usa para disponibilidad ni selección |
 
 La vista materializada se refresca al cerrar cada importación
-(`REFRESH MATERIALIZED VIEW mv_stock_by_bodega`).
+(`REFRESH MATERIALIZED VIEW mv_stock_consolidated`).
 
 ### Reglas
 
-- Un **mismo código** en la **misma bodega** sí suma sus ubicaciones: es el
-  mismo stock repartido en el almacén (`location_count` indica cuántas).
+- Las **ubicaciones** de un mismo producto en la misma bodega **se suman**
+  (es el mismo stock repartido en el almacén). El grupo expone
+  `location_count` (cuántas ubicaciones) y `product_codes` (cuántos códigos
+  de Siigo lo componen).
+- Las existencias de **bodegas distintas nunca se mezclan**: la misma
+  descripción en PRINCIPAL y en ALMACEN son dos grupos independientes.
+- **No se fusionan descripciones diferentes**: se conservan las 4 830
+  descripciones distintas del inventario.
 - Un total **cero o negativo** se conserva tal cual y se muestra.
-- Los registros originales de `siigo_balances` (producto, bodega, ubicación y
-  cantidad) **no se modifican**: son la fuente de verdad.
+- Los registros originales de `siigo_balances` **no se modifican**: son la
+  fuente de verdad y la trazabilidad.
 
 ### Clave de grupo de reservas y conciliaciones
 
-La clave pasó de `descripción|unidad|bodega` a `código|bodega`:
+La clave es `descripción|bodega`:
 
 ```sql
-lower(btrim(p.code)) || '|' || b.siigo_bodega_code::text
+lower(btrim(regexp_replace(p.name, '\s+', ' ', 'g')))
+  || '|' || b.siigo_bodega_code::text
 ```
 
-El cambio es **más preciso**: antes una salida de un producto podía liberar
-la reserva de otro producto con el mismo nombre. Ahora cada salida se
-descuenta exactamente del saldo de su producto en su bodega.
+Así la reserva se descuenta exactamente del saldo del grupo (descripción +
+bodega) que tomó la orden, y la conciliación de la importación con las
+salidas pendientes usa la misma clave.
 
-Las reservas pendientes existentes se actualizaron en la migración `0015`.
+Las reservas pendientes existentes se actualizaron en la migración `0016`.
 
 ### Bodega por línea de salida
 
@@ -637,8 +648,9 @@ WHERE b.warehouse_id IS NULL
   AND w.siigo_code = b.siigo_bodega_code;
 ```
 
-La vista `mv_stock_by_bodega` une por `siigo_code`, de modo que el nombre
+La vista `mv_stock_consolidated` une por `siigo_code`, de modo que el nombre
 está disponible aunque `warehouse_id` vuelva a venir vacío.
+
 
 ### Datos históricos
 

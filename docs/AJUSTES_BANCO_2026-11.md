@@ -11,100 +11,177 @@ se eliminó ningún módulo, tabla, ruta ni dato.
 
 | # | Ajuste | Estado |
 |---|--------|--------|
-| 1 | Existencias separadas por **código de Siigo + bodega** (fin de la consolidación por descripción) | ✅ |
-| 2 | **Bodega de salida por línea de producto**, elegible y validada | ✅ |
-| 3 | Opción **«Otro programa»** con nombre libre | ✅ |
-| 4 | Cédula del almacenista en la orden | ✅ |
-| 5 | Observaciones movidas después de la tabla de productos | ✅ |
-| 6 | Recepción simplificada (sin hora manual, sin botón morado, sin anulación) | ✅ |
-| 7 | CRUD de órdenes: crear, consultar, **editar** y **eliminar** | ✅ |
-| 8 | Impresión: separación superior, encabezado derecho sin corte, código en una línea, columna de bodega | ✅ |
-| 9 | Configuración simplificada (conserva control de vencimientos y módulos) | ✅ |
-| 10 | Indicadores «Siigo 1 / 2 / 4» aclarados y reemplazados por nombres reales | ✅ |
+| 1 | Existencias consolidadas por **descripción exacta + bodega** (sumando ubicaciones) | ✅ |
+| 2 | Importador del «Reporte resumido de productos por bodega» (columnas A–O) | ✅ |
+| 3 | Selector de bodegas limitado al catálogo importado de Siigo | ✅ |
+| 4 | Almacenista y recepción en despacho claramente diferenciados | ✅ |
+| 5 | Buscador con disponibilidad real y validaciones en frontend y backend | ✅ |
+| 6 | Validaciones de cantidad, peso y vencimiento con los mensajes pedidos | ✅ |
+| 7 | Impresión: encabezado derecho sin corte y columna de código ampliada | ✅ |
+| 8 | Módulo de vencimientos y alertas con importador preparado | ✅ |
+| 9 | Pruebas unitarias, de integración y funcionales | ✅ |
 
 ---
 
-## 2. Existencias: se revierte la consolidación por descripción
+## 2. Existencias: consolidación por descripción y bodega
 
-### Qué cambió
+### La regla
 
-La disponibilidad se calculaba agrupando por **(descripción + unidad +
-bodega)**. Eso unía productos de Siigo con **códigos distintos** pero el
-mismo nombre. La dirección pidió identificar **de qué bodega sale cada
-producto**, así que ahora la clave es:
+Siigo registra un mismo producto en varias **ubicaciones** de una bodega, y
+el mismo **nombre** puede aparecer en distintas bodegas. El Banco pidió:
 
 ```
-CÓDIGO DE SIIGO  +  BODEGA
+ACEITE DE OLIVA / Bodega 1 / Ubicación 1 / 30 unidades.
+ACEITE DE OLIVA / Bodega 1 / Ubicación 4 / 20 unidades.
+  → ACEITE DE OLIVA / Bodega 1 / 50 unidades.
 ```
+
+Así que la disponibilidad se calcula por **descripción exacta + bodega**, y la
+consolidación es un **cálculo derivado**: los registros originales de
+`siigo_balances` (producto, bodega, ubicación y cantidad) no se tocan.
 
 ### Reglas vigentes
 
-- Dos productos con el **mismo nombre** y **bodegas distintas** son
-  existencias distintas: **nunca se suman entre sí**.
-- Dos productos con el **mismo nombre**, **misma bodega** y **códigos
-  distintos** también son distintos (13 casos reales en la base).
-- Un **mismo código** en la **misma bodega** sí suma sus ubicaciones: es el
-  mismo stock repartido en el almacén. Se muestra cuántas ubicaciones tiene.
-- Los registros originales de `siigo_balances` (producto, bodega, ubicación y
-  cantidad) **no se modifican**: son la fuente de verdad y la trazabilidad.
-- La vista anterior (`v_stock_consolidated`) **se conserva** como registro
-  histórico, pero ya no participa en la disponibilidad ni en la selección.
+- Las **ubicaciones** de un mismo producto en la misma bodega **se suman**
+  (es el mismo stock repartido en el almacén). El grupo muestra cuántas
+  ubicaciones y cuántos códigos de Siigo lo componen.
+- Las existencias de **bodegas distintas nunca se mezclan**: la misma
+  descripción en PRINCIPAL y en ALMACEN son dos filas independientes.
+- **No se fusionan descripciones diferentes**: se conservan las 4 830
+  descripciones distintas del inventario.
+- Las cantidades **negativas** y los resultados en **cero** se conservan.
+- La vista por código (`mv_stock_by_bodega`) se conserva como detalle
+  original de cada grupo.
 
 ### Datos
 
 | Medida | Valor |
 |---|---|
 | Registros originales por ubicación | **5 528** (sin cambios) |
-| Filas por código + bodega (vigente) | **5 257** |
-| Filas por descripción + unidad + bodega (histórico) | **5 227** |
-| Suma total de existencias | **215 628,124** (idéntica en las tres) |
+| Grupos consolidados (descripción + bodega) | **5 225** |
+| Grupos con más de una ubicación | 262 |
+| Grupos con más de un código | 16 |
+| Suma total de existencias | **215 628,124** (idéntica al original) |
 
 ### Objetos de base de datos
 
 | Objeto | Tipo | Contenido |
 |---|---|---|
-| `mv_stock_by_bodega` | Vista materializada | Existencias por producto y bodega |
-| `v_stock_by_bodega` | Vista | Lo anterior + reservas pendientes del grupo |
+| `mv_stock_consolidated` | Vista materializada | Consolidación por descripción y bodega |
+| `v_stock_consolidated` | Vista | Lo anterior + reservas pendientes del grupo |
+| `mv_stock_by_bodega` | Vista materializada | Detalle original por código de Siigo y bodega |
 | `siigo_balances.warehouse_id` | Columna | Se completó con el catálogo importado |
 
 La vista materializada se refresca al cerrar cada importación.
 
 ### Clave de grupo de reservas y conciliaciones
 
-Pasó de `descripción|unidad|bodega` a `código|bodega`. El cambio es
-**más preciso**: antes una salida de un producto podía liberar la reserva de
-otro producto con el mismo nombre; ahora cada salida se descuenta
-exactamente del saldo de su producto en su bodega.
+Es `descripción|bodega`: la reserva se descuenta exactamente del saldo del
+grupo (descripción + bodega) que tomó la orden.
 
-Las reservas pendientes existentes se actualizaron en la migración `0015`.
+Las reservas pendientes existentes se actualizaron en la migración `0016`.
 
 ---
 
-## 3. Bodega de salida por línea de producto
+## 3. Importador del «Reporte resumido de productos por bodega»
 
-### Interfaz
+### Mapeo de columnas
 
-La bodega **ya no es un dato de la orden**: es una columna de la tabla de
-productos.
+| Columna | Contenido | Uso |
+|---|---|---|
+| A | información del reporte | — |
+| B | código de bodega | **Identifica la bodega** |
+| C | descripción de bodega | **Nombre de la bodega** |
+| D | ubicación | **Conserva la ubicación** |
+| E, F | información de ubicación | **Nombre de la ubicación** |
+| G | código del producto | **Identifica el producto** |
+| H | descripción del producto | **Nombre del producto** |
+| I | entradas | **Se usa** |
+| J, K | — | **Se ignoran por completo** |
+| L | salidas | **Se usa** |
+| M, N | — | **Se ignoran por completo** |
+| O | diferencia entre entradas y salidas | **Se usa como diferencia** |
 
-```
-# | Código | Producto | Bodega de salida | Cantidad | Unidad | Peso | Unidad de peso | Vencimiento
-```
+El lector propio trabaja sobre el XML del ZIP: **lee las columnas tanto si
+están ocultas como si están visibles**.
 
-- El selector ofrece **únicamente bodegas del catálogo importado de Siigo**
-  (no se pueden crear bodegas a mano).
-- Al agregar un producto, la línea nace con la bodega donde se encontró.
-- La bodega se puede **cambiar** en cualquier momento.
-- Al cambiar de bodega se recalcula la disponibilidad de esa línea.
+### La columna O no es el saldo
 
-### Validación (frontend **y** backend)
+El reporte resumido es un **resumen de movimientos de un periodo**: la
+columna O es `CANTIDAD ENTRADAS − CANTIDAD SALIDAS` (verificado en las
+2 209 filas del archivo real), es decir, el **movimiento neto del periodo**.
+
+**No es el inventario disponible**: el archivo no trae saldo inicial ni
+final. Por eso estas filas se guardan como **MOVIMIENTOS** (`siigo_resumen_movimientos`)
+y **nunca como existencias**. Las existencias solo pueden venir del reporte
+**detallado**, que sí trae `CANT. ANTERIOR`.
+
+### Idempotencia y catálogo
+
+- El `upsert` de `siigo_resumen_movements` **reemplaza** por
+  `(producto, bodega, ubicación)`: reimportar **no duplica ni acumula**.
+- Las bodegas se crean o actualizan desde el reporte (`warehouses.source =
+  'SIIGO'`), **sin duplicados**, y las órdenes anteriores conservan sus
+  referencias históricas.
+- El historial de importaciones (`siigo_import_runs`) se conserva, con el
+  periodo y la naturaleza del dato de cada corrida.
+
+---
+
+## 4. Bodegas disponibles
+
+El selector de bodegas de las nuevas órdenes usa `/api/bodegas/importadas`:
+**solo** las bodegas identificadas en la información importada desde Siigo,
+con **código y nombre real** (`S1 · PRINCIPAL`).
+
+- No se pueden crear bodegas manualmente desde la orden.
+- El catálogo se actualiza después de cada importación.
+- Las referencias históricas de órdenes anteriores no se tocan.
+
+Las 7 bodegas del catálogo actual: PRINCIPAL, ALMACEN, Ola Invernal - Cordob,
+DONAC ORG ROA FLOR HU, CANASTO DE SEMANA SAN, Campaña: Juntos por V y
+Bodega alterna.
+
+---
+
+## 5. Almacenista y recepción en despacho
+
+### Entrega — el almacenista que crea la orden
+
+El campo se llama **«Nombre del almacenista (quien entrega)»**, es
+obligatorio y se guarda en la orden junto con su cédula. No hay nombres ni
+identificaciones fijas en el código.
+
+### Recepción — la persona encargada de despacho
+
+Al confirmar la recepción se registran:
+
+- **Nombre** de quien recibe
+- **Cédula** de quien recibe
+- **Firma** (deja constancia de que se firmó el documento impreso)
+- **Fecha y hora automáticas** del sistema
+
+La fecha y la hora **no son editables**: las genera el backend. Si la
+recepción ya estaba confirmada, la fecha y la hora originales se conservan
+porque son datos históricos.
+
+Si aún no hay recepción confirmada, los espacios del documento impreso
+quedan **vacíos**: no se inventa información.
+
+---
+
+## 6. Buscador y disponibilidad
+
+El buscador muestra **todos** los productos del inventario importado,
+incluidos los que tienen disponibilidad **cero o negativa**. Cada resultado
+muestra **código, descripción, bodega, disponibilidad y unidad**.
 
 | Regla | Comportamiento |
 |---|---|
 | Disponibilidad > 0 | Se puede agregar |
 | Disponibilidad = 0 | Botón «Agregar» deshabilitado |
 | Disponibilidad < 0 | Botón «Agregar» deshabilitado |
-| Cantidad > disponibilidad de **esa** bodega | Error, en ambos lados |
+| Cantidad > disponibilidad de esa bodega | Error en frontend **y** backend |
 
 Mensajes:
 
@@ -115,125 +192,37 @@ Mensajes:
 
 El backend usa un **bloqueo consultivo por producto y bodega**
 (`pg_advisory_xact_lock`), de modo que dos órdenes simultáneas no pueden
-descontar la misma existencia.
-
-### Endpoint nuevo
-
-`GET /api/existencias/producto/[productId]` → las bodegas donde ese producto
-tiene existencia y cuánta disponibilidad hay en cada una. Es lo que alimenta
-el selector de bodega de la línea.
+comprometer las mismas existencias. Las órdenes pendientes se restan de la
+disponibilidad mediante `siigo_reservations`.
 
 ---
 
-## 4. Programa «Otro»
+## 7. Validaciones de cantidad, peso y vencimiento
 
-Los cuatro programas del catálogo se conservan tal cual:
+Los campos se pueden **borrar por completo** mientras se editan: no se
+reemplazan automáticamente por cero. La validación ocurre al **salir del
+campo** o al **guardar**, nunca mientras el usuario escribe.
 
-- Grupos de familia
-- Plan Padrino
-- Consumo Interno
-- Desayunos Saludables
-
-Al elegir **«Otro programa»** aparece un campo de texto. El nombre escrito se
-guarda en `salidas.custom_program_name` y aparece en:
-
-- la orden (detalle y listado),
-- el **documento impreso** (bloque de información general, campo PROGRAMA).
-
-No se toca el catálogo de Siigo ni el de programas: el nombre libre es un
-dato **de la orden**, no un programa del sistema.
-
-`salidas.program_id` pasó a sernullable para dar cabida a esta opción; los
-registros existentes conservan su programa.
-
----
-
-## 5. Almacenista
-
-El nombre **y** la cédula se escriben en el formulario y se guardan con la
-orden (`deliverer_name`, `deliverer_document`). No hay valores fijos en el
-código.
-
-**Orden de la información general** (como lo pidió la dirección):
-
-1. Destino
-2. Programa
-3. Nombre del almacenista (quien entrega)
-4. Cédula del almacenista
-
-La fecha y la hora de la orden las registra el sistema automáticamente.
-
----
-
-## 6. Recepción en despacho simplificada
-
-### Se retiró de la interfaz del almacenista
-
-- ⛔ Campo editable de **hora de recepción**
-- ⛔ Botón morado **«Registrar recepción en despacho»**
-- ⛔ Campo de **motivo de anulación**
-- ⛔ Botón **«Anular salida»**
-- ⛔ Acciones operativas de anulación
-
-### Se conserva
-
-- ✅ **Nombre de quien recibe en despacho**
-- ✅ **Cédula de quien recibe en despacho**
-
-Ambos se guardan con `PUT /api/salidas/[id]/recepcion`. La **hora la genera
-el sistema** (no es un campo editable) y, si ya había una, **se conserva**
-porque es un dato histórico. No se marca una recepción física como
-verificada sin que alguien registre quién recibió.
-
-La gestión de una orden incorrecta se hace ahora **editándola o
-eliminándola**, no anulándola.
-
----
-
-## 7. CRUD de órdenes
-
-| Acción | Cómo | Regla |
-|---|---|---|
-| **Crear** | `/salidas-almacen/nueva` | Valida disponibilidad por línea y bodega |
-| **Consultar** | `/salidas-almacen/[id]` | Detalle, estado y conciliación |
-| **Editar** | `/salidas-almacen/[id]/editar` | Solo órdenes en `DRAFT` |
-| **Eliminar** | Botón «Eliminar orden» | Borrado lógico si ya está confirmada en Siigo |
-
-### Integridad histórica al eliminar
-
-| Estado de la orden | Resultado |
+| Campo | Mensaje exacto |
 |---|---|
-| `DRAFT` | Eliminación definitiva (nunca dejó rastro operativo) |
-| `GENERATED` / `DELIVERED` | Eliminación definitiva y liberación de reservas |
-| `CONFIRMED_SIIGO` | **Borrado lógico**: se marca `deleted_at`, se oculta del listado y **se conserva todo el historial** |
+| Cantidad vacía, cero, negativa o inválida | `Debes ingresar una cantidad mayor que 0` |
+| Peso vacío, cero, negativo o inválido | `Debes ingresar un peso mayor que 0` |
+| Fecha de vencimiento vacía o inválida | `Debes seleccionar la fecha de vencimiento del producto` |
 
-En el último caso el sistema responde: *«La orden se ocultó del listado
-(borrado lógico) porque ya está confirmada en Siigo Pyme. Su historial se
-conserva.»*
+El backend valida también al guardar.
 
 ---
 
 ## 8. Impresión
 
-### 8.1 Separación superior recuperada
+### Encabezado superior derecho
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│ Sistema de Gestión de Inventarios | Banco de Alimentos Ibagué │  ← fecha y hora
-├──────────────────────────────────────────────────────────────┤
-│                      (2 cm de aire)                           │
-├──────────────────────────────────────────────────────────────┤
-│ [logo]  Banco Arquidiocesano…        ORDEN DE PEDIDO        │  ← encabezado
-│         NIT … · Tel. …                OP-2026-0028          │     institucional
-└──────────────────────────────────────────────────────────────┘
-```
+El bloque de la derecha lleva **título, número de orden, fecha, hora y
+estado**.
 
-### 8.2 El encabezado superior derecho ya no se corta
-
-**Causa raíz:** la rejilla usaba `grid-template-columns: 56% 44%` **más un
-`gap` de 0,2 cm**. Los porcentajes suman el 100 % y el `gap` se sumaba
-encima: la columna derecha se salía **0,2 cm** del área imprimible y por eso
-se cortaban el título, el número, la fecha, la hora y el estado.
+**Causa raíz del corte:** la rejilla usaba `grid-template-columns: 56% 44%`
+**más un `gap` de 0,2 cm**. Los porcentajes suman el 100 % y el `gap` se
+sumaba encima: la columna derecha se salía **0,2 cm** del área imprimible.
 
 **Solución:** `grid-template-columns: minmax(0, 56fr) minmax(0, 44fr)`. Las
 unidades `fr` descontaban el `gap` del espacio disponible. Se añade además
@@ -243,30 +232,41 @@ derecha.
 **No se redujeron los márgenes generales ni el tamaño de letra**: el resto
 del documento ya imprimía bien.
 
-### 8.3 La columna CÓDIGO
+### Columna de código
 
 | | Antes | Ahora |
 |---|---|---|
 | Ancho | 14 % | **15 %** (2,88 cm) |
-| Código de Siigo «001-0001-000001» | ~2,2 cm → se partía | **2,22 cm → cabe en una línea** |
+| Código «001-0001-000001» | ~2,2 cm → se partía | **2,22 cm → cabe en una línea** |
 | Tratamiento | `break-word` (partía la fila) | `white-space: nowrap` + `overflow: hidden` + `text-overflow: ellipsis` |
 
-La columna **BODEGA DE SALIDA** (16 %) también Holgura para el nombre de
-bodega más largo («DONAC ORG ROA FLOR HU»).
+La columna **BODEGA DE SALIDA** (16 %) también tiene holgura para el nombre
+de bodega más largo («DONAC ORG ROA FLOR HU»).
 
-### 8.4 Nueva columna BODEGA DE SALIDA
+### Elementos que se conservan
 
-Cada producto muestra **su propia** bodega. Ya no hay bodega general en el
-bloque de información general de la orden.
+Logotipo, nombre institucional, número de orden, información general, tabla,
+totales, observaciones, firmas y texto aclaratorio del pie.
 
-### 8.5 Varias páginas
+### Firmas
 
-- `thead { display: table-header-group }` → el encabezado de la tabla **se
-  repite** en cada página.
-- 9 bloques con `break-inside: avoid` → filas, resumen, observaciones y
-  firmas **no se parten** entre páginas.
+```
+ENTREGA — ALMACENISTA          RECIBE — ENCARGADO(A) DE DESPACHO
+─────────────────────          ─────────────────────────────
+Nombre: (registrado)           Nombre: (quien recibe)
+Cédula: (registrada)           Cédula: (de quien recibe)
+Fecha / Hora                   Fecha / Hora
+```
 
-### 8.6 Geometría verificada
+Cada bloque tiene **1,1 cm** de espacio físico para la firma.
+
+### Varias páginas
+
+`thead { display: table-header-group }` → el encabezado de la tabla **se
+repite** en cada página. Hay 9 bloques con `break-inside: avoid` (filas,
+resumen, observaciones y firmas no se parten).
+
+### Geometría verificada
 
 `scripts/verificar-impresion.ts` calcula la geometría real a partir del CSS:
 
@@ -282,113 +282,104 @@ bloque de información general de la orden.
 
 ---
 
-## 9. Configuración
+## 9. Vencimientos y alertas
 
-### Apartados retirados de la interfaz
+El módulo está **implementado y operativo** en `/vencimientos`, con el
+importador preparado para el segundo Excel del Banco.
 
-- Base de datos
-- Seguridad
-- Apariencia
-- Notificaciones
+### Estructura
 
-### Apartados conservados
+| Elemento | Ubicación |
+|---|---|
+| Tabla de lotes con vencimiento | `vencimiento_lotes` |
+| Importador | `POST /api/vencimientos/importar` |
+| Historial de importaciones | `siigo_import_runs` (`report_format = 'FECHAS_DE_VENCIMIENTO'`) |
+| Relación producto ↔ lote ↔ bodega | `product_id`, `product_code`, `lot_code`, `siigo_bodega_code`, `location_code` |
 
-- **Control de vencimientos** (días de anticipación y días críticos)
-- **Módulos del sistema** (activar/desactivar módulos, reversible)
+**No se mezclan lotes diferentes**: el índice único es
+`(product_code, lot_code, siigo_bodega_code, location_code)` y el `upsert`
+usa exactamente esa clave.
 
-> Nada se eliminó del sistema: las tablas, los servicios, las políticas y la
-> lógica de esos apartados siguen intactos. Solo se retiraron de la pantalla
-> de configuración porque el personal del Banco no los utiliza.
+Las filas se asocian al catálogo de productos **por código**, nunca por
+nombre.
 
----
+### Alertas
 
-## 10. Indicadores «Siigo 1», «Siigo 2», «Siigo 4»
+La alerta principal son los productos que vencen **durante la próxima
+semana calendario**, con el rango calculado de forma **dinámica** a partir
+de la fecha actual y la **zona horaria de Colombia** (`America/Bogota`):
 
-### Investigación
+| Categoría | Rango |
+|---|---|
+| Próxima semana | lunes a domingo de la semana siguiente |
+| Semana actual | lunes a domingo de esta semana |
+| Vencidos | fecha anterior a hoy |
+| 15 días | hoy + 15 días |
+| 30 días | hoy + 30 días |
 
-Se rastreó el origen de esos textos. Resultado:
+Además: **existencias negativas**, **existencias en cero** y **registros
+incompletos o inconsistentes** (código ausente, descripción ausente, bodega
+desconocida, cantidades no interpretables, lote sin fecha).
 
-**Eran el código numérico de bodega de Siigo**, y aparecían porque **el
-nombre de la bodega nunca se podía resolver**: la columna
-`siigo_balances.warehouse_id` estaba en `NULL` en las **5 528** filas, por lo
-que la unión con `warehouses` siempre fallaba y la interfaz caía al texto
-alternativo `Siigo ${código}`.
+### Pendiente del Banco
 
-### Solución
-
-1. La migración `0015` completa `siigo_balances.warehouse_id` con el catálogo
-   importado (`warehouses.siigo_code = siigo_balances.siigo_bodega_code`).
-2. La vista `mv_stock_by_bodega` une por `siigo_code`, de modo que el nombre
-   está disponible aunque `warehouse_id` venga vacío.
-3. En **todas** las pantallas operativas se muestra el nombre real
-   (`PRINCIPAL`, `ALMACEN`, `Ola Invernal - Cordob`, …). Donde no hay bodega
-   asignada se dice `Bodega <n>`, nunca un código suelto.
-
-### Pantallas revisadas
-
-| Pantalla | Antes | Ahora |
-|---|---|---|
-| Inventario | `Siigo 1 (sin asignar)` | `PRINCIPAL` |
-| Buscador de la orden | `Siigo 3` | `PRINCIPAL` |
-| Vencimientos | `3` (número crudo) | `PRINCIPAL` |
-| Detalle de la orden | `Siigo 5` | `Campaña: Juntos por V` |
-| Documento impreso | — | `PRINCIPAL` (por línea) |
-| Integración Siigo | `Siigo 3` | `Código Siigo 3` (pantalla administrativa de mapeo: ahí el código **es** la clave) |
+El **segundo Excel (fechas de vencimiento) todavía no existe**. No se
+supone su estructura: lo que existe es la estructura de almacenamiento, el
+importador de filas normalizadas, el historial, las alertas y la interfaz.
+Cuando el Banco lo entregue se adapta el lector a sus columnas reales
+(código, producto, lote, bodega, cantidad y vencimiento).
 
 ---
 
-## 11. Pruebas ejecutadas
+## 10. Pruebas ejecutadas
 
 | Suite | Comando | Resultado |
 |---|---|---|
 | Unitarias | `npm run test:run` | **224 / 224** ✅ |
-| Integración de existencias | `npx tsx scripts/test-consolidacion.ts` | **30 / 30** ✅ |
+| Consolidación (integración) | `npx tsx scripts/test-consolidacion.ts` | **27 / 27** ✅ |
+| Importador (archivo real) | `npx tsx scripts/verificar-importador.ts` | **14 / 14** ✅ |
 | Geometría de impresión | `npx tsx scripts/verificar-impresion.ts` | **23 / 23** ✅ |
+| Documento impreso | `node scripts/verificar-documento.mjs` | **22 / 22** ✅ |
 | Conciliación (sin doble descuento) | `npx tsx scripts/test-reconciliacion.ts` | **9 / 9** ✅ |
-| Funcional de los ajustes | `E2E_URL=… node scripts/e2e-ajustes-banco.mjs` | **55 / 55** ✅ |
+| Orden de pedido (E2E) | `node scripts/e2e-orden-pedido.mjs` | **44 / 44** ✅ |
+| Ajustes del Banco (E2E) | `node scripts/e2e-ajustes-banco.mjs` | **55 / 55** ✅ |
 | Compilación | `npm run build` | ✅ |
 | Lint | `npm run lint` | 0 errores ✅ |
 
-### Qué comprueba la prueba de integración de existencias
+### Qué comprueba la prueba de consolidación
 
-- Cada fila **(producto, bodega)** coincide **exactamente** con el saldo
-  original de ese producto en esa bodega (invariante que fallaría si se
-  sumaran entre bodegas).
-- El mismo nombre en dos bodegas produce filas separadas.
-- El mismo nombre + misma bodega con códigos distintos produce filas
-  separadas.
-- Los 5 528 registros originales siguen intactos.
+- Las ubicaciones del mismo producto en la misma bodega **se suman** y el
+  resultado coincide con la suma de los registros originales.
+- **Cada** grupo cuadra **exactamente** con la suma de sus originales
+  (invariante que fallaría si se mezclaran bodegas).
+- Ningún grupo contiene existencias de otra bodega.
+- Se conservan las 4 830 descripciones distintas: ninguna se fusionó.
+- Los 5 528 registros originales siguen intactos, con sus códigos y
+  ubicaciones.
 - La suma total de existencias no cambia.
-- Todas las existencias muestran el nombre de su bodega.
+- Ningún grupo con saldo negativo se pierde.
 
-### Qué comprueba la verificación funcional
+### Qué comprueba la verificación del importador
 
-1. Configuración conserva los dos apartados y retira los cuatro.
-2. Los cuatro programas del catálogo están disponibles.
-3. El nombre y la cédula del almacenista se guardan.
-4. Un producto con el mismo nombre en dos bodegas aparece como dos filas.
-5. Cada línea conserva su bodega y su nombre legible.
-6. El backend rechaza pedir más de lo disponible en esa bodega.
-7. El backend rechaza un producto sin disponibilidad.
-8. La orden se puede consultar, editar y eliminar.
-9. Una orden confirmada en Siigo se borra de forma lógica.
-10. La recepción guarda nombre y cédula y la hora la genera el sistema.
-11. No existe hora de recepción editable, ni botón morado, ni anulación.
-12. El documento impreso incluye título, encabezado superior, columna de
-    bodega, firmas y observaciones.
-13. Los tiempos de respuesta de las APIs están por debajo de 1,2 s.
+- El archivo real se reconoce y se leen sus 2 209 filas.
+- La lectura no depende de que las columnas estén ocultas o visibles.
+- Ninguna fila expone datos de J, K, M ni N.
+- La columna O coincide con entradas − salidas en las 2 209 filas.
+- No hay movimientos duplicados: cada producto+bodega+ubicación aparece una vez.
+- Las 7 bodegas del reporte están en el catálogo, sin duplicados.
+- Las existencias provienen del reporte **detallado**: el resumen no las toca.
 
 ---
 
-## 12. Rendimiento
+## 11. Rendimiento
 
 | Endpoint | Tiempo medio |
 |---|---|
 | `/api/existencias?pageSize=25` | ~700 ms |
-| `/api/existencias?availability=positive&pageSize=50` | ~840 ms |
-| `/api/salidas?pageSize=10` | ~1 090 ms |
-| `/api/bodegas/importadas` | ~480 ms |
-| `/api/destinos?search=San` | ~780 ms |
+| `/api/existencias?availability=positive&pageSize=50` | ~850 ms |
+| `/api/salidas?pageSize=10` | ~950 ms |
+| `/api/bodegas/importadas` | ~500 ms |
+| `/api/destinos?search=San` | ~800 ms |
 
 El tiempo restante es **latencia de red** hacia Supabase (la base está en
 Oregón, ~200 ms por consulta). El trabajo de base de datos se mantiene
@@ -398,21 +389,21 @@ rol.
 
 ---
 
-## 13. Pendientes
+## 12. Pendientes
 
 | Pendiente | Motivo |
 |---|---|
-| Archivo Excel de vencimientos por lotes | El Banco aún no lo ha entregado. La estructura (`vencimiento_lotes`), las alertas y el importador están preparados; falta el lector de sus columnas. |
+| **Archivo Excel de vencimientos** | El Banco aún no lo ha entregado. La estructura, las alertas, la interfaz y el importador de filas normalizadas están listos; falta el lector de sus columnas. |
 | Nombres definitivos de las 7 bodegas | Siigo los entrega truncados («Ola Invernal - Cordob», «Campaña: Juntos por V»). Se pueden renombrar en el catálogo de bodegas. |
-| Impresión física | La geometría está verificada por cálculo (23 comprobaciones) y por la vista previa del navegador; falta la prueba en la impresora del Banco. |
+| Impresión en papel | La geometría está verificada por cálculo (23 comprobaciones) y por la vista previa del navegador; falta la prueba en la impresora del Banco. |
 
 ---
 
-## 14. Cómo iniciar
+## 13. Cómo iniciar
 
 ```bash
 npm install
-npm run db:setup     # aplica las migraciones pendientes (0015 incluida)
+npm run db:setup     # aplica las migraciones pendientes (0016 incluida)
 npm run dev          # http://localhost:3000
 ```
 
@@ -427,17 +418,20 @@ npm run dev          # http://localhost:3000
    - Programa: elegir «Otro programa» → escribir `Jornada de atención
      especial`.
    - Nombre y cédula del almacenista.
-   - **Agregar producto** → buscar `ACEITE` o `FRIJOL`: se ven los productos
-     **con su bodega**; los que no tienen stock, con el botón deshabilitado.
+   - **Agregar producto** → buscar `ACEITE` o `FRIJOL`: cada resultado
+     muestra **código, descripción, bodega, disponibilidad y unidad**; los
+     que no tienen stock, con el botón deshabilitado.
    - Cambiar la **bodega de salida** de la línea: el disponible se recalcula.
    - Cantidad, peso y **vencimiento** por línea.
    - **Observaciones generales** (abajo de la tabla).
    - **Guardar y generar orden**.
-3. **Detalle de la orden** → «Guardar datos de recepción» (nombre y cédula).
-   Editar / eliminar.
+3. **Detalle de la orden** → «Confirmar recepción en despacho» (nombre,
+   cédula y confirmación de la firma; la fecha y la hora las pone el
+   sistema). Editar / eliminar.
 4. **Ver comprobante** → **Imprimir** (Ctrl+P): tamaño carta, márgenes por
-   defecto, encabezados repetidos.
-5. **Inventario** →_existencias por producto y bodega con nombres reales.
+   defecto, encabezados repetidos, columna BODEGA DE SALIDA.
+5. **Inventario** → existencias consolidadas por descripción y bodega con
+   nombres reales.
 
 Orden de prueba con 24 líneas de varias bodegas:
 

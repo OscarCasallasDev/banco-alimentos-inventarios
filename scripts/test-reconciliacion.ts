@@ -215,6 +215,9 @@ async function main() {
   await db.execute(`DELETE FROM siigo_balances WHERE product_id IN (SELECT id FROM products WHERE code = '${PRODUCT_CODE}')`);
   await db.execute(`DELETE FROM siigo_movements WHERE product_id IN (SELECT id FROM products WHERE code = '${PRODUCT_CODE}')`);
   await db.execute(`DELETE FROM products WHERE code = '${PRODUCT_CODE}'`);
+  // La vista materializada de existencias es un cálculo derivado: hay que
+  // refrescarla para que no conserve el producto de prueba.
+  await db.execute(`REFRESH MATERIALIZED VIEW mv_stock_consolidated`);
 
   const programas = await db.execute<{ id: string; name: string }>(
     `SELECT id, name FROM programs WHERE status = 'ACTIVE' ORDER BY sort_order LIMIT 1`
@@ -349,6 +352,9 @@ async function main() {
   await db.execute(`DELETE FROM siigo_balances WHERE product_id = '${productoId}'`);
   await db.execute(`DELETE FROM siigo_movements WHERE product_id = '${productoId}'`);
   await db.execute(`DELETE FROM products WHERE id = '${productoId}'`);
+  // La vista materializada de existencias es un cálculo derivado: hay que
+  // refrescarla para que no conserve el producto de prueba.
+  await db.execute(`REFRESH MATERIALIZED VIEW mv_stock_consolidated`);
 
   console.log(
     `\n  ${C.bold}Resultado:${C.reset} ${C.green}${passed} correctas${C.reset}, ` +

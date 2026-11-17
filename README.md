@@ -72,16 +72,17 @@ Detalle en [docs/IMPORTACION_SIIGO.md](./docs/IMPORTACION_SIIGO.md).
 
 La versión actual incorpora los ajustes solicitados por la dirección:
 
-- **Existencias separadas por producto y bodega** (se revirtió la
-  consolidación por descripción): dos productos con el mismo nombre en
-  bodegas distintas **nunca se suman**.
+- **Existencias consolidadas por descripción y bodega**: las ubicaciones del
+  mismo producto en la misma bodega se suman; las existencias de bodegas
+  distintas **nunca se mezclan**. La consolidación es un cálculo derivado:
+  los registros originales se conservan para trazabilidad.
 - **Bodega de salida por línea de producto**, con selector limitado al
   catálogo importado de Siigo y validación de disponibilidad **por bodega**.
 - **Programa «Otro»**: se puede escribir el nombre del programa si no está en
   el catálogo.
-- **Recepción simplificada**: solo nombre y cédula de quien recibe; la hora
-  la genera el sistema. Sin hora manual, sin botón morado y sin acciones de
-  anulación.
+- **Recepción en despacho**: se registra quién recibe (nombre, cédula) y la
+  firma sobre el documento impreso; la fecha y la hora las genera el
+  sistema. Sin hora manual.
 - **CRUD de órdenes**: crear, consultar, **editar** y **eliminar** (con
   borrado lógico si la orden ya está confirmada en Siigo).
 - **Impresión corregida**: separación superior recuperada, encabezado
