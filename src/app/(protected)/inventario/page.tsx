@@ -29,8 +29,10 @@ import { useApiQuery } from "@/hooks/useApiQuery";
 import { cn } from "@/lib/utils";
 
 interface StockRow {
-  productId: string;
-  productCode: string;
+  representativeProductId: string;
+  representativeCode: string;
+  productCodes: string[];
+  productCount: number;
   description: string;
   unit: string;
   siigoBodegaCode: number;
@@ -319,14 +321,19 @@ export default function InventarioPage() {
                 <tbody className="divide-y divide-gray-100">
                   {items.map((item) => (
                     <tr
-                      key={`${item.productId}-${item.siigoBodegaCode}`}
+                      key={`${item.description}-${item.siigoBodegaCode}`}
                       className={cn(
                         "hover:bg-gray-50",
                         item.reviewRequired && "bg-amber-50/60"
                       )}
                     >
                       <td className="px-4 py-3 font-mono text-xs text-gray-700 whitespace-nowrap">
-                        {item.productCode}
+                        {item.representativeCode}
+                        {item.productCount > 1 && (
+                          <span className="ml-1 text-[10px] text-gray-400">
+                            (+{item.productCount - 1})
+                          </span>
+                        )}
                         {item.reviewRequired && (
                           <span
                             className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-100 rounded px-1.5 py-0.5"
@@ -392,13 +399,13 @@ export default function InventarioPage() {
             <div className="lg:hidden divide-y divide-gray-100">
               {items.map((item) => (
                 <div
-                  key={`${item.productId}-${item.siigoBodegaCode}`}
+                  key={`${item.description}-${item.siigoBodegaCode}`}
                   className={cn("p-4", item.reviewRequired && "bg-amber-50/60")}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-mono text-[11px] text-gray-500">
-                        {item.productCode}
+                        {item.representativeCode}
                       </p>
                       <p className="font-medium text-gray-900 text-sm leading-snug">
                         {item.description}
@@ -448,7 +455,7 @@ export default function InventarioPage() {
               <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
                 <p className="text-xs text-gray-600">
                   Página {pagination.page} de {pagination.totalPages} ·{" "}
-                  {pagination.total} productos por bodega
+                  {pagination.total} productos consolidados
                 </p>
                 <div className="flex gap-2">
                   <button

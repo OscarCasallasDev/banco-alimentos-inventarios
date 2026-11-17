@@ -1,18 +1,16 @@
 /**
- * Prueba de integración de las existencias por producto y bodega.
+ * Verificación de la consolidación por descripción y bodega.
  *
- * Verifica contra la BASE REAL que:
- *   1. Dos productos con el MISMO nombre en bodegas distintas aparecen
- *      como filas separadas y sus cantidades NO se suman entre sí.
- *   2. Un producto con el mismo nombre y distinto código en la misma
- *      bodega también aparece separado.
- *   3. Los registros originales de `siigo_balances` siguen intactos
- *      (número de filas idéntico al de la vista consolidada por ubicación).
- *   4. La suma total de existencias se conserva.
+ * Comprueba contra la BASE REAL que:
+ *   1. Las ubicaciones del mismo producto en la misma bodega se SUMAN.
+ *   2. NO se mezclan existencias de bodegas diferentes.
+ *   3. NO se fusionan descripciones diferentes.
+ *   4. Los registros originales (códigos, ubicaciones) se conservan intactos.
+ *   5. La suma total de existencias no cambia.
+ *   6. Las cantidades negativas y los ceros se conservan.
  *
- * Es una prueba de integración porque necesita la base de datos real: el
- * comportamiento que se verifica (que no se sumen bodegas) solo se puede
- * comprobar con los datos importados de Siigo.
+ * Es una prueba de integración: necesita la base real, porque lo que se
+ * verifica es que el cálculo derivado coincide con los datos importados.
  *
  * Uso:  npx tsx scripts/test-consolidacion.ts
  */
@@ -38,9 +36,10 @@ function ok(message: string) {
   console.log(`  \u001b[32m\u2713\u001b[0m ${message}`);
 }
 
-function fail(message: string) {
+function fail(message: string, detail?: string) {
   failed++;
   console.log(`  \u001b[31m\u2717\u001b[0m ${message}`);
+  if (detail) console.log(`      \u001b[31m${detail}\u001b[0m`);
 }
 
 function section(title: string) {
@@ -57,215 +56,254 @@ async function main() {
 
   try {
     // ---------------------------------------------------------------
-    section("1. Productos con el mismo nombre en bodegas distintas");
+    section("1. Las ubicaciones del mismo producto se suman");
     // ---------------------------------------------------------------
-    // Se buscan descripciones presentes en varias bodegas CON saldo en al
-    // menos dos de ellas: ahí es donde se nota si las cantidades se suman
-    // entre bodegas o no.
-    const duplicados = await sql`
-      WITH por_nombre AS (
-        SELECT description,
-               COUNT(DISTINCT siigo_bodega_code)::int AS bodegas,
-               COUNT(*) FILTER (WHERE quantity <> 0)::int AS filas_con_saldo,
-               SUM(quantity)::numeric AS qty_total
-        FROM v_stock_by_bodega
-        GROUP BY description
-        HAVING COUNT(*) FILTER (WHERE quantity <> 0) > 1
-      )
-      SELECT description, bodegas, filas_con_saldo, qty_total
-      FROM por_nombre
-      ORDER BY qty_total DESC
+    const multi = await sql.unsafe(`
+      SELECT v.description, v.siigo_bodega_code, v.warehouse_name,
+             v.location_count, v.quantity, v.product_count, v.product_codes,
+             (SELECT COUNT(*)::int FROM siigo_balances b
+                JOIN products p2 ON p2.id = b.product_id
+               WHERE b.is_active
+                 AND btrim(regexp_replace(p2.name, '\\s+', ' ', 'g')) = v.description
+                 AND b.siigo_bodega_code = v.siigo_bodega_code) AS filas_originales,
+             (SELECT COALESCE(SUM(b.quantity), 0) FROM siigo_balances b
+                JOIN products p2 ON p2.id = b.product_id
+               WHERE b.is_active
+                 AND btrim(regexp_replace(p2.name, '\\s+', ' ', 'g')) = v.description
+                 AND b.siigo_bodega_code = v.siigo_bodega_code) AS suma_original
+      FROM v_stock_consolidated v
+      WHERE v.location_count > 1
+      ORDER BY v.location_count DESC
       LIMIT 5
-    `;
+    `);
 
-    if (duplicados.length === 0) {
-      fail(
-        "No se encontró ninguna descripción con saldo en dos o más bodegas."
-      );
+    if (multi.length === 0) {
+      fail("No se encontró ningún grupo con varias ubicaciones.");
     } else {
-      ok(
-        `Se hallaron ${duplicados.length} descripciones con saldo en varias bodegas (separadas).`
-      );
-      for (const fila of duplicados) {
-        ok(
-          `"${fila.description}" aparece en ${fila.bodegas} bodegas con ${fila.filas_con_saldo} filas con saldo (total ${fila.qty_total}).`
-        );
-      }
-    }
-
-    // INVARIANTE EXACTO: la cantidad de la fila (producto, bodega) debe
-    // ser exactamente la suma de los saldos originales de ESE producto en
-    // ESA bodega. Si el sistema sumara entre bodegas, esta comparación
-    // fallaría.
-    const exactas = await sql`
-      SELECT COUNT(*)::int AS n
-      FROM (
-        SELECT v.product_code, v.siigo_bodega_code, v.quantity AS qty_vista,
-               COALESCE(o.qty_original, 0) AS qty_original
-        FROM v_stock_by_bodega v
-        LEFT JOIN (
-          SELECT p.code AS product_code, b.siigo_bodega_code,
-                 SUM(b.quantity) AS qty_original
-          FROM siigo_balances b
-          JOIN products p ON p.id = b.product_id
-          WHERE b.is_active
-          GROUP BY p.code, b.siigo_bodega_code
-        ) o ON o.product_code = v.product_code
-           AND o.siigo_bodega_code = v.siigo_bodega_code
-      ) x
-      WHERE ABS(x.qty_vista - x.qty_original) > 0.0005
-    `;
-
-    if (Number(exactas[0].n) === 0) {
-      ok(
-        "Cada fila (producto + bodega) coincide EXACTAMENTE con el saldo original de ese producto en esa bodega: no hay sumas entre bodegas."
-      );
-    } else {
-      fail(
-        `${exactas[0].n} filas no coinciden con el saldo original de su producto en su bodega.`
-      );
-    }
-
-    // El caso exacto del Banco: el MISMO producto en dos bodegas.
-    const mismoProducto = await sql`
-      SELECT v1.product_code, v1.description,
-             v1.siigo_bodega_code AS bodega_1,
-             v1.quantity AS cantidad_1,
-             v2.siigo_bodega_code AS bodega_2,
-             v2.quantity AS cantidad_2
-      FROM v_stock_by_bodega v1
-      JOIN v_stock_by_bodega v2
-        ON v1.product_code = v2.product_code
-       AND v1.siigo_bodega_code < v2.siigo_bodega_code
-       AND v1.quantity <> 0 AND v2.quantity <> 0
-      LIMIT 5
-    `;
-
-    if (mismoProducto.length === 0) {
-      ok(
-        "No hay un mismo producto con saldo en dos bodegas simultáneamente (no se puede contrastar)."
-      );
-    } else {
-      ok(
-        `El mismo producto aparece en ${mismoProducto.length} casos con existencias en dos bodegas:`
-      );
-      for (const fila of mismoProducto) {
-        ok(
-          `"${fila.description}" (${fila.product_code}): bodega ${fila.bodega_1} = ${fila.cantidad_1} | bodega ${fila.bodega_2} = ${fila.cantidad_2} → filas independientes.`
-        );
-      }
-    }
-
-    // ---------------------------------------------------------------
-    section("2. Mismo nombre + mismo bodega pero distinto código");
-    // ---------------------------------------------------------------
-    const mismoCodigo = await sql`
-      SELECT p.name AS description, b.siigo_bodega_code,
-             COUNT(DISTINCT p.code)::int AS codigos
-      FROM siigo_balances b
-      JOIN products p ON p.id = b.product_id
-      WHERE b.is_active
-      GROUP BY p.name, b.siigo_bodega_code
-      HAVING COUNT(DISTINCT p.code) > 1
-      LIMIT 5
-    `;
-
-    if (mismoCodigo.length === 0) {
-      ok("No hay colisiones de nombre+código dentro de una misma bodega.");
-    } else {
-      for (const fila of mismoCodigo) {
-        const filas = await sql`
-          SELECT COUNT(*)::int AS n
-          FROM v_stock_by_bodega
-          WHERE description = ${fila.description}
-            AND siigo_bodega_code = ${fila.siigo_bodega_code}
-        `;
-        if (Number(filas[0].n) === Number(fila.codigos)) {
+      for (const fila of multi) {
+        const cant = Number(fila.quantity ?? 0);
+        const original = Number(fila.suma_original);
+        const ubic = Number(fila.location_count);
+        const filas = Number(fila.filas_originales);
+        if (Math.abs(cant - original) < 0.0005 && filas >= ubic && ubic > 1) {
           ok(
-            `"${fila.description}" en bodega ${fila.siigo_bodega_code}: ${fila.codigos} códigos distintos → ${filas[0].n} filas separadas.`
+            `"${fila.description}" (bodega ${fila.siigo_bodega_code} · ${fila.warehouse_name}): ${filas} registro(s) en ${ubic} ubicación(es) → ${cant} unidades (suma original ${original}).`
           );
         } else {
           fail(
-            `"${fila.description}" en bodega ${fila.siigo_bodega_code}: ${fila.codigos} códigos pero ${filas[0].n} filas (deberían ser ${fila.codigos}).`
+            `"${fila.description}": ${cant} no coincide con la suma original ${original}.`,
+            `ubicaciones: ${ubic}, filas originales: ${filas}`
           );
         }
       }
     }
 
     // ---------------------------------------------------------------
-    section("3. Los registros originales siguen intactos");
+    section("2. Cada grupo coincide EXACTAMENTE con sus originales");
     // ---------------------------------------------------------------
-    const originales = await sql`
+    const descuadres = await sql.unsafe(`
+      SELECT COUNT(*)::int AS n
+      FROM (
+        SELECT v.description, v.siigo_bodega_code, v.quantity
+        FROM v_stock_consolidated v
+      ) x
+      WHERE ABS(x.quantity - (
+        SELECT COALESCE(SUM(b.quantity), 0) FROM siigo_balances b
+          JOIN products p2 ON p2.id = b.product_id
+         WHERE b.is_active
+           AND btrim(regexp_replace(p2.name, '\\s+', ' ', 'g')) = x.description
+           AND b.siigo_bodega_code = x.siigo_bodega_code
+      )) > 0.0005
+    `);
+    if (Number(descuadres[0].n) === 0) {
+      ok(
+        "Todos los grupos consolidados cuadran exactamente con la suma de sus registros originales."
+      );
+    } else {
+      fail(`${descuadres[0].n} grupos no cuadran con el original.`);
+    }
+
+    // ---------------------------------------------------------------
+    section("3. No se mezclan bodegas diferentes");
+    // ---------------------------------------------------------------
+    const mezcla = await sql.unsafe(`
+      SELECT COUNT(*)::int AS n
+      FROM v_stock_consolidated v
+      WHERE v.quantity <> (
+        SELECT COALESCE(SUM(b.quantity), 0) FROM siigo_balances b
+          JOIN products p2 ON p2.id = b.product_id
+         WHERE b.is_active
+           AND btrim(regexp_replace(p2.name, '\\s+', ' ', 'g')) = v.description
+           AND b.siigo_bodega_code = v.siigo_bodega_code
+      )
+    `);
+    if (Number(mezcla[0].n) === 0) {
+      ok("Ningún grupo contiene existencias de otra bodega.");
+    } else {
+      fail(`${mezcla[0].n} grupos contienen existencias de otras bodegas.`);
+    }
+
+    // La misma descripción en dos bodegas produce dos filas independientes.
+    const porBodega = await sql.unsafe(`
+      WITH d AS (
+        SELECT description,
+               COUNT(DISTINCT siigo_bodega_code)::int AS bodegas,
+               COUNT(*) FILTER (WHERE quantity <> 0)::int AS filas_con_saldo,
+               SUM(quantity)::numeric AS qty_total
+        FROM v_stock_consolidated
+        GROUP BY description
+        HAVING COUNT(DISTINCT siigo_bodega_code) > 1
+      )
+      SELECT description, bodegas, filas_con_saldo, qty_total
+      FROM d ORDER BY qty_total DESC LIMIT 5
+    `);
+    if (porBodega.length === 0) {
+      fail("No hay descripciones en varias bodegas.");
+    } else {
+      for (const fila of porBodega) {
+        ok(
+          `"${fila.description}": ${fila.bodegas} bodegas con ${fila.filas_con_saldo} fila(s) con saldo (total ${fila.qty_total}).`
+        );
+      }
+    }
+
+    // ---------------------------------------------------------------
+    section("4. No se fusionan descripciones diferentes");
+    // ---------------------------------------------------------------
+    const distintas = await sql.unsafe(`
+      SELECT COUNT(DISTINCT description)::int AS n FROM v_stock_consolidated
+    `);
+    const originalDesc = await sql.unsafe(`
+      SELECT COUNT(DISTINCT btrim(regexp_replace(p.name, '\\s+', ' ', 'g')))::int AS n
+      FROM siigo_balances b JOIN products p ON p.id = b.product_id
+      WHERE b.is_active
+    `);
+    if (Number(distintas[0].n) === Number(originalDesc[0].n)) {
+      ok(
+        `Se conservan las ${originalDesc[0].n} descripciones distintas: ninguna se fusionó con otra.`
+      );
+    } else {
+      fail(
+        `Fusión de descripciones detectada: ${distintas[0].n} en la vista frente a ${originalDesc[0].n} originales.`
+      );
+    }
+
+    // ---------------------------------------------------------------
+    section("5. Los registros originales se conservan");
+    // ---------------------------------------------------------------
+    const originales = await sql.unsafe(`
       SELECT
         (SELECT COUNT(*)::int FROM siigo_balances WHERE is_active) AS balances,
-        (SELECT COUNT(*)::int FROM v_stock_by_bodega) AS por_codigo_bodega,
-        (SELECT COUNT(*)::int FROM v_stock_consolidated) AS consolidada_desc
-    `;
-    const fila = originales[0];
+        (SELECT COUNT(DISTINCT location_code)::int FROM siigo_balances WHERE is_active) AS ubicaciones,
+        (SELECT COUNT(DISTINCT p.code)::int FROM siigo_balances b
+           JOIN products p ON p.id = b.product_id WHERE b.is_active) AS codigos,
+        (SELECT COUNT(*)::int FROM v_stock_consolidated) AS consolidados
+    `);
+    const o = originales[0];
     ok(
-      `Originales por ubicación: ${fila.balances} (sin cambios) · vista por código+bodega: ${fila.por_codigo_bodega} · vista histórica por descripción: ${fila.consolidada_desc}.`
+      `Originales por ubicación: ${o.balances} · ubicaciones distintas: ${o.ubicaciones} · códigos de Siigo: ${o.codigos} · grupos consolidados: ${o.consolidados}.`
     );
-
-    if (fila.por_codigo_bodega >= fila.consolidada_desc) {
+    if (o.consolidados <= o.balances) {
       ok(
-        "La vista por código+bodega es al menos tan granular como la consolidada por descripción."
+        "La consolidación agrupa (reduce filas) sin eliminar ningún registro original."
       );
     } else {
-      fail("La vista por código+bodega debería ser más granular que la consolidada.");
+      fail("La consolidación aumentó el número de filas: hay una anomalía.");
+    }
+
+    // Los códigos de cada grupo se conservan.
+    const codigosPerdidos = await sql.unsafe(`
+      SELECT COUNT(*)::int AS n FROM v_stock_consolidated v
+      WHERE EXISTS (
+        SELECT 1 FROM siigo_balances b JOIN products p2 ON p2.id = b.product_id
+         WHERE b.is_active
+           AND btrim(regexp_replace(p2.name, '\\s+', ' ', 'g')) = v.description
+           AND b.siigo_bodega_code = v.siigo_bodega_code
+           AND NOT (p2.code = ANY(v.product_codes))
+      )
+    `);
+    if (Number(codigosPerdidos[0].n) === 0) {
+      ok("Todos los códigos de Siigo de cada grupo quedan registrados en la vista.");
+    } else {
+      fail(`${codigosPerdidos[0].n} grupos perdieron algún código de Siigo.`);
     }
 
     // ---------------------------------------------------------------
-    section("4. La suma total de existencias se conserva");
+    section("6. La suma total de existencias se conserva");
     // ---------------------------------------------------------------
-    const totales = await sql`
+    const totales = await sql.unsafe(`
       SELECT
         (SELECT COALESCE(SUM(quantity),0) FROM siigo_balances WHERE is_active)::numeric AS original,
-        (SELECT COALESCE(SUM(quantity),0) FROM v_stock_by_bodega)::numeric AS por_codigo_bodega,
-        (SELECT COALESCE(SUM(quantity),0) FROM v_stock_consolidated)::numeric AS consolidada
-    `;
-    const t = totales[0];
-    const original = Number(t.original);
-    const nuevo = Number(t.por_codigo_bodega);
-    const historico = Number(t.consolidada);
-
-    if (Math.abs(original - nuevo) < 0.001) {
-      ok(
-        `El total de existencias se conserva exactamente: ${original} (original) = ${nuevo} (por código+bodega).`
-      );
+        (SELECT COALESCE(SUM(quantity),0) FROM v_stock_consolidated)::numeric AS consolidado
+    `);
+    const original = Number(totales[0].original);
+    const consolidado = Number(totales[0].consolidado);
+    if (Math.abs(original - consolidado) < 0.001) {
+      ok(`El total de existencias se conserva exactamente: ${original}.`);
     } else {
-      fail(`El total cambió: original ${original} vs por código+bodega ${nuevo}.`);
-    }
-
-    if (Math.abs(original - historico) < 0.001) {
-      ok(
-        `El total de la vista histórica por descripción también se conserva: ${historico}.`
-      );
-    } else {
-      fail(`La vista histórica cambió: ${original} vs ${historico}.`);
+      fail(`El total cambió: original ${original} vs consolidado ${consolidado}.`);
     }
 
     // ---------------------------------------------------------------
-    section("5. Bodegas con nombre legible (fin de 'Siigo 1', 'Siigo 2')");
+    section("7. Negativos y ceros se conservan");
     // ---------------------------------------------------------------
-    const sinNombre = await sql`
-      SELECT COUNT(*)::int AS n
-      FROM v_stock_by_bodega
-      WHERE warehouse_name IS NULL
-    `;
+    const signos = await sql.unsafe(`
+      SELECT
+        COUNT(*) FILTER (WHERE quantity < 0)::int AS negativos,
+        COUNT(*) FILTER (WHERE quantity = 0)::int AS ceros,
+        COUNT(*) FILTER (WHERE quantity > 0)::int AS positivos
+      FROM v_stock_consolidated
+    `);
+    const s = signos[0];
+    ok(
+      `Zeros: ${s.ceros} · Negativos: ${s.negativos} · Positivos: ${s.positivos}.`
+    );
+    const origSignos = await sql.unsafe(`
+      SELECT COUNT(*) FILTER (WHERE quantity < 0)::int AS negativos
+      FROM siigo_balances WHERE is_active
+    `);
+    // Al consolidar, varias filas negativas pueden compensarse: lo que debe
+    // conservarse es que NINGÚN grupo con saldo negativo se pierda.
+    const negPerdidos = await sql.unsafe(`
+      SELECT COUNT(*)::int AS n FROM (
+        SELECT btrim(regexp_replace(p.name, '\\s+', ' ', 'g')) AS description,
+               b.siigo_bodega_code, SUM(b.quantity) AS qty
+        FROM siigo_balances b JOIN products p ON p.id = b.product_id
+        WHERE b.is_active
+        GROUP BY 1, 2
+      ) g
+      WHERE g.qty < 0
+        AND NOT EXISTS (
+          SELECT 1 FROM v_stock_consolidated v
+          WHERE v.description = g.description
+            AND v.siigo_bodega_code = g.siigo_bodega_code
+            AND v.quantity < 0
+        )
+    `);    if (Number(negPerdidos[0].n) === 0) {
+      ok(
+        `Ningún grupo con saldo negativo se perdió: ${s.negativos} grupos con saldo negativo (de ${origSignos[0].negativos} registros negativos originales, compensados al consolidar).`
+      );
+    } else {
+      fail(`${negPerdidos[0].n} grupos con saldo negativo se perdieron.`);
+    }
+
+    // ---------------------------------------------------------------
+    section("8. Bodegas con nombre legible");
+    // ---------------------------------------------------------------
+    const sinNombre = await sql.unsafe(
+      `SELECT COUNT(*)::int AS n FROM v_stock_consolidated WHERE warehouse_name IS NULL`
+    );
     if (Number(sinNombre[0].n) === 0) {
-      ok("Todas las existencias muestran el nombre de su bodega.");
+      ok("Todas las existencias muestran el nombre real de su bodega.");
     } else {
       fail(`${sinNombre[0].n} existencias siguen sin nombre de bodega.`);
     }
-
-    const nombres = await sql`
-      SELECT warehouse_name, COUNT(*)::int AS n
-      FROM v_stock_by_bodega
-      GROUP BY warehouse_name
-      ORDER BY n DESC
-    `;
+    const nombres = await sql.unsafe(
+      `SELECT warehouse_name, COUNT(*)::int AS n FROM v_stock_consolidated
+        GROUP BY warehouse_name ORDER BY n DESC`
+    );
     for (const n of nombres) {
-      ok(`${n.warehouse_name}: ${n.n} existencias.`);
+      ok(`${n.warehouse_name}: ${n.n} grupos consolidados.`);
     }
   } finally {
     await sql.end({ timeout: 5 });

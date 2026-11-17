@@ -1,79 +1,68 @@
 /**
- * Existencias por producto y bodega.
+ * Existencias consolidadas por descripción y bodega.
  *
- * Siigo registra un mismo producto en varias UBICACIONES dentro de una
- * bodega, y el MISMO producto puede aparecer en varias bodegas. El Banco
- * necesita saber de qué bodega sale cada producto, así que la
- * disponibilidad se calcula por:
+ * Siigo registra un mismo producto en varias ubicaciones dentro de la misma
+ * bodega, y el MISMO nombre puede aparecer en distintas bodegas. El Banco
+ * pidió consolidar por:
  *
- *     CÓDIGO DE SIIGO  +  BODEGA
+ *     DESCRIPCIÓN EXACTA  +  BODEGA
  *
  * Reglas:
- *   - Dos productos con la MISMA descripción pero en bodegas DISTINTAS son
- *     existencias distintas: NUNCA se suman entre sí.
- *   - Un mismo código de producto en la misma bodega sí suma sus
- *     ubicaciones (es el mismo stock, repartido en el almacén).
- *   - Un total cero o negativo se conserva tal cual y se muestra.
- *
- * Los registros originales por ubicación viven en `siigo_balances` y no se
- * modifican: la vista es una derivación. La vista anterior
- * (`v_stock_consolidated`, por descripción) se conserva como registro
- * histórico pero ya no participa en la disponibilidad ni en la selección de
- * productos.
+ *   - Las ubicaciones de un mismo producto en la misma bodega se SUMAN
+ *     (es el mismo stock, repartido en el almacén).
+ *   - NO se mezclan existencias de bodegas diferentes.
+ *   - NO se fusionan productos con descripciones diferentes.
+ *   - Las cantidades negativas y los resultados en cero se conservan.
+ *   - Los códigos, las ubicaciones y los registros originales se conservan
+ *     para trazabilidad: la consolidación es un cálculo derivado y la tabla
+ *     `siigo_balances` no se modifica.
  */
 
 import { sql } from "drizzle-orm";
 import { getDb, type DbExecutor } from "@/lib/db/client";
 
-/** Clave de grupo: `código de producto|bodega`. */
-export function stockGroupKey(
-  productCode: string,
-  siigoBodegaCode: number
-): string {
-  return `${(productCode ?? "").trim().toLowerCase()}|${siigoBodegaCode}`;
-}
-
 /**
- * Clave de grupo a partir de la descripción y la unidad.
+ * Clave de grupo consolidado: `descripción|bodega`.
  *
- * Se conserva para poder leer los registros históricos que se guardaron
- * con la clave anterior (`descripción|unidad|bodega`) durante la conciliación.
+ * Es la clave con la que se identifican las reservas y las conciliaciones,
+ * de modo que cada salida se descuenta del saldo del grupo correcto.
  */
 export function consolidatedGroupKey(
   description: string,
-  unit: string,
   siigoBodegaCode: number
 ): string {
-  const normalizedDescription = description
+  const normalized = (description ?? "")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
-  const normalizedUnit = (unit ?? "").trim().toUpperCase();
-  return `${normalizedDescription}|${normalizedUnit}|${siigoBodegaCode}`;
+  return `${normalized}|${siigoBodegaCode}`;
 }
 
-export interface WarehouseStockItem {
-  /** Identificador del producto (código de Siigo único). */
-  productId: string;
-  /** Código de Siigo del producto. */
-  productCode: string;
-  /** Descripción exacta del producto. */
+export interface ConsolidatedStockItem {
+  /** Descripción exacta del producto (normalizada en espacios). */
   description: string;
   unit: string;
-  presentation: string | null;
   /** Bodega de Siigo (1..N). */
   siigoBodegaCode: number;
   warehouseId: string | null;
   /** Nombre legible de la bodega (PRINCIPAL, ALMACEN, …). */
   warehouseName: string | null;
-  /** Existencia informada por Siigo para ESE producto en ESA bodega. */
+  /** Producto que representa al grupo (el de mayor existencia). */
+  representativeProductId: string;
+  /** Código de Siigo del producto representante. */
+  representativeCode: string;
+  /** Todos los códigos de Siigo que componen el grupo. */
+  productCodes: string[];
+  /** Cuántos códigos de Siigo tiene el grupo. */
+  productCount: number;
+  /** Cuántas ubicaciones de la bodega suma el grupo. */
+  locationCount: number;
+  /** Existencia informada por Siigo (suma de las ubicaciones). */
   quantity: number;
-  /** Cantidad comprometida en órdenes pendientes de ese grupo. */
+  /** Cantidad comprometida en órdenes pendientes. */
   reserved: number;
   /** Disponibilidad operativa: quantity − reserved. */
   available: number;
-  /** Cuántas ubicaciones de la bodega contiene ese producto. */
-  locationCount: number;
   isNegative: boolean;
   reviewRequired: boolean;
   /** Peso unitario de referencia (gramos), si el producto lo tiene. */
@@ -83,7 +72,7 @@ export interface WarehouseStockItem {
   syncedAt: Date | null;
 }
 
-export interface StockQuery {
+export interface ConsolidatedStockQuery {
   search?: string;
   siigoBodegaCode?: number;
   warehouseId?: string;
@@ -95,8 +84,8 @@ export interface StockQuery {
   pageSize?: number;
 }
 
-export interface StockResult {
-  items: WarehouseStockItem[];
+export interface ConsolidatedStockResult {
+  items: ConsolidatedStockItem[];
   total: number;
   /** Totales del conjunto filtrado (no solo de la página). */
   totals: {
@@ -110,7 +99,7 @@ export interface StockResult {
 }
 
 /** Condiciones SQL comunes para la búsqueda. */
-function buildConditions(query: StockQuery) {
+function buildConditions(query: ConsolidatedStockQuery) {
   const conditions = [sql`1 = 1`];
 
   if (query.search && query.search.trim().length > 0) {
@@ -120,14 +109,23 @@ function buildConditions(query: StockQuery) {
     conditions.push(sql`
       (
         lower(v.description) LIKE ${term}
-        OR lower(v.product_code) LIKE ${term}
-        OR lower(replace(v.product_code, '-', '')) LIKE ${compact}
+        OR EXISTS (
+          SELECT 1 FROM unnest(v.product_codes) AS c(code)
+          WHERE lower(c.code) LIKE ${term}
+             OR lower(replace(c.code, '-', '')) LIKE ${compact}
+        )
       )
     `);
   }
 
   if (query.productId) {
-    conditions.push(sql`v.product_id = ${query.productId}::uuid`);
+    conditions.push(sql`
+      EXISTS (
+        SELECT 1 FROM unnest(v.product_codes) AS c(code)
+        JOIN products p2 ON p2.code = c.code
+        WHERE p2.id = ${query.productId}::uuid
+      )
+    `);
   }
   if (query.siigoBodegaCode !== undefined) {
     conditions.push(sql`v.siigo_bodega_code = ${query.siigoBodegaCode}`);
@@ -154,23 +152,24 @@ function buildConditions(query: StockQuery) {
 }
 
 /** Convierte una fila de la consulta en el modelo de la interfaz. */
-function toStockItem(row: Record<string, unknown>): WarehouseStockItem {
+function toStockItem(row: Record<string, unknown>): ConsolidatedStockItem {
   const quantity = Number(row.quantity ?? 0);
   const reserved = Number(row.reserved ?? 0);
   const available = Number(row.available ?? quantity - reserved);
   return {
-    productId: String(row.product_id ?? ""),
-    productCode: String(row.product_code ?? ""),
     description: String(row.description ?? ""),
     unit: String(row.unit ?? ""),
-    presentation: (row.presentation as string | null) ?? null,
     siigoBodegaCode: Number(row.siigo_bodega_code),
     warehouseId: (row.warehouse_id as string | null) ?? null,
     warehouseName: (row.warehouse_name as string | null) ?? null,
+    representativeProductId: String(row.representative_product_id ?? ""),
+    representativeCode: String(row.representative_code ?? ""),
+    productCodes: (row.product_codes as string[] | null) ?? [],
+    productCount: Number(row.product_count ?? 1),
+    locationCount: Number(row.location_count ?? 1),
     quantity: round3(quantity),
     reserved: round3(reserved),
     available: round3(available),
-    locationCount: Number(row.location_count ?? 1),
     isNegative: Boolean(row.is_negative),
     reviewRequired: Boolean(row.review_required),
     netWeightGrams:
@@ -183,41 +182,42 @@ function toStockItem(row: Record<string, unknown>): WarehouseStockItem {
 }
 
 /**
- * Lista las existencias por producto y bodega.
+ * Lista las existencias consolidadas por descripción y bodega.
  *
  * Devuelve TODOS los productos del inventario importado, incluidos los que
  * tienen cantidad cero o negativa. Cada fila indica si se puede agregar a
  * una orden (`canAdd`: disponibilidad > 0).
  */
-export async function listStockByWarehouse(
-  query: StockQuery,
+export async function listConsolidatedStock(
+  query: ConsolidatedStockQuery,
   executor: DbExecutor = getDb()
-): Promise<StockResult> {
+): Promise<ConsolidatedStockResult> {
   const page = query.page ?? 0;
   const pageSize = Math.min(query.pageSize ?? 25, 200);
   const where = buildConditions(query);
 
   // Una sola consulta: los totales se calculan con funciones de ventana sobre
-  // el conjunto filtrado (antes eran dos viajes a la base por pantalla).
+  // el conjunto filtrado (evita dos viajes a la base por pantalla).
   const rows = await executor.execute(sql`
     WITH filtrado AS (
       SELECT v.*
-      FROM v_stock_by_bodega v
+      FROM v_stock_consolidated v
       WHERE ${where}
     )
     SELECT
-      f.product_id,
-      f.product_code,
       f.description,
       f.unit,
-      f.presentation,
       f.siigo_bodega_code,
       f.warehouse_id,
       f.warehouse_name,
+      f.representative_product_id,
+      f.representative_code,
+      f.product_codes,
+      f.product_count,
+      f.location_count,
       f.quantity,
       f.reserved,
       (f.quantity - f.reserved) AS available,
-      f.location_count,
       f.is_negative,
       f.review_required,
       f.net_weight_grams,
@@ -229,7 +229,7 @@ export async function listStockByWarehouse(
       COALESCE(SUM(f.quantity) OVER (), 0) AS total_cantidad,
       COALESCE(SUM(f.quantity - f.reserved) OVER (), 0) AS total_disponible
     FROM filtrado f
-    ORDER BY f.description, f.siigo_bodega_code, f.product_code
+    ORDER BY f.description, f.siigo_bodega_code
     LIMIT ${pageSize} OFFSET ${page * pageSize}
   `);
 
@@ -253,24 +253,26 @@ export async function listStockByWarehouse(
 }
 
 /**
- * Existencias de un producto concreto en todas las bodegas donde existe.
+ * Bodegas donde un producto (por código de Siigo) tiene existencia.
  *
- * Es lo que usa el formulario de la orden para ofrecer al almacenista
- * las bodegas desde las que realmente puede despachoar ese producto.
+ * Es lo que usa el formulario de la orden para ofrecer al almacenista las
+ * bodegas desde las que puede despachar ese producto.
  */
 export async function listWarehouseOptionsForProduct(
-  productId: string,
+  productCode: string,
   executor: DbExecutor = getDb()
-): Promise<WarehouseStockItem[]> {
+): Promise<ConsolidatedStockItem[]> {
   const rows = await executor.execute(sql`
     SELECT
-      f.product_id, f.product_code, f.description, f.unit, f.presentation,
-      f.siigo_bodega_code, f.warehouse_id, f.warehouse_name,
-      f.quantity, f.reserved, (f.quantity - f.reserved) AS available,
-      f.location_count, f.is_negative, f.review_required,
-      f.net_weight_grams, f.synced_at
-    FROM v_stock_by_bodega f
-    WHERE f.product_id = ${productId}::uuid
+      f.description, f.unit, f.siigo_bodega_code, f.warehouse_id, f.warehouse_name,
+      f.representative_product_id, f.representative_code, f.product_codes,
+      f.product_count, f.location_count, f.quantity, f.reserved,
+      (f.quantity - f.reserved) AS available,
+      f.is_negative, f.review_required, f.net_weight_grams, f.synced_at
+    FROM v_stock_consolidated f
+    WHERE ${sql`EXISTS (
+      SELECT 1 FROM unnest(f.product_codes) AS c(code) WHERE c.code = ${productCode}
+    )`}
     ORDER BY f.siigo_bodega_code
   `);
 
@@ -278,27 +280,29 @@ export async function listWarehouseOptionsForProduct(
 }
 
 /**
- * Existencias de un producto en UNA bodega concreta.
+ * Existencia consolidada de un producto en UNA bodega concreta.
  *
  * Es la validación de backend de cada línea de la orden: la cantidad
  * solicitada se contrasta contra este producto en ESTA bodega, nunca
  * contra la suma de otras bodegas.
  */
-export async function getWarehouseStock(
-  productId: string,
+export async function getConsolidatedStock(
+  productCode: string,
   siigoBodegaCode: number,
   executor: DbExecutor = getDb()
-): Promise<WarehouseStockItem | null> {
+): Promise<ConsolidatedStockItem | null> {
   const rows = await executor.execute(sql`
     SELECT
-      f.product_id, f.product_code, f.description, f.unit, f.presentation,
-      f.siigo_bodega_code, f.warehouse_id, f.warehouse_name,
-      f.quantity, f.reserved, (f.quantity - f.reserved) AS available,
-      f.location_count, f.is_negative, f.review_required,
-      f.net_weight_grams, f.synced_at
-    FROM v_stock_by_bodega f
-    WHERE f.product_id = ${productId}::uuid
-      AND f.siigo_bodega_code = ${siigoBodegaCode}
+      f.description, f.unit, f.siigo_bodega_code, f.warehouse_id, f.warehouse_name,
+      f.representative_product_id, f.representative_code, f.product_codes,
+      f.product_count, f.location_count, f.quantity, f.reserved,
+      (f.quantity - f.reserved) AS available,
+      f.is_negative, f.review_required, f.net_weight_grams, f.synced_at
+    FROM v_stock_consolidated f
+    WHERE f.siigo_bodega_code = ${siigoBodegaCode}
+      AND ${sql`EXISTS (
+        SELECT 1 FROM unnest(f.product_codes) AS c(code) WHERE c.code = ${productCode}
+      )`}
     LIMIT 1
   `);
 
@@ -308,7 +312,6 @@ export async function getWarehouseStock(
 
 /**
  * Clave de grupo a partir de un producto (para reservas y conciliación).
- * Ahora es `código de Siigo|bodega`.
  */
 export async function groupKeyForProduct(
   productId: string,
@@ -316,7 +319,7 @@ export async function groupKeyForProduct(
   executor: DbExecutor = getDb()
 ): Promise<string | null> {
   const rows = await executor.execute(sql`
-    SELECT p.code
+    SELECT btrim(regexp_replace(p.name, '\\s+', ' ', 'g')) AS description
     FROM siigo_balances b
     JOIN products p ON p.id = b.product_id
     WHERE b.product_id = ${productId}::uuid
@@ -324,9 +327,9 @@ export async function groupKeyForProduct(
       AND b.is_active
     LIMIT 1
   `);
-  const row = (rows as unknown as { code: string }[])[0];
+  const row = (rows as unknown as { description: string }[])[0];
   if (!row) return null;
-  return stockGroupKey(row.code, siigoBodegaCode);
+  return consolidatedGroupKey(row.description, siigoBodegaCode);
 }
 
 /** Redondeo a 3 decimales (misma precisión que el esquema). */

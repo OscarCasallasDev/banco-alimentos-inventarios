@@ -1495,7 +1495,8 @@ async function snapshotActiveBalances(
     quantity: string;
   }>(sql`
     SELECT
-      lower(btrim(p.code)) || '|' || b.siigo_bodega_code::text AS group_key,
+      lower(btrim(regexp_replace(p.name, '\s+', ' ', 'g'))) || '|' ||
+      b.siigo_bodega_code::text AS group_key,
       (array_agg(b.product_id ORDER BY b.location_code))[1] AS product_id,
       SUM(b.quantity) AS quantity
     FROM siigo_balances b
@@ -1538,7 +1539,8 @@ async function computeAndStoreDiffs(
     quantity: string;
   }>(sql`
     SELECT
-      lower(btrim(p.code)) || '|' || b.siigo_bodega_code::text AS group_key,
+      lower(btrim(regexp_replace(p.name, '\s+', ' ', 'g'))) || '|' ||
+      b.siigo_bodega_code::text AS group_key,
       (array_agg(b.product_id ORDER BY b.location_code))[1] AS product_id,
       b.siigo_bodega_code,
       SUM(b.quantity) AS quantity
@@ -1563,7 +1565,8 @@ async function computeAndStoreDiffs(
     SELECT
       COALESCE(
         r.group_key,
-        lower(btrim(p.code)) || '|' || r.siigo_bodega_code::text
+        lower(btrim(regexp_replace(p.name, '\s+', ' ', 'g'))) || '|' ||
+        r.siigo_bodega_code::text
       ) AS group_key,
       SUM(r.reserved_quantity) AS reserved
     FROM siigo_reservations r
@@ -2166,10 +2169,10 @@ export async function refreshConsolidatedView(
   executor: DbExecutor = getDb()
 ): Promise<void> {
   try {
-    await executor.execute(sql`REFRESH MATERIALIZED VIEW mv_stock_by_bodega`);
+    await executor.execute(sql`REFRESH MATERIALIZED VIEW mv_stock_consolidated`);
   } catch (error) {
     // Si la vista no existe todav?a (base sin migrar), no se interrumpe la
     // importaci?n: los datos ya quedaron guardados.
-    console.warn("No se pudo refrescar mv_stock_by_bodega:", error);
+    console.warn("No se pudo refrescar mv_stock_consolidated:", error);
   }
 }

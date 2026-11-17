@@ -6,7 +6,10 @@
  * ofrecer al almacenista únicamente las bodegas desde las que puede
  * despachar ese producto.
  *
- * GET /api/existencias/producto/[productId]
+ * Se identifica el producto por su código de Siigo (que es la clave de la
+ * consolidación: descripción + bodega).
+ *
+ * GET /api/existencias/producto/[codigo]
  */
 
 import { NextRequest } from "next/server";
@@ -17,14 +20,14 @@ import { listWarehouseOptionsForProduct } from "@/lib/services/stock.service";
 export const runtime = "nodejs";
 
 interface Context {
-  params: Promise<{ productId: string }>;
+  params: Promise<{ codigo: string }>;
 }
 
 export async function GET(_request: NextRequest, context: Context) {
   try {
     await requireModulePermission("inventario", "inventory.read");
-    const { productId } = await context.params;
-    const items = await listWarehouseOptionsForProduct(productId);
+    const { codigo } = await context.params;
+    const items = await listWarehouseOptionsForProduct(decodeURIComponent(codigo));
     return jsonOk({ items });
   } catch (error) {
     return handleRouteError(error, "existencias:producto");

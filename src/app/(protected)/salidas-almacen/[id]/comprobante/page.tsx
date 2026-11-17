@@ -73,6 +73,9 @@ export default async function OrdenPedidoPage({
               ? new Date(salida.deliveredAt).toISOString().slice(0, 10)
               : null,
             receivedTime: salida.receiverTime,
+            receiverSignedAt: salida.receiverSignedAt
+              ? new Date(salida.receiverSignedAt).toISOString()
+              : null,
             notes: salida.notes,
             totalQuantity: salida.totalQuantity,
             totalWeightKg: salida.totalWeightKg,

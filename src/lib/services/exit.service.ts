@@ -100,10 +100,12 @@ export interface SalidaDetail {
   /** Almacenista que entrega (registrado al crear la orden). */
   delivererName: string | null;
   delivererDocument: string | null;
-  /** Quien recibe en despacho (se registra al confirmar la recepci?n). */
+  /** Quien recibe en despacho (se registra al confirmar la recepción). */
   receiverName: string | null;
   receiverDocument: string | null;
   receiverTime: string | null;
+  /** Momento en que se confirmó la recepción (null si aún no se ha recibido). */
+  receiverSignedAt: Date | null;
   siigoDocumentRef: string | null;
   totalQuantity: number;
   totalWeightKg: number | null;
@@ -526,27 +528,35 @@ async function resolveAvailability(
   availableQuantity: number;
   unitWeightKg: number | null;
 } | null> {
-  // La disponibilidad se valida sobre el GRUPO PRODUCTO + BODEGA.
+  // La disponibilidad se valida sobre el GRUPO CONSOLIDADO
+  // (descripci?n exacta + bodega).
   //
-  // No se suman existencias de bodegas diferentes: la cantidad que se
-  // puede despachar de un producto se compara contra lo que ese
-  // producto tiene en la bodega elegida, y solo contra esa.
+  // Las existencias de la misma descripci?n en la misma bodega se suman
+  // (es el mismo producto repartido en varias ubicaciones), pero NUNCA se
+  // mezclan con las de otras bodegas: la cantidad que se puede despachar
+  // se contrasta contra este grupo en ESTA bodega.
   const rows = await executor.execute<Record<string, unknown>>(sql`
     SELECT
-      v.product_id,
-      v.product_code,
-      v.description AS product_name,
-      v.unit,
-      v.presentation,
+      v.representative_product_id AS product_id,
       v.warehouse_id,
       v.warehouse_name,
+      v.description AS product_name,
+      v.unit,
+      v.representative_code AS product_code,
+      v.product_codes,
       v.quantity,
       v.reserved,
       (v.quantity - v.reserved) AS available,
-      v.net_weight_grams
-    FROM v_stock_by_bodega v
-    WHERE v.product_id = ${item.productId}::uuid
-      AND v.siigo_bodega_code = ${item.siigoBodegaCode}
+      p.presentation,
+      p.net_weight_grams
+    FROM v_stock_consolidated v
+    LEFT JOIN products p ON p.id = v.representative_product_id
+    WHERE v.siigo_bodega_code = ${item.siigoBodegaCode}
+      AND EXISTS (
+        SELECT 1 FROM unnest(v.product_codes) AS c(code)
+        JOIN products p2 ON p2.code = c.code
+        WHERE p2.id = ${item.productId}::uuid
+      )
     LIMIT 1
   `);
 
@@ -970,6 +980,7 @@ export async function getSalida(
       s.reconciliation_note, s.notes,
       s.deliverer_name, s.deliverer_document,
       s.receiver_name, s.receiver_document, s.receiver_time,
+      s.receiver_signed_at,
       s.siigo_document_ref, s.total_quantity, s.total_weight_kg, s.weight_partial,
       s.item_count, s.program_id, s.custom_program_name,
       s.warehouse_id, s.siigo_bodega_code, s.location_code,
@@ -1023,6 +1034,7 @@ export async function getSalida(
     receiverName: (row.receiver_name as string | null) ?? null,
     receiverDocument: (row.receiver_document as string | null) ?? null,
     receiverTime: (row.receiver_time as string | null) ?? null,
+    receiverSignedAt: (row.receiver_signed_at as Date | null) ?? null,
     siigoDocumentRef: (row.siigo_document_ref as string | null) ?? null,
     totalQuantity: Number(row.total_quantity ?? 0),
     totalWeightKg:
@@ -1175,6 +1187,7 @@ export async function listSalidas(
     receiverName: (row.receiver_name as string | null) ?? null,
     receiverDocument: null,
     receiverTime: null,
+    receiverSignedAt: null,
     siigoDocumentRef: (row.siigo_document_ref as string | null) ?? null,
     totalQuantity: Number(row.line_units ?? 0),
     totalWeightKg:
@@ -1361,13 +1374,19 @@ export async function deleteSalida(
 }
 
 /**
- * Actualiza los datos de quién recibe en despacho.
+ * Confirma la recepción en despacho.
  *
- * Solo la identificación (nombre y cédula). La fecha y la hora de la
- * orden las registra el sistema de forma automática y no son editables:
- * así el almacenista no decide cuándo se "registra" una recepción.
+ * Registra quién recibe (nombre y cédula) y deja constancia de que la
+ * firma quedó hecha sobre el documento impreso.
+ *
+ * La FECHA y la HORA las genera el sistema: no hay ningún campo editable
+ * para escribirlas a mano. Si la recepción ya estaba confirmada, la fecha
+ * y la hora originales se conservan porque son datos históricos.
+ *
+ * Si aún no hay recepción confirmada, la orden queda en estado
+ * RECIBIDA_EN_DESPACHO con la fecha y la hora del sistema.
  */
-export async function updateReceiver(
+export async function confirmReception(
   salidaId: string,
   receiverName?: string | null,
   receiverDocument?: string | null
@@ -1387,17 +1406,38 @@ export async function updateReceiver(
   if (salida.status === "CANCELLED") {
     throw conflictError("La orden está anulada.");
   }
+  if (salida.status === "DRAFT") {
+    throw conflictError(
+      "La orden aún no tiene documento generado. Genere el documento antes de confirmar la recepción."
+    );
+  }
+
+  const nombre = (receiverName ?? "").trim();
+  const cedula = (receiverDocument ?? "").trim();
+
+  if (!nombre) {
+    throw businessRuleError(
+      "Escriba el nombre de quien recibe la orden en despacho."
+    );
+  }
+  if (!cedula) {
+    throw businessRuleError(
+      "Escriba la cédula de quien recibe la orden en despacho."
+    );
+  }
 
   const [updated] = await db
     .update(salidas)
     .set({
-      receiverName: receiverName ?? salida.receiverName,
-      receiverDocument: receiverDocument ?? salida.receiverDocument,
+      receiverName: nombre,
+      receiverDocument: cedula,
       // La hora de recepción la genera el sistema: el almacenista solo
       // escribe el nombre y la cédula. Si ya había una, se conserva
       // porque es un dato histórico y no se reescribe.
       receiverTime: salida.receiverTime ?? nowTime(),
       receiverSignedAt: salida.receiverSignedAt ?? new Date(),
+      status: salida.status === "CONFIRMED_SIIGO" ? salida.status : "DELIVERED",
+      deliveredAt: salida.deliveredAt ?? new Date(),
       updatedAt: new Date(),
     })
     .where(eq(salidas.id, salidaId))

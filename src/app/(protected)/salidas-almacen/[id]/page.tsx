@@ -131,10 +131,36 @@ export default function SalidaDetallePage() {
 
   const [action, setAction] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Los datos de una recepción ya registrada se muestran como valor inicial
+  // del formulario: el estado se deriva de la orden, no se copia en un efecto.
   const [receiverName, setReceiverName] = useState("");
   const [receiverDocument, setReceiverDocument] = useState("");
+  const [firmaConfirmadaEstado, setFirmaConfirmada] = useState(false);
   const [siigoRef, setSiigoRef] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Se sincroniza una sola vez, cuando llega la orden, sin disparar renders
+  // en cascada: se usa el renderizado condicional en lugar de un efecto.
+  const [datosIniciales, setDatosIniciales] = useState<{
+    name: string;
+    document: string;
+    firma: boolean;
+  } | null>(null);
+  if (data && datosIniciales === null) {
+    setDatosIniciales({
+      name: data.receiverName ?? "",
+      document: data.receiverDocument ?? "",
+      firma: Boolean(data.receiverName && data.receiverDocument),
+    });
+  }
+  const [editados, setEditados] = useState(false);
+  const nombreRecepcion = editados ? receiverName : (datosIniciales?.name ?? "");
+  const documentoRecepcion = editados
+    ? receiverDocument
+    : (datosIniciales?.document ?? "");
+  const firmaConfirmada = editados
+    ? firmaConfirmadaEstado
+    : (datosIniciales?.firma ?? false);
 
   async function ejecutar(nombre: string, body: Record<string, unknown>) {
     setAction(nombre);
@@ -156,8 +182,8 @@ export default function SalidaDetallePage() {
     setActionError(null);
     try {
       await apiSend(`/api/salidas/${id}/recepcion`, "PUT", {
-        receiverName: receiverName.trim() || undefined,
-        receiverDocument: receiverDocument.trim() || undefined,
+        receiverName: nombreRecepcion.trim() || undefined,
+        receiverDocument: documentoRecepcion.trim() || undefined,
       });
       await refetch();
       router.refresh();
@@ -503,34 +529,53 @@ export default function SalidaDetallePage() {
               {puedeRecibir && (
                 <div className="space-y-2">
                   <p className="text-xs text-gray-600">
-                    Identifique a quién recibe la orden en despacho. La fecha y la
+                    Confirme quién recibe la orden en despacho. La fecha y la
                     hora las registra el sistema automáticamente.
                   </p>
                   <label className="block">
                     <span className="text-[11px] font-medium text-gray-600">
-                      Nombre de quien recibe en despacho
+                      Nombre de quien recibe en despacho *
                     </span>
                     <input
                       type="text"
-                      value={receiverName}
-                      onChange={(event) => setReceiverName(event.target.value)}
+                      value={nombreRecepcion}
+                      onChange={(event) => {
+                        setReceiverName(event.target.value);
+                        setEditados(true);
+                      }}
                       placeholder="Nombre de quien recibe"
                       className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
                     />
                   </label>
                   <label className="block">
                     <span className="text-[11px] font-medium text-gray-600">
-                      Cédula de quien recibe en despacho
+                      Cédula de quien recibe en despacho *
                     </span>
                     <input
                       type="text"
-                      value={receiverDocument}
-                      onChange={(event) =>
-                        setReceiverDocument(event.target.value)
-                      }
+                      value={documentoRecepcion}
+                      onChange={(event) => {
+                        setReceiverDocument(event.target.value);
+                        setEditados(true);
+                      }}
                       placeholder="Documento de identificación"
                       className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
                     />
+                  </label>
+                  <label className="flex items-start gap-2 rounded-lg bg-gray-50 px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={firmaConfirmada}
+                      onChange={(event) => {
+                        setFirmaConfirmada(event.target.checked);
+                        setEditados(true);
+                      }}
+                      className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    />
+                    <span className="text-xs text-gray-700">
+                      Confirmo que la persona indicada firmó el documento
+                      impreso.
+                    </span>
                   </label>
                   <button
                     type="button"
@@ -543,8 +588,14 @@ export default function SalidaDetallePage() {
                     ) : (
                       <PackageCheck className="w-4 h-4" />
                     )}
-                    Guardar datos de recepción
+                    Confirmar recepción en despacho
                   </button>
+                  {data.receiverTime && (
+                    <p className="text-[11px] text-gray-500">
+                      Recepción registrada el{" "}
+                      {formatDateTime(data.deliveredAt)} ({data.receiverTime}).
+                    </p>
+                  )}
                 </div>
               )}
 

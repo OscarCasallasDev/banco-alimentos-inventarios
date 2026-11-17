@@ -303,9 +303,9 @@ export async function getAlertsSummary(
       (SELECT COUNT(*)::int FROM vencimiento_lotes
         WHERE expiration_date < ${ranges.today}::date) AS expired,
       (SELECT COUNT(*)::int FROM vencimiento_lotes) AS expiration_records,
-      (SELECT COUNT(*)::int FROM v_stock_by_bodega
+      (SELECT COUNT(*)::int FROM v_stock_consolidated
         WHERE (quantity - reserved) < 0) AS negative_stock,
-      (SELECT COUNT(*)::int FROM v_stock_by_bodega
+      (SELECT COUNT(*)::int FROM v_stock_consolidated
         WHERE (quantity - reserved) = 0) AS zero_stock
   `);
 

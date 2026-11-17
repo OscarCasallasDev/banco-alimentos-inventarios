@@ -233,7 +233,8 @@ async function main() {
       // Cada fila trae todos los datos que exige el enunciado.
       const muestra = items[0];
       const campos = [
-        "productCode",
+        "representativeCode",
+        "productCodes",
         "description",
         "siigoBodegaCode",
         "warehouseName",
@@ -274,11 +275,11 @@ async function main() {
 
     // Las opciones de bodega del producto.
     const opciones = (
-      await api(`/api/existencias/producto/${base.productId}`)
+      await api(`/api/existencias/producto/${base.representativeCode}`)
     ).body?.data?.items ?? [];
     if (opciones.length > 0) {
       ok(
-        `El producto ${base.productCode} tiene ${opciones.length} bodega(s) con existencia: ${opciones
+        `El producto ${base.representativeCode} tiene ${opciones.length} bodega(s) con existencia: ${opciones
           .map((o) => o.warehouseName)
           .join(", ")}.`
       );
@@ -299,7 +300,7 @@ async function main() {
           delivererName: "PRUEBA",
           items: [
             {
-              productId: sinStock.productId,
+              productId: sinStock.representativeProductId,
               siigoBodegaCode: sinStock.siigoBodegaCode,
               quantity: 1,
             },
@@ -328,7 +329,7 @@ async function main() {
         delivererName: "PRUEBA",
         items: [
           {
-            productId: (conStock ?? base).productId,
+            productId: (conStock ?? base).representativeProductId,
             siigoBodegaCode: (conStock ?? base).siigoBodegaCode,
             quantity: excessive,
           },
@@ -347,12 +348,12 @@ async function main() {
     // 5-6. Crear la orden con dos productos de bodegas distintas.
     const otro = opciones.find((o) => o.siigoBodegaCode !== base.siigoBodegaCode && o.available > 0);
     const producto2 = otro
-      ? { ...otro, productId: base.productId }
+      ? { ...otro, productId: base.representativeProductId }
       : null;
 
     const items = [
       {
-        productId: base.productId,
+        productId: base.representativeProductId,
         siigoBodegaCode: base.siigoBodegaCode,
         quantity: 1,
         weight: 1,
@@ -362,7 +363,7 @@ async function main() {
     ];
     if (producto2) {
       items.push({
-        productId: producto2.productId,
+        productId: producto2.representativeProductId,
         siigoBodegaCode: producto2.siigoBodegaCode,
         quantity: 1,
         weight: 1,
@@ -581,13 +582,15 @@ async function main() {
   }
 
   // -----------------------------------------------------------------
-  section("10. Recepción simplificada: solo nombre y cédula");
+  section("10. Recepción en despacho: nombre, cédula y firma");
   // -----------------------------------------------------------------
   {
-    const r = await api("/api/salidas?pageSize=5");
-    const orden = (r.body?.data?.items ?? [])[0];
+    const r = await api("/api/salidas?pageSize=10");
+    const orden = (r.body?.data?.items ?? []).find(
+      (o) => o.status === "GENERATED" || o.status === "DELIVERED"
+    );
     if (!orden) {
-      ok("No hay órdenes para probar la recepción.");
+      ok("No hay órdenes generadas para probar la recepción.");
     } else {
       const respuesta = await api(`/api/salidas/${orden.id}/recepcion`, {
         method: "PUT",
@@ -608,8 +611,33 @@ async function main() {
         } else {
           fail("La hora de recepción no la generó el sistema.", String(d.receiverTime));
         }
+        if (d.receiverSignedAt) {
+          ok("El momento de la recepción lo generó el sistema.");
+        } else {
+          fail("No se generó automáticamente el momento de la recepción.");
+        }
       } else {
         fail("No se pudieron guardar los datos de recepción.", `HTTP ${respuesta.status}`);
+      }
+
+      // Nombre y cédula son obligatorios.
+      const sinNombre = await api(`/api/salidas/${orden.id}/recepcion`, {
+        method: "PUT",
+        body: JSON.stringify({ receiverDocument: "1098765432" }),
+      });
+      if (sinNombre.status >= 400) {
+        ok("La confirmación de recepción exige el nombre de quien recibe.");
+      } else {
+        fail("Se aceptó una recepción sin nombre.");
+      }
+      const sinCedula = await api(`/api/salidas/${orden.id}/recepcion`, {
+        method: "PUT",
+        body: JSON.stringify({ receiverName: "Daniela" }),
+      });
+      if (sinCedula.status >= 400) {
+        ok("La confirmación de recepción exige la cédula de quien recibe.");
+      } else {
+        fail("Se aceptó una recepción sin cédula.");
       }
     }
   }

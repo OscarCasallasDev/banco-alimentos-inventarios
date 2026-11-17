@@ -126,6 +126,10 @@ const MIGRATION_CHECKS = {
     select to_regclass('public.mv_stock_consolidated') is not null as done`,
   "0015_stock_por_bodega.sql": `
     select to_regclass('public.mv_stock_by_bodega') is not null as done`,
+  "0016_consolidacion_descripcion_bodega.sql": `
+    select to_regclass('public.mv_stock_by_bodega') is not null
+       and (select count(*) from pg_matviews
+             where schemaname='public' and matviewname='mv_stock_consolidated') > 0 as done`,
 };
 
 async function isAlreadyApplied(sql, file) {

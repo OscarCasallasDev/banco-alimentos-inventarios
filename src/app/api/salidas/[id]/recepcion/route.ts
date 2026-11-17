@@ -1,17 +1,17 @@
 /**
- * Datos de quién recibe en despacho.
+ * Confirmación de la recepción en despacho.
  *
- * Solo la identificación de la persona que recibe (nombre y cédula).
+ * Registra quién recibe la orden (nombre y cédula) y deja constancia de
+ * que la firma quedó hecha sobre el documento impreso.
  *
- * NO existe un campo para escribir la hora de recepción: la fecha y la
- * hora las registra el sistema automáticamente y no son editables. El
- * almacenista no decide cuándo se "registra" una recepción.
+ * La FECHA y la HORA las genera el sistema de forma automática: no existe
+ * ningún campo editable para escribirlas a mano.
  */
 
 import { NextRequest } from "next/server";
 import { jsonOk, handleRouteError } from "@/lib/api/response";
 import { requireModulePermission } from "@/lib/auth/guard";
-import { updateReceiver } from "@/lib/services/exit.service";
+import { confirmReception } from "@/lib/services/exit.service";
 import { recepcionSchema } from "@/lib/validations/schemas";
 
 export const runtime = "nodejs";
@@ -25,7 +25,9 @@ export async function PUT(request: NextRequest, context: Context) {
     await requireModulePermission("salidas_almacen", "salidas.receive");
     const { id } = await context.params;
     const input = recepcionSchema.parse(await request.json());
-    return jsonOk(await updateReceiver(id, input.receiverName, input.receiverDocument));
+    return jsonOk(
+      await confirmReception(id, input.receiverName, input.receiverDocument)
+    );
   } catch (error) {
     return handleRouteError(error, "salidas:recepcion");
   }

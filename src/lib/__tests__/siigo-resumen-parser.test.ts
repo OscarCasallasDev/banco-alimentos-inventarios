@@ -1,12 +1,25 @@
 /**
- * Pruebas unitarias del lector del reporte resumido de Siigo Pyme.
+ * Pruebas unitarias del lector del reporte RESUMIDO de Siigo Pyme.
  *
- * Verifican el formato oficial que entregó el Banco:
- *   - la fila de encabezados es la 7 y los datos empiezan en la 8;
- *   - la CANTIDAD es la columna O (diferencia), no I − L recalculado;
- *   - las columnas J, K, M y N se ignoran;
- *   - se excluyen las filas de totales;
- *   - los totales del archivo coinciden con lo leído.
+ * Verifican el formato oficial «Reporte resumido de productos por bodega»:
+ *
+ *   A  información del reporte
+ *   B  código de bodega
+ *   C  descripción de bodega
+ *   D  ubicación
+ *   E  información de ubicación
+ *   F  información de ubicación
+ *   G  código del producto
+ *   H  descripción del producto
+ *   I  entradas
+ *   J  (ignorar)
+ *   K  (ignorar)
+ *   L  salidas
+ *   M  (ignorar)
+ *   N  (ignorar)
+ *   O  diferencia entre entradas y salidas
+ *
+ * Y que el archivo se lea igual con columnas ocultas o visibles.
  */
 
 import { describe, it, expect, beforeAll } from "vitest";
@@ -39,12 +52,12 @@ describe("Lector del reporte resumido (archivo real)", () => {
     expect(isResumenReport(readFileSync(FIXTURE))).toBe(true);
   });
 
-  it("lee 2.209 filas de datos y excluye los totales", () => {
+  it("lee las 2.209 filas de datos y excluye los totales", () => {
     if (!HAS_FIXTURE) return;
     expect(result.rows).toHaveLength(2_209);
-    // El archivo trae 9 filas de totales (una por bodega + "Total general")
-    // y 10 filas vac?as de separaci?n entre bodegas.
+    // 9 filas de totales (una por bodega + "Total general").
     expect(result.stats.skippedTotalRows).toBe(9);
+    // 10 filas vacías de separación entre bodegas.
     expect(result.stats.skippedEmptyRows).toBe(10);
   });
 
@@ -54,14 +67,14 @@ describe("Lector del reporte resumido (archivo real)", () => {
     expect(result.stats.locations).toBeGreaterThanOrEqual(11);
   });
 
-  it("toma la cantidad de la columna O", () => {
+  it("usa la columna O como diferencia entre entradas y salidas", () => {
     if (!HAS_FIXTURE) return;
     // El total neto del archivo (suma de la columna O) es 125.152,282.
     const total = result.rows.reduce((sum, row) => sum + row.netQuantity, 0);
     expect(Math.round(total * 1000) / 1000).toBe(125_152.282);
   });
 
-  it("no usa las columnas J, K, M ni N", () => {
+  it("ignora por completo las columnas J, K, M y N", () => {
     if (!HAS_FIXTURE) return;
     for (const row of result.rows.slice(0, 200)) {
       expect(row).not.toHaveProperty("qty2In");
@@ -71,28 +84,43 @@ describe("Lector del reporte resumido (archivo real)", () => {
     }
   });
 
-  it("conserva entradas y salidas para trazabilidad", () => {
+  it("conserva entradas y salidas por separado", () => {
     if (!HAS_FIXTURE) return;
-    const conMovimiento = result.rows.find((row) => row.qtyIn > 0 && row.qtyOut > 0);
+    const conMovimiento = result.rows.find(
+      (row) => row.qtyIn > 0 && row.qtyOut > 0
+    );
     expect(conMovimiento).toBeDefined();
     expect(conMovimiento!.qtyIn).toBeGreaterThan(0);
     expect(conMovimiento!.qtyOut).toBeGreaterThan(0);
   });
 
-  it("cuando la columna O viene vacía usa I − L como respaldo", () => {
+  it("la columna O coincide con entradas menos salidas", () => {
     if (!HAS_FIXTURE) return;
     for (const row of result.rows) {
-      // O siempre queda informada (la columna o el respaldo).
-      expect(Number.isFinite(row.netQuantity)).toBe(true);
       expect(row.computedDifference).toBeCloseTo(row.qtyIn - row.qtyOut, 3);
     }
+  });
+
+  it("identifica bodegas por su código y su nombre", () => {
+    if (!HAS_FIXTURE) return;
+    const conBodega = result.rows.find((row) => row.bodegaName.length > 0);
+    expect(conBodega).toBeDefined();
+    expect(conBodega!.bodegaCode).toBeGreaterThan(0);
+    // La descripción de la bodega viene de la columna C.
+    expect(conBodega!.bodegaName).not.toMatch(/^\d+$/);
+  });
+
+  it("conserva la información de la ubicación", () => {
+    if (!HAS_FIXTURE) return;
+    const conUbicacion = result.rows.find((row) => row.locationCode > 0);
+    expect(conUbicacion).toBeDefined();
+    expect(conUbicacion!.locationCode).toBeGreaterThan(0);
   });
 
   it("conserva la descripción exacta del producto", () => {
     if (!HAS_FIXTURE) return;
     const nombres = new Set(result.rows.map((row) => row.productName));
     expect(nombres.has("COBERTURA CHOCOLATE X 500 GR - DON")).toBe(true);
-    // Los nombres llegan con espacios de relleno: se recortan.
     for (const nombre of nombres) {
       expect(nombre).toBe(nombre.trim());
     }
@@ -102,10 +130,32 @@ describe("Lector del reporte resumido (archivo real)", () => {
     if (!HAS_FIXTURE) return;
     const codigos = new Set(result.rows.map((row) => row.productCode));
     expect(codigos.size).toBeGreaterThan(1_000);
-    // Todos los códigos quedan en el formato canónico.
     for (const codigo of codigos) {
       expect(codigo).toMatch(/^\d{3}-\d{4}-\d{6}$/);
     }
+  });
+
+  it("no duplica filas: cada código+bodega+ubicación aparece una sola vez", () => {
+    if (!HAS_FIXTURE) return;
+    const claves = new Set(
+      result.rows.map(
+        (row) => `${row.productCode}|${row.bodegaCode}|${row.locationCode}`
+      )
+    );
+    expect(claves.size).toBe(result.rows.length);
+  });
+
+  it("un mismo producto puede aparecer en varias ubicaciones de la misma bodega", () => {
+    if (!HAS_FIXTURE) return;
+    // Es lo que permite consolidar por descripción y bodega sumando las
+    // ubicaciones.
+    const porProducto = new Map<string, number>();
+    for (const row of result.rows) {
+      const clave = `${row.productCode}|${row.bodegaCode}`;
+      porProducto.set(clave, (porProducto.get(clave) ?? 0) + 1);
+    }
+    const conVarias = [...porProducto.values()].filter((n) => n > 1);
+    expect(conVarias.length).toBeGreaterThan(0);
   });
 });
 

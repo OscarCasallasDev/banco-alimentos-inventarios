@@ -48,6 +48,8 @@ export interface OrdenPedido {
   /** Fecha y hora de la recepción (null si aún no se ha recibido). */
   receivedDate: string | null;
   receivedTime: string | null;
+  /** Momento en que se confirmó la recepción (null si no se ha recibido). */
+  receiverSignedAt: string | null;
   notes: string | null;
   totalQuantity: number;
   totalWeightKg: number | null;

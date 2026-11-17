@@ -13,7 +13,7 @@
 import { NextRequest } from "next/server";
 import { jsonOk, handleRouteError } from "@/lib/api/response";
 import { requireModulePermission } from "@/lib/auth/guard";
-import { listStockByWarehouse } from "@/lib/services/stock.service";
+import { listConsolidatedStock } from "@/lib/services/stock.service";
 import { existenciasQuerySchema } from "@/lib/validations/schemas";
 
 export const runtime = "nodejs";
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     const params = Object.fromEntries(request.nextUrl.searchParams.entries());
     const query = existenciasQuerySchema.parse(params);
 
-    const result = await listStockByWarehouse({
+    const result = await listConsolidatedStock({
       search: query.search,
       siigoBodegaCode: query.siigoBodegaCode,
       warehouseId: query.warehouseId,

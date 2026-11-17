@@ -39,9 +39,20 @@ interface Program {
 }
 
 /** Una existencia: un producto (código de Siigo) en una bodega. */
+/**
+ * Una existencia consolidada: una descripción exacta en una bodega.
+ *
+ * Las ubicaciones de ese producto en esa bodega ya están sumadas, y el
+ * código es el del producto que representa al grupo.
+ */
 interface StockRow {
-  productId: string;
-  productCode: string;
+  /** Producto que representa al grupo consolidado. */
+  representativeProductId: string;
+  /** Código de Siigo del producto representante. */
+  representativeCode: string;
+  /** Todos los códigos de Siigo que forman el grupo. */
+  productCodes: string[];
+  productCount: number;
   description: string;
   unit: string;
   siigoBodegaCode: number;
@@ -62,6 +73,9 @@ interface BodegaOpcion {
   warehouseId: string | null;
   warehouseName: string | null;
   available: number;
+  /** Producto que representa al grupo en esa bodega. */
+  representativeProductId: string;
+  representativeCode: string;
 }
 
 interface Linea {
@@ -167,9 +181,13 @@ export default function NuevaOrdenPedidoPage() {
    * Carga las bodegas donde el producto tiene existencia (para el selector
    * de bodega de la línea). Se consulta una sola vez por producto.
    */
-  async function cargarBodegas(productId: string): Promise<BodegaOpcion[]> {
+  async function cargarBodegas(
+    productCode: string
+  ): Promise<BodegaOpcion[]> {
     try {
-      const response = await fetch(`/api/existencias/producto/${productId}`);
+      const response = await fetch(
+        `/api/existencias/producto/${encodeURIComponent(productCode)}`
+      );
       if (!response.ok) return [];
       const payload = await response.json();
       const items: StockRow[] = payload?.data?.items ?? [];
@@ -178,6 +196,8 @@ export default function NuevaOrdenPedidoPage() {
         warehouseId: item.warehouseId,
         warehouseName: item.warehouseName,
         available: item.available,
+        representativeProductId: item.representativeProductId,
+        representativeCode: item.representativeCode,
       }));
     } catch {
       return [];
@@ -189,18 +209,18 @@ export default function NuevaOrdenPedidoPage() {
       setError(MESSAGES.noStock);
       return;
     }
-    const key = `${stock.productId}-${stock.siigoBodegaCode}`;
+    const key = `${stock.description}-${stock.siigoBodegaCode}`;
     if (lineas.some((line) => line.key === key)) return;
     setError(null);
 
-    const opciones = await cargarBodegas(stock.productId);
+    const opciones = await cargarBodegas(stock.representativeCode);
 
     setLineas((prev) => [
       ...prev,
       {
         key,
-        productId: stock.productId,
-        productCode: stock.productCode,
+        productId: stock.representativeProductId,
+        productCode: stock.representativeCode,
         description: stock.description,
         unit: stock.unit || "UND",
         siigoBodegaCode: stock.siigoBodegaCode,
@@ -245,6 +265,11 @@ export default function NuevaOrdenPedidoPage() {
           warehouseId: opcion?.warehouseId ?? null,
           warehouseName: opcion?.warehouseName ?? null,
           available: opcion?.available ?? 0,
+          // El grupo consolidado puede tener otro producto representante en
+          // esa bodega: se actualiza para que la l?nea apunte al producto
+          // que realmente se despacha.
+          productId: opcion?.representativeProductId ?? line.productId,
+          productCode: opcion?.representativeCode ?? line.productCode,
           // Si la cantidad supera la nueva disponibilidad, se limpia para
           // que el almacenista la vuelva a escribir.
           quantity:
@@ -564,11 +589,11 @@ export default function NuevaOrdenPedidoPage() {
                 {resultados.length > 0 && (
                   <ul className="mt-2 divide-y divide-gray-100 border border-gray-200 rounded-lg max-h-80 overflow-y-auto">
                     {resultados.map((stock) => {
-                      const key = `${stock.productId}-${stock.siigoBodegaCode}`;
+                      const key = `${stock.description}-${stock.siigoBodegaCode}`;
                       const yaAgregado = lineas.some((line) => line.key === key);
                       return (
                         <li
-                          key={`${key}-${stock.productCode}`}
+                          key={`${key}-${stock.representativeCode}`}
                           className={cn(
                             "flex items-center justify-between gap-3 p-3",
                             stock.canAdd ? "hover:bg-gray-50" : "bg-gray-50/60"
@@ -576,7 +601,12 @@ export default function NuevaOrdenPedidoPage() {
                         >
                           <div className="min-w-0">
                             <p className="font-mono text-[11px] text-gray-500">
-                              {stock.productCode}
+                              {stock.representativeCode}
+                              {stock.productCount > 1 && (
+                                <span className="ml-1 text-[10px] text-gray-400">
+                                  (+{stock.productCount - 1})
+                                </span>
+                              )}
                             </p>
                             <p className="text-sm font-medium text-gray-900 truncate">
                               {stock.description}
