@@ -214,6 +214,18 @@ describe("Bloques de firmas del documento", () => {
     expect(tsx).toContain("orden.receivedTime ?? \"____ : ____\"");
     expect(tsx).toContain("\"____ / ____ / ______\"");
   });
+
+  it("el bloque derecho del encabezado lleva título, número, fecha, hora y estado", () => {
+    // Es el bloque que reportaban como cortado: debe traer los cinco datos.
+    const inicio = tsx.indexOf("encabezadoDocumento");
+    expect(inicio).toBeGreaterThan(-1);
+    const bloque = tsx.slice(inicio, inicio + 900);
+    expect(bloque).toContain("ORDEN DE PEDIDO");
+    expect(bloque).toContain("orden.number");
+    expect(bloque).toContain("Fecha:");
+    expect(bloque).toContain("Hora:");
+    expect(bloque).toContain("Estado:");
+  });
 });
 
 describe("Conversión de unidades de impresión", () => {

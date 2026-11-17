@@ -99,13 +99,10 @@ export default function OrdenPedidoDocumento({
 
   return (
     <div className={styles.documento}>
-      {/* Encabezado superior: fecha y hora del navegador + título del sistema */}
+      {/* Encabezado superior: título del sistema */}
       <div className={styles.encabezadoSuperior}>
         <p className={styles.tituloSistema}>
           Sistema de Gestión de Inventarios | Banco de Alimentos Ibagué
-        </p>
-        <p className={styles.fechaNavegador}>
-          Fecha: {formatDate(orden.date)} &nbsp;·&nbsp; Hora: {orden.time}
         </p>
       </div>
 
@@ -139,6 +136,9 @@ export default function OrdenPedidoDocumento({
         <div className={styles.encabezadoDocumento}>
           <p className={styles.tituloDocumento}>ORDEN DE PEDIDO</p>
           <p className={styles.numeroDocumento}>{orden.number}</p>
+          <p className={styles.fechaDocumento}>
+            Fecha: {formatDate(orden.date)} &nbsp;·&nbsp; Hora: {orden.time}
+          </p>
           <p className={styles.estadoDocumento}>
             Estado: {STATUS_LABELS[orden.status] ?? orden.status}
           </p>

@@ -55,7 +55,7 @@ async function main() {
   for (let i = 0; i < CANTIDAD_PRODUCTOS && i < items.length; i++) {
     const item = items[i];
     prod.push({
-      productId: item.productId,
+      productId: item.representativeProductId,
       siigoBodegaCode: item.siigoBodegaCode,
       locationCode: 0,
       quantity: Math.max(1, Math.min(item.available, 10)),
