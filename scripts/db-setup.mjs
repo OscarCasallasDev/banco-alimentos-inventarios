@@ -9,6 +9,7 @@
  *   1. Verifica la conexión y deja la URL que funciona en .env.local.
  *   2. Aplica las migraciones de `drizzle/*.sql` en orden.
  *   3. Carga los datos iniciales (seed) si la base está vacía.
+ *   4. Crea el bucket privado de Supabase Storage para la importación de Siigo.
  */
 
 import fs from "node:fs";
@@ -214,6 +215,49 @@ async function resetDatabase(sql) {
   logOk("Esquema public recreado");
 }
 
+/**
+ * Crea el bucket privado de Supabase Storage que usa la importación de Siigo.
+ *
+ * El bucket se crea desde SQL (`storage.buckets`) porque el rol `postgres`
+ * del proyecto tiene permiso sobre el esquema `storage`, y así el proceso de
+ * preparación no depende de tener una clave de servicio válida a mano.
+ *
+ * Límite de 50 MB: el reporte real del Banco pesa 8.08 MB y se sube
+ * directamente a Storage (Vercel limita a 4.5 MB el cuerpo de una petición).
+ */
+async function ensureStorageBucket(sql) {
+  const BUCKET = "siigo-imports";
+
+  const [existing] = await sql`
+    select id from storage.buckets where id = ${BUCKET}
+  `;
+
+  if (existing) {
+    logInfo(`El bucket de Storage «${BUCKET}» ya existe.`);
+    return false;
+  }
+
+  await sql`
+    insert into storage.buckets
+      (id, name, public, file_size_limit, allowed_mime_types)
+    values (
+      ${BUCKET},
+      ${BUCKET},
+      false,
+      52428800,
+      array[
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel',
+        'application/octet-stream'
+      ]
+    )
+    on conflict (id) do nothing
+  `;
+
+  logOk(`Bucket de Storage «${BUCKET}» creado (privado, 50 MB)`);
+  return true;
+}
+
 async function main() {
   console.log(colorize("\n=== Preparación de la base de datos ===\n", "cyan"));
 
@@ -257,6 +301,8 @@ async function main() {
     logInfo(`${count} migración(es) procesada(s)`);
 
     await applySeed(sql);
+
+    await ensureStorageBucket(sql);
 
     const [tables] = await sql`
       select count(*)::int as count

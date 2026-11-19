@@ -11,7 +11,7 @@
 import { NextRequest } from "next/server";
 import { jsonOk, handleRouteError } from "@/lib/api/response";
 import { requireModulePermission } from "@/lib/auth/guard";
-import { createSignedUploadUrl } from "@/lib/supabase/storage";
+import { createSignedUploadUrl, getStorageStatus } from "@/lib/supabase/storage";
 import { createSiigoRunSchema } from "@/lib/validations/schemas";
 
 export const runtime = "nodejs";
@@ -26,12 +26,20 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const input = createSiigoRunSchema.parse(body);
 
+    // Diagnóstico previo: distingue «falta la clave», «la clave no es
+    // válida» y «no existe el bucket», en lugar de un mensaje genérico.
+    const status = await getStorageStatus();
+    if (!status.available) {
+      console.error("[siigo:upload-url] Almacenamiento no disponible:", status.issue);
+      return jsonOk({ error: status.message }, 503);
+    }
+
     const signed = await createSignedUploadUrl(input.fileName ?? "reporte.xlsx");
     if (!signed) {
       return jsonOk(
         {
           error:
-            "El almacenamiento de archivos no está disponible. Configure SUPABASE_URL y SUPABASE_SECRET_KEY, o use el agente local de sincronización.",
+            "No se pudo generar la URL de carga en Supabase Storage. Revisa la clave SUPABASE_SECRET_KEY y el bucket «siigo-imports».",
         },
         503
       );
