@@ -235,13 +235,32 @@ Sistema → POST /api/siigo/export { format, documentId? }
 
 | Componente | Plataforma | Método |
 |---|---|---|
-| Frontend | Vercel | Git-based deployment |
-| Base de datos | Supabase | PostgreSQL managed (pooler) |
-| Variables | Vercel + Supabase | `DATABASE_URL`, `SESSION_SECRET` |
+| Frontend | Vercel | Git-based deployment (rama `main`) |
+| Base de datos | Supabase | PostgreSQL managed (pooler modo sesión, puerto 5432) |
+| Variables | Vercel + Supabase | ver tabla abajo |
 
-Variables requeridas en producción: `DATABASE_URL` y `SESSION_SECRET`.
-El resto de variables de Supabase son opcionales mientras la aplicación no
-use la API REST de Supabase.
+Variables requeridas en producción (Vercel → Settings → Environment Variables,
+para Production, Preview y Development):
+
+| Variable | Requerida | Para qué sirve |
+|---|---|---|
+| `DATABASE_URL` | Sí | Conexión a PostgreSQL (pooler modo sesión) |
+| `SESSION_SECRET` | Sí | Firma de la cookie de sesión (mín. 32 caracteres) |
+| `DATABASE_POOL_MAX` | No | Conexiones por proceso. `2` en Vercel: el pooler admite 15 en total |
+| `DATABASE_IDLE_TIMEOUT` | No | Cierre de conexiones ociosas. `30` en Vercel (instancias congeladas) |
+| `DATABASE_FALLBACK_URLS` | No |VACío: el pooler en modo transacción (6543) se cuelga con este sistema |
+| `SUPABASE_URL` | No | API de Storage (importación de Siigo) |
+| `SUPABASE_SECRET_KEY` | No | Acceso con permisos a Storage. Requerido para subir el .xlsx de Siigo |
+| `NEXT_PUBLIC_SUPABASE_URL` | No | Se incrusta en el bundle en el BUILD |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | No | Se incrusta en el bundle en el BUILD |
+| `SUPABASE_PUBLISHABLE_KEY` | No | Clave publicable de la API de Supabase |
+
+> Sin `DATABASE_URL` la aplicación compila pero **todas las rutas que tocan la
+> base de datos fallan**. La API responde `503 CONFIGURATION_ERROR` con el
+> nombre exacto de la variable que falta.
+>
+> Sincronización automática desde `.env.local`: `npm run vercel:env`.
+> Detalle completo en `docs/DEPLOY.md`.
 
 ---
 
