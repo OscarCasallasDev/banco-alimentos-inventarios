@@ -154,6 +154,20 @@ class ConnectionPool {
   }
 
   /**
+   * Índice de la candidata situada `offset` posiciones después de `start`.
+   * Permite que un intento recorra todas las candidatas una sola vez, sin
+   * que el estado global lo altere a mitad del recorrido.
+   */
+  indexFrom(start: number, offset: number): number {
+    return (start + offset) % this.urls.length;
+  }
+
+  /** Índice de la candidata preferida en este momento. */
+  get preferredIndex(): number {
+    return this.activeIndex;
+  }
+
+  /**
    * Cliente de la candidata indicada por su índice absoluto.
    * Lo crea la primera vez que se usa.
    */
@@ -242,15 +256,15 @@ function resilientQuery(
     run: (client: SqlClient) => Promise<T>
   ): Promise<T> => {
     const total = pool.size;
+    // El punto de partida se captura aquí: cada candidata se prueba UNA VEZ,
+    // aunque otra consulta cambie la preferencia mientras esta espera.
+    const start = pool.preferredIndex;
     let lastError: unknown;
 
     for (let offset = 0; offset < total; offset++) {
-      // Los índices se calculan una sola vez: si otra consulta cambia la
-      // preferencia mientras esta espera, el reintento sigue apuntando a la
-      // candidata correcta.
-      const index = pool.indexAt(offset);
+      const index = pool.indexFrom(start, offset);
       const label = pool.labelAtIndex(index);
-      const nextLabel = pool.labelAtIndex(pool.indexAt(offset + 1));
+      const nextLabel = pool.labelAtIndex(pool.indexFrom(start, offset + 1));
 
       try {
         const result = await run(pool.clientAtIndex(index));
@@ -331,35 +345,95 @@ function resilientQuery(
 }
 
 /**
+ * Ejecuta una TRANSACCIÓN con failover entre candidatas.
+ *
+ * `begin` es lo que usa Drizzle por detrás de `db.transaction()`. Sin este
+ * tratamiento, una transacción que empezaba mientras la candidata preferida
+ * tenía su pool agotado fallaba sin reintentar: el proxy de consultas sí
+ * hacía failover, pero las transacciones no.
+ *
+ * Reintentar la transacción completa es seguro: si la conexión se perdió,
+ * PostgreSQL aborta la transacción y nada queda confirmado.
+ */
+function resilientBegin(pool: ConnectionPool, args: unknown[]): Promise<unknown> {
+  const fn = typeof args[0] === "function" ? args[0] : args[1];
+  const options = typeof args[0] === "function" ? undefined : args[0];
+
+  const attempt = async (offset: number): Promise<unknown> => {
+    const total = pool.size;
+    const start = pool.preferredIndex;
+    const index = pool.indexFrom(start, offset);
+    const label = pool.labelAtIndex(index);
+    const client = pool.clientAtIndex(index);
+
+    try {
+      const result = await (options
+        ? client.begin(options as never, fn as never)
+        : client.begin(fn as never));
+
+      pool.preferIndex(index);
+      return result;
+    } catch (error) {
+      if (!isConnectionError(error)) throw error;
+      if (offset === total - 1) throw error;
+
+      console.warn(
+        `[db] Fallo de conexión en ${label}: ` +
+          `${(error as Error).message}. ` +
+          `Reintentando con ${pool.labelAtIndex(pool.indexFrom(start, offset + 1))}…`
+      );
+
+      await sleep(700 * (offset + 1));
+      return attempt(offset + 1);
+    }
+  };
+
+  return attempt(0);
+}
+
+/**
  * Envuelve el cliente de postgres.js con la capacidad de failover.
+ *
+ * El proxy NO guarda un cliente fijo: cada operación resuelve en ese momento
+ * el de la candidata preferida. Así, si una consulta hace failover y cambia
+ * la preferencia, las siguientes operaciones (incluidas las transacciones)
+ * van directamente a la candidata que funciona.
  */
 function createResilientClient(pool: ConnectionPool): SqlClient {
-  const base = pool.clientAtIndex(pool.indexAt(0));
-
   /**
    * Reconstruye una consulta con texto y parámetros en un cliente concreto.
    */
   const buildQuery = (client: SqlClient, text: string, values: unknown[]) =>
     client.unsafe(text, values as never[]);
 
-  return new Proxy(base, {
-    get(target, property) {
+  /**
+   * Cliente de la candidata preferida en este momento.
+   */
+  const current = () => pool.clientAtIndex(pool.preferredIndex);
+
+  return new Proxy({} as SqlClient, {
+    get(_target, property) {
       if (property === "unsafe") {
         return (text: string, values?: unknown[]) => {
           const params = Array.isArray(values) ? values : [];
           return resilientQuery(
-            pool.clientAtIndex(pool.indexAt(0)).unsafe(text, params as never[]),
+            current().unsafe(text, params as never[]),
             pool,
             (client) => buildQuery(client, text, params)
           );
         };
       }
 
-      const value = Reflect.get(target, property, target);
-      return typeof value === "function" ? value.bind(target) : value;
+      if (property === "begin") {
+        return (...args: unknown[]) => resilientBegin(pool, args);
+      }
+
+      const client = current();
+      const value = Reflect.get(client, property, client);
+      return typeof value === "function" ? value.bind(client) : value;
     },
 
-    apply(target, thisArg, argsList) {
+    apply(_target, thisArg, argsList) {
       const [strings, ...values] = argsList as [TemplateStringsArray, ...unknown[]];
 
       // Invocación como template: sql`select ...`
@@ -374,13 +448,14 @@ function createResilientClient(pool: ConnectionPool): SqlClient {
         );
 
         return resilientQuery(
-          pool.clientAtIndex(pool.indexAt(0)).unsafe(text, values as never[]),
+          current().unsafe(text, values as never[]),
           pool,
           (client) => buildQuery(client, text, values)
         );
       }
 
-      return Reflect.apply(target, thisArg, argsList);
+      const client = current();
+      return Reflect.apply(client, thisArg, argsList);
     },
   });
 }
