@@ -85,44 +85,54 @@ En Supabase, ir a **Settings > API** y copiar:
 - **Publishable key**: `sb_publishable_xxxxx`
 - **Secret key**: `sb_secret_xxxxx` (NO exponer en frontend)
 
-### 1.6 Obtener la URL de conexión
+### 1.6 Obtener las URLs de conexión
 
-En **Settings > Database → Connection string**, copiar la del **Pooler** en
-modo **Session** (puerto `5432`):
+En **Settings → Database → Connection string** se necesitan las dos del
+**Pooler**:
+
+**Principal — modo Session (puerto `5432`):**
+
+```
+postgresql://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres
+```
+
+**Respaldo — modo Transaction (puerto `6543`):**
 
 ```
 postgresql://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres
 ```
 
-> ⚠️ **Usa el modo Transaction (6543), no el modo Session (5432).**
+> ⚠️ **Por qué los dos modos y no solo uno.** Cada modo del pooler de
+> Supabase tiene una limitación distinta, y el sistema usa una de cada una.
 >
-> El modo sesión abre una conexión del servidor por cada cliente y Supabase
-> limita el pool a **15 conexiones para todo el proyecto**. En Vercel cada
-> instancia de función es un proceso aparte, así que una ráfaga de peticiones
-> agota el pool y provoca:
+> | | Modo sesión (5432) | Modo transacción (6543) |
+> |---|---|---|
+> | Pipelining de postgres.js | ✅ funciona | ❌ **se cuelga** |
+> | Conexiones simultáneas | ❌ máximo 15 en todo el proyecto | ✅ multiplexa |
 >
-> ```
-> (EMAXCONNSESSION) max clients reached in session mode - max clients are limited to pool_size: 15
-> ```
+> El **modo sesión es la principal** porque el dashboard lanza 15 consultas
+> en paralelo y postgres.js las canaliza (pipelining) por pocas conexiones:
+> con el modo transacción eso deja la petición colgada 300 s. Medido con 15
+> consultas en paralelo:
 >
-> Medido en este proyecto con 12 peticiones simultáneas:
+> | Modo | Pool | Resultado |
+> |---|---|---|
+> | Sesión | 1 | ✅ OK |
+> | Sesión | 5 | ✅ OK |
+> | Transacción | 1 | ❌ COLGADO |
+> | Transacción | 5 | ❌ COLGADO |
+> | Transacción | 15 | ✅ OK |
 >
-> | Modo | Instancias en error |
-> |---|---|
-> | Sesión (5432), `max=1` | 5 de 12 |
-> | Sesión (5432), `max=2` | 5 de 12 |
-> | **Transacción (6543), `max=5`** | **0 de 12** |
+> El **modo transacción es el respaldo** porque no tiene el techo de 15
+> conexiones: si el pool de sesión se agota (una ráfaga de navegación con
+> muchas instancias), la aplicación cambia a este sola y sigue respondiendo.
+> Como no admite pipelining, su pool (`DATABASE_FALLBACK_POOL_MAX`) debe ser
+> al menos tan grande como el número de consultas simultáneas de la petición
+> más pesada.
 >
-> El modo transacción multiplexa muchas conexiones sobre pocas del servidor,
-> que es justo lo que necesita un despliegue serverless. La aplicación usa
-> `prepare: false` (obligatorio en este modo) y no emplea `SET`, tablas
-> temporales ni `LISTEN/NOTIFY`, por lo que es compatible. Los
-> `pg_advisory_xact_lock` que serializan salidas concurrentes se verificaron
-> con transacciones simultáneas sobre la misma clave.
->
-> Como red de seguridad, `DATABASE_FALLBACK_URLS` apunta al pooler en modo
-> **sesión** (5432): es estable y no se agota, y la aplicación cambia a él
-> sola si la principal falla por un problema de red.
+> Verificado: con el pool de sesión agotado, la aplicación registra
+> `[db] Fallo de conexión: (EMAXCONNSESSION) … Reintentando con la siguiente
+> conexión disponible…` y responde con normalidad por el respaldo.
 
 ---
 
@@ -143,9 +153,10 @@ cp .env.example .env.local
 
 | Nombre | Tipo | Valor |
 |--------|------|-------|
-| `DATABASE_URL` | **Secret** | URL del pooler en modo **transacción** (puerto 6543) |
-| `DATABASE_FALLBACK_URLS` | Secret | Pooler en modo sesión (puerto 5432) |
-| `DATABASE_POOL_MAX` | Config | `5` |
+| `DATABASE_URL` | **Secret** | Pooler modo **sesión** (puerto 5432) |
+| `DATABASE_FALLBACK_URLS` | Secret | Pooler modo **transacción** (puerto 6543) |
+| `DATABASE_POOL_MAX` | Config | `2` (el pool de sesión admite 15 en total) |
+| `DATABASE_FALLBACK_POOL_MAX` | Config | `15` (el modo transacción no admite pipelining) |
 | `DATABASE_IDLE_TIMEOUT` | Config | `30` |
 | `SUPABASE_URL` | **Secret** | `https://[PROJECT_REF].supabase.co` |
 | `SUPABASE_SECRET_KEY` | **Secret** | `sb_secret_...` |
@@ -177,12 +188,13 @@ npm run vercel:env -- --dry-run   # muestra qué haría, sin cambiar nada
 
 Requiere haber hecho `npx vercel login` una vez. El script aplica unos
 valores distintos en Vercel por las restricciones del entorno serverless
-(`DATABASE_POOL_MAX=5`, `DATABASE_IDLE_TIMEOUT=30`).
+(`DATABASE_POOL_MAX=2`, `DATABASE_FALLBACK_POOL_MAX=15`,
+`DATABASE_IDLE_TIMEOUT=30`).
 
-> **Sobre `DATABASE_FALLBACK_URLS`:** apunta al pooler en modo **sesión**
-> (5432). La aplicación tiene lógica de failover entre varias URLs: si la
-> principal (modo transacción) falla por un problema de red, cambia sola a
-> esta. Es estable y no se agota, así que sirve de red de seguridad.
+> **Sobre `DATABASE_FALLBACK_URLS`:** apunta al pooler en modo **transacción**
+> (6543). La aplicación tiene lógica de failover entre varias URLs: si la
+> principal (modo sesión) falla por un problema de red o se agota su pool de
+> 15 conexiones, cambia sola a esta, que no tiene ese techo.
 
 ---
 
@@ -255,26 +267,27 @@ E2E_URL=https://banco-alimentos-inventarios.vercel.app npm run test:e2e
 
 ## Límites conocidos del despliegue en Vercel
 
-### El techo de 15 conexiones del pooler (resuelto)
+### El techo de 15 conexiones del pooler (resuelto con failover)
 
 El pooler de Supabase en **modo sesión** admite un máximo de **15 conexiones
 simultáneas para todo el proyecto**. En Vercel cada instancia de función es
 un proceso independiente, así que el número de conexiones crece con el
 número de instancias activas y una ráfaga de navegación agota el pool.
 
-Este proyecto usa el pooler en **modo transacción** (6543) como conexión
-principal, que multiplexa muchas conexiones sobre pocas del servidor. Ver
-el Paso 1.6 para la tabla comparativa.
+Este proyecto lo resuelve con dos modos del pooler: **sesión** (5432) como
+principal, que aguanta el pipelining de postgres.js, y **transacción** (6543)
+como respaldo automático, que no tiene el techo de 15 conexiones. Ver el
+Paso 1.6 para la tabla comparativa.
 
-Si aun así apareciera:
+Si aparece:
 
 ```
 (EMAXCONNSESSION) max clients reached in session mode - max clients are limited to pool_size: 15
 ```
 
-significa que se está usando el respaldo en modo sesión. La aplicación lo
-reconoce, cambia sola a la siguiente candidata y responde
-`503 DATABASE_UNAVAILABLE` en lugar de un error genérico.
+la aplicación ya está rotando sola al respaldo. Si aun así se repite, sube
+`DATABASE_POOL_MAX` a `1` (menos conexiones por instancia) o amplía el pool
+de Supabase desde el panel (proyectos de pago permiten configurarlo).
 
 ### Instancias congeladas
 

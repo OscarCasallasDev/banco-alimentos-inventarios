@@ -34,21 +34,24 @@ const ENVIRONMENTS = ["production", "preview", "development"];
 /**
  * Valores que en Vercel (serverless) difieren de los de desarrollo local.
  *
- * - `DATABASE_POOL_MAX`: con el pooler en modo TRANSACCIÓN el límite ya no
- *   son las 15 conexiones de Supabase (ese pooler multiplexa), así que se
- *   puede permitir un pool más grande por proceso. Aun así se mantiene
- *   moderado: en Vercel cada instancia es un proceso aparte y un pool
- *   grande multiplica el consumo de conexiones del servidor.
+ * - `DATABASE_POOL_MAX`: el pooler en modo SESIÓN admite 15 conexiones para
+ *   todo el proyecto y en Vercel cada instancia es un proceso aparte, así
+ *   que el pool por instancia se mantiene bajo (2). El dashboard lanza 15
+ *   consultas en paralelo, pero el modo sesión admite el pipelining de
+ *   postgres.js, así que un pool pequeño no lo ralentiza de forma crítica.
  *
  * - `DATABASE_IDLE_TIMEOUT`: las instancias de Vercel se congelan cuando
  *   quedan inactivas; un socket congelado puede morir en silencio. Cerrar
  *   las conexiones ociosas pronto evita reutilizar una conexión zombi.
  *
- * `DATABASE_FALLBACK_URLS` NO se sobrescribe: se toma de `.env.local`, que
- * ya apunta al pooler en modo sesión (5432) como red de seguridad.
+ * - `DATABASE_FALLBACK_POOL_MAX`: el respaldo usa el pooler en modo
+ *   TRANSACCIÓN, que no admite el pipelining: se cuelga si dos consultas
+ *   comparten conexión. El pool debe ser >= el número de consultas
+ *   simultáneas de la petición más pesada (el dashboard lanza 15).
  */
 const OVERRIDES = {
-  DATABASE_POOL_MAX: "5",
+  DATABASE_POOL_MAX: "2",
+  DATABASE_FALLBACK_POOL_MAX: "15",
   DATABASE_IDLE_TIMEOUT: "30",
 };
 
@@ -65,6 +68,7 @@ const VARIABLES = [
   { name: "DATABASE_URL", sensitive: true, required: true },
   { name: "DATABASE_FALLBACK_URLS", sensitive: true, required: false },
   { name: "DATABASE_POOL_MAX", sensitive: false, required: false },
+  { name: "DATABASE_FALLBACK_POOL_MAX", sensitive: false, required: false },
   { name: "DATABASE_IDLE_TIMEOUT", sensitive: false, required: false },
   { name: "SUPABASE_URL", sensitive: true, required: false },
   { name: "SUPABASE_SECRET_KEY", sensitive: true, required: false },

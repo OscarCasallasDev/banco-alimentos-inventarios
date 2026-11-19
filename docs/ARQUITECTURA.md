@@ -236,7 +236,7 @@ Sistema → POST /api/siigo/export { format, documentId? }
 | Componente | Plataforma | Método |
 |---|---|---|
 | Frontend | Vercel | Git-based deployment (rama `main`) |
-| Base de datos | Supabase | PostgreSQL managed (pooler **modo transacción**, puerto 6543) |
+| Base de datos | Supabase | PostgreSQL managed (pooler modo **sesión** + respaldo en modo **transacción**) |
 | Variables | Vercel + Supabase | ver tabla abajo |
 
 Variables requeridas en producción (Vercel → Settings → Environment Variables,
@@ -244,22 +244,32 @@ para Production, Preview y Development):
 
 | Variable | Requerida | Para qué sirve |
 |---|---|---|
-| `DATABASE_URL` | Sí | Conexión a PostgreSQL (pooler modo transacción, 6543) |
+| `DATABASE_URL` | Sí | Conexión principal: pooler modo sesión (5432) |
+| `DATABASE_FALLBACK_URLS` | No | Respaldo automático: pooler modo transacción (6543) |
 | `SESSION_SECRET` | Sí | Firma de la cookie de sesión (mín. 32 caracteres) |
-| `DATABASE_POOL_MAX` | No | Conexiones por proceso. `5` en Vercel |
+| `DATABASE_POOL_MAX` | No | Pool de la principal. `2` (el modo sesión admite 15 en total) |
+| `DATABASE_FALLBACK_POOL_MAX` | No | Pool del respaldo. `15` (el modo transacción no admite pipelining) |
 | `DATABASE_IDLE_TIMEOUT` | No | Cierre de conexiones ociosas. `30` en Vercel (instancias congeladas) |
-| `DATABASE_FALLBACK_URLS` | No | Respaldo: pooler en modo sesión (5432), estable y sin techo de 15 |
 | `SUPABASE_URL` | No | API de Storage (importación de Siigo) |
 | `SUPABASE_SECRET_KEY` | No | Acceso con permisos a Storage. Requerido para subir el .xlsx de Siigo |
 | `NEXT_PUBLIC_SUPABASE_URL` | No | Se incrusta en el bundle en el BUILD |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | No | Se incrusta en el bundle en el BUILD |
 | `SUPABASE_PUBLISHABLE_KEY` | No | Clave publicable de la API de Supabase |
 
-> **Por qué el pooler en modo transacción (6543) y no en modo sesión (5432):**
-> el modo sesión limita el pool a 15 conexiones PARA TODO EL PROYECTO y en
-> Vercel cada instancia de función es un proceso aparte, así que una ráfaga
-> de peticiones lo agota (`EMAXCONNSESSION`). Medido con 12 peticiones
-> simultáneas: modo sesión → 5 en error; modo transacción → 0 en error.
+> **Por qué los dos modos del pooler.** Cada modo tiene una limitación
+> distinta y se complementan:
+>
+> | | Modo sesión (5432) | Modo transacción (6543) |
+> |---|---|---|
+> | Pipelining de postgres.js | ✅ funciona | ❌ se cuelga |
+> | Conexiones simultáneas | ❌ máximo 15 en todo el proyecto | ✅ multiplexa |
+>
+> El dashboard lanza 15 consultas en paralelo, así que la principal debe
+> admitir pipelining → modo sesión. Pero en Vercel cada instancia es un
+> proceso aparte y el pool de 15 se agota con una ráfaga → el respaldo en
+> modo transacción (con pool grande) absorbe esa carga. Medido con 15
+> consultas en paralelo: sesión pool=1 → OK, transacción pool=5 → COLGADO,
+> transacción pool=15 → OK.
 >
 > Sin `DATABASE_URL` la aplicación compila pero **todas las rutas que tocan la
 > base de datos fallan**. La API responde `503 CONFIGURATION_ERROR` con el
