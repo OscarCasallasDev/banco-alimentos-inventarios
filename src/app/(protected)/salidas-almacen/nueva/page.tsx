@@ -209,7 +209,7 @@ export default function NuevaOrdenPedidoPage() {
       setError(MESSAGES.noStock);
       return;
     }
-    const key = `${stock.description}-${stock.siigoBodegaCode}`;
+    const key = `${stock.representativeCode}-${stock.siigoBodegaCode}`;
     if (lineas.some((line) => line.key === key)) return;
     setError(null);
 
@@ -589,7 +589,7 @@ export default function NuevaOrdenPedidoPage() {
                 {resultados.length > 0 && (
                   <ul className="mt-2 divide-y divide-gray-100 border border-gray-200 rounded-lg max-h-80 overflow-y-auto">
                     {resultados.map((stock) => {
-                      const key = `${stock.description}-${stock.siigoBodegaCode}`;
+                      const key = `${stock.representativeCode}-${stock.siigoBodegaCode}`;
                       const yaAgregado = lineas.some((line) => line.key === key);
                       return (
                         <li
@@ -612,7 +612,7 @@ export default function NuevaOrdenPedidoPage() {
                               {stock.description}
                             </p>
                             <p className="text-xs text-gray-500">
-                              {stock.warehouseName ?? "Bodega sin asignar"} ·{" "}
+                              Bodega {stock.siigoBodegaCode} ·{" "}
                               <span
                                 className={cn(
                                   "font-semibold",
@@ -724,7 +724,7 @@ export default function NuevaOrdenPedidoPage() {
                         >
                           {line.opciones.length === 0 && (
                             <option value={line.siigoBodegaCode}>
-                              {line.warehouseName ?? "Bodega sin asignar"}
+                              Bodega {line.siigoBodegaCode}
                             </option>
                           )}
                           {line.opciones.map((opcion) => (
@@ -732,7 +732,7 @@ export default function NuevaOrdenPedidoPage() {
                               key={opcion.siigoBodegaCode}
                               value={opcion.siigoBodegaCode}
                             >
-                              {opcion.warehouseName ?? `Bodega ${opcion.siigoBodegaCode}`}
+                              Bodega {opcion.siigoBodegaCode}
                             </option>
                           ))}
                         </select>

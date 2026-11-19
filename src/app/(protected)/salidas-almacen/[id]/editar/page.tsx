@@ -668,7 +668,7 @@ export default function EditarOrdenPedidoPage() {
                               {stock.description}
                             </p>
                             <p className="text-xs text-gray-500">
-                              {stock.warehouseName ?? "Bodega sin asignar"} ·{" "}
+                              Bodega {stock.siigoBodegaCode} ·{" "}
                               <span
                                 className={cn(
                                   "font-semibold",
@@ -762,7 +762,7 @@ export default function EditarOrdenPedidoPage() {
                         >
                           {line.opciones.length === 0 && (
                             <option value={line.siigoBodegaCode}>
-                              {line.warehouseName ?? "Bodega sin asignar"}
+                              Bodega {line.siigoBodegaCode}
                             </option>
                           )}
                           {line.opciones.map((opcion) => (
@@ -770,8 +770,7 @@ export default function EditarOrdenPedidoPage() {
                               key={opcion.siigoBodegaCode}
                               value={opcion.siigoBodegaCode}
                             >
-                              {opcion.warehouseName ??
-                                `Bodega ${opcion.siigoBodegaCode}`}
+                              Bodega {opcion.siigoBodegaCode}
                             </option>
                           ))}
                         </select>

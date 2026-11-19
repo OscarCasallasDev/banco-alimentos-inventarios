@@ -1,17 +1,23 @@
 /**
- * Existencias consolidadas por descripción y bodega.
+ * Existencias consolidadas por código de producto y bodega.
  *
  * Siigo registra un mismo producto en varias ubicaciones dentro de la misma
  * bodega, y el MISMO nombre puede aparecer en distintas bodegas. El Banco
  * pidió consolidar por:
  *
- *     DESCRIPCIÓN EXACTA  +  BODEGA
+ *     CÓDIGO DE PRODUCTO  +  NÚMERO DE BODEGA
+ *
+ * El número de bodega es el código numérico de la columna B del reporte: es
+ * la única referencia estable. Los rótulos textuales de las columnas A y C
+ * cambian entre reportes (campañas, nombres alternativos) y NO se usan para
+ * separar existencias.
  *
  * Reglas:
  *   - Las ubicaciones de un mismo producto en la misma bodega se SUMAN
  *     (es el mismo stock, repartido en el almacén).
  *   - NO se mezclan existencias de bodegas diferentes.
- *   - NO se fusionan productos con descripciones diferentes.
+ *   - NO se fusionan productos con códigos distintos aunque compartan la
+ *     misma descripción.
  *   - Las cantidades negativas y los resultados en cero se conservan.
  *   - Los códigos, las ubicaciones y los registros originales se conservan
  *     para trazabilidad: la consolidación es un cálculo derivado y la tabla
@@ -22,16 +28,16 @@ import { sql } from "drizzle-orm";
 import { getDb, type DbExecutor } from "@/lib/db/client";
 
 /**
- * Clave de grupo consolidado: `descripción|bodega`.
+ * Clave de grupo consolidado: `código de producto|bodega`.
  *
  * Es la clave con la que se identifican las reservas y las conciliaciones,
  * de modo que cada salida se descuenta del saldo del grupo correcto.
  */
 export function consolidatedGroupKey(
-  description: string,
+  productCode: string,
   siigoBodegaCode: number
 ): string {
-  const normalized = (description ?? "")
+  const normalized = (productCode ?? "")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
@@ -319,7 +325,7 @@ export async function groupKeyForProduct(
   executor: DbExecutor = getDb()
 ): Promise<string | null> {
   const rows = await executor.execute(sql`
-    SELECT btrim(regexp_replace(p.name, '\\s+', ' ', 'g')) AS description
+    SELECT p.code AS product_code
     FROM siigo_balances b
     JOIN products p ON p.id = b.product_id
     WHERE b.product_id = ${productId}::uuid
@@ -327,9 +333,9 @@ export async function groupKeyForProduct(
       AND b.is_active
     LIMIT 1
   `);
-  const row = (rows as unknown as { description: string }[])[0];
+  const row = (rows as unknown as { product_code: string }[])[0];
   if (!row) return null;
-  return consolidatedGroupKey(row.description, siigoBodegaCode);
+  return consolidatedGroupKey(row.product_code, siigoBodegaCode);
 }
 
 /** Redondeo a 3 decimales (misma precisión que el esquema). */

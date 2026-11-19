@@ -138,6 +138,12 @@ const MIGRATION_CHECKS = {
          join pg_enum e on e.enumtypid = t.oid
          where t.typname = 'user_role' and e.enumlabel = 'COORDINADOR'
        ) as done`,
+  "0018_consolidacion_codigo_bodega.sql": `
+    select exists (
+      select 1 from pg_matviews
+      where schemaname = 'public' and matviewname = 'mv_stock_consolidated'
+        and definition like '%lower(p.code)%'
+    ) as done`,
 };
 
 async function isAlreadyApplied(sql, file) {

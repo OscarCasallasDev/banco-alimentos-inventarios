@@ -120,16 +120,16 @@ export default function InventarioPage() {
   const totals = data?.totals;
   const pagination = data?.pagination;
 
-  const bodegaOptions = useMemo(() => {
-    const map = new Map<number, string>();
-    for (const item of items) {
-      map.set(
-        item.siigoBodegaCode,
-        item.warehouseName ?? `Bodega ${item.siigoBodegaCode}`
-      );
-    }
-    return [...map.entries()].sort((a, b) => a[0] - b[0]);
-  }, [items]);
+  // Las siete bodegas del Banco, identificadas por su número. El rótulo
+  // textual del Excel (columnas A y C) cambia entre reportes y no se usa
+  // para separar existencias, así que el filtro muestra siempre el número.
+  const bodegaOptions = useMemo(
+    () =>
+      [1, 2, 3, 4, 5, 6, 7].map(
+        (code) => [code, `Bodega ${code}`] as [number, string]
+      ),
+    []
+  );
 
   const stale = sync.data?.isStale ?? true;
   const minutesSince = sync.data?.minutesSinceSync;
@@ -321,7 +321,7 @@ export default function InventarioPage() {
                 <tbody className="divide-y divide-gray-100">
                   {items.map((item) => (
                     <tr
-                      key={`${item.description}-${item.siigoBodegaCode}`}
+                      key={`${item.representativeCode}-${item.siigoBodegaCode}`}
                       className={cn(
                         "hover:bg-gray-50",
                         item.reviewRequired && "bg-amber-50/60"
@@ -352,7 +352,7 @@ export default function InventarioPage() {
                       <td className="px-4 py-3 text-xs text-gray-700 whitespace-nowrap">
                         <span className="inline-flex items-center gap-1">
                           <Warehouse className="w-3 h-3 text-gray-400" />
-                          {item.warehouseName ?? `Bodega ${item.siigoBodegaCode}`}
+                          Bodega {item.siigoBodegaCode}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center text-xs text-gray-600">

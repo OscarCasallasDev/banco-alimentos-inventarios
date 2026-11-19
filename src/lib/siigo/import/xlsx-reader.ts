@@ -402,6 +402,15 @@ export function readSheet(
         let tMatch: RegExpExecArray | null;
         while ((tMatch = TEXT_RE.exec(inner)) !== null) texts.push(tMatch[1]);
         value = { kind: "string", value: decodeXmlText(texts.join("")) };
+      } else if (type === "str") {
+        // Texto plano dentro de la celda (no índice de cadena compartida).
+        // Es el formato que usan algunos exportadores de Excel. Sin esta
+        // rama el valor se interpretaba como número y se perdían los ceros
+        // iniciales del código de producto ("001000100001" → "1000100001").
+        const vMatch = VALUE_RE.exec(inner);
+        value = vMatch
+          ? { kind: "string", value: decodeXmlText(vMatch[1]) }
+          : { kind: "empty", value: null };
       } else if (type === "b") {
         const vMatch = VALUE_RE.exec(inner);
         value = { kind: "boolean", value: vMatch ? vMatch[1] === "1" : false };
