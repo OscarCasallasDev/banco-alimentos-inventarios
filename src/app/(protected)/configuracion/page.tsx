@@ -13,6 +13,7 @@ import { useApiQuery } from "@/hooks/useApiQuery";
 import QueryError from "@/components/ui/QueryError";
 import { useToast } from "@/components/ui/Toast";
 import ModulosPanel from "@/components/config/ModulosPanel";
+import { passwordRuleFailures, checkPasswordConfirmation } from "@/lib/auth/password-policy";
 
 /**
  * Configuración del sistema.
@@ -50,24 +51,6 @@ interface MiCuenta {
   modules: string[];
 }
 
-/** Reglas de seguridad de la contraseña (las mismas que valida el backend). */
-const PASSWORD_RULES = [
-  { test: (v: string) => v.length >= 8, message: "Al menos 8 caracteres" },
-  { test: (v: string) => /[A-Za-z]/.test(v), message: "Al menos una letra" },
-  { test: (v: string) => /\d/.test(v), message: "Al menos un número" },
-  {
-    test: (v: string) => /[^A-Za-z0-9]/.test(v),
-    message: "Al menos un símbolo especial",
-  },
-];
-
-function passwordErrors(password: string): string[] {
-  if (!password) return [];
-  return PASSWORD_RULES.filter((rule) => !rule.test(password)).map(
-    (rule) => rule.message
-  );
-}
-
 export default function ConfiguracionPage() {
   const { showToast } = useToast();
 
@@ -95,6 +78,8 @@ export default function ConfiguracionPage() {
   // Cuenta propia.
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
   const [savingAccount, setSavingAccount] = useState(false);
   const [accountError, setAccountError] = useState("");
 
@@ -149,13 +134,15 @@ export default function ConfiguracionPage() {
     if (username.trim() && username.trim() !== me?.username) {
       body.username = username.trim();
     }
-    if (password) {
-      const failures = passwordErrors(password);
-      if (failures.length > 0) {
-        setAccountError(`La contraseña debe cumplir: ${failures.join(", ")}.`);
+
+    if (password || confirmPassword) {
+      const check = checkPasswordConfirmation(password, confirmPassword);
+      if (!check.valid) {
+        setAccountError(check.message ?? "Revise la contraseña");
         setSavingAccount(false);
         return;
       }
+
       body.password = password;
     }
 
@@ -181,6 +168,8 @@ export default function ConfiguracionPage() {
 
       setUsername("");
       setPassword("");
+      setConfirmPassword("");
+      setChangingPassword(false);
       showToast(
         "success",
         "Cuenta actualizada",
@@ -195,7 +184,7 @@ export default function ConfiguracionPage() {
     }
   }
 
-  const passwordFailures = passwordErrors(password);
+  const passwordFailures = passwordRuleFailures(password);
 
   return (
     <div className="space-y-6">
@@ -249,36 +238,79 @@ export default function ConfiguracionPage() {
             </p>
           </div>
 
+          {/* Cambio de contraseña: se revela al seleccionarlo. */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Nueva contraseña
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-1 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={changingPassword}
+                onChange={(e) => {
+                  setChangingPassword(e.target.checked);
+                  if (!e.target.checked) {
+                    setPassword("");
+                    setConfirmPassword("");
+                  }
+                }}
+                className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              Cambiar contraseña
             </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Dejar vacío para no cambiarla"
-              autoComplete="new-password"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-            />
-            {passwordFailures.length > 0 && (
-              <ul className="mt-1.5 space-y-0.5">
-                {passwordFailures.map((failure) => (
-                  <li
-                    key={failure}
-                    className="text-xs text-red-600 flex items-center gap-1"
-                  >
-                    <AlertCircle className="w-3 h-3" />
-                    {failure}
-                  </li>
-                ))}
-              </ul>
-            )}
-            {password && passwordFailures.length === 0 && (
-              <p className="mt-1.5 text-xs text-green-700 flex items-center gap-1">
-                <Check className="w-3 h-3" />
-                Cumple la política de seguridad.
-              </p>
+
+            {changingPassword && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nueva contraseña
+                  </label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Mínimo 8 caracteres, una letra, un número y un símbolo"
+                    autoComplete="new-password"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  />
+                  {passwordFailures.length > 0 && (
+                    <ul className="mt-1.5 space-y-0.5">
+                      {passwordFailures.map((failure) => (
+                        <li
+                          key={failure}
+                          className="text-xs text-red-600 flex items-center gap-1"
+                        >
+                          <AlertCircle className="w-3 h-3" />
+                          {failure}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {password && passwordFailures.length === 0 && (
+                    <p className="mt-1.5 text-xs text-green-700 flex items-center gap-1">
+                      <Check className="w-3 h-3" />
+                      Cumple la política de seguridad.
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Confirmar nueva contraseña
+                  </label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Repite la nueva contraseña"
+                    autoComplete="new-password"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  />
+                  {confirmPassword && password !== confirmPassword && (
+                    <p className="mt-1.5 text-xs text-red-600 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      Las contraseñas no coinciden.
+                    </p>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         </div>

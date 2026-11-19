@@ -5,13 +5,17 @@ import { recordAuditLog } from "@/lib/services/audit-log.service";
 import { registerSchema } from "@/lib/validations/schemas";
 import { checkPasswordStrength } from "@/lib/auth/password";
 import { validationError } from "@/lib/utils/errors";
+import { normalizeRole } from "@/lib/auth/permissions";
 
 /**
  * Registro público de usuarios.
  *
- * Los usuarios creados por esta vía quedan con el rol RECEPCION y con los
- * módulos que ese rol tiene por defecto. El superadmin puede ajustarlos
- * después desde el módulo de usuarios.
+ * El nombre de usuario NO lo escribe la persona: lo genera el servidor con
+ * el nombre y el apellido (en minúsculas, sin tildes ni espacios) y añade
+ * un sufijo numérico si ya existe.
+ *
+ * El usuario se crea con el rol RECEPCION y SIN permisos administrativos:
+ * el superadmin es quien decide a qué módulos entra cada persona.
  */
 export async function POST(request: Request) {
   try {
@@ -28,7 +32,7 @@ export async function POST(request: Request) {
       firstName: input.firstName.trim(),
       lastName: input.lastName.trim(),
       password: input.password,
-      role: "RECEPCION",
+      role: normalizeRole("recepcion") ?? "RECEPCION",
       modules: null,
     });
 

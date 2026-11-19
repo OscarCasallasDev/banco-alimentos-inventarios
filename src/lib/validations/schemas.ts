@@ -13,48 +13,6 @@ import { z } from "zod";
 // AUTENTICACIÓN
 // ============================================================
 
-export const loginSchema = z.object({
-  username: z
-    .string()
-    .min(1, "El usuario es requerido")
-    .max(100, "El usuario no puede exceder 100 caracteres"),
-  password: z
-    .string()
-    .min(1, "La contraseña es requerida")
-    .max(100, "La contraseña no puede exceder 100 caracteres"),
-});
-
-export const registerSchema = z.object({
-  firstName: z
-    .string()
-    .min(1, "El nombre es requerido")
-    .max(100, "El nombre no puede exceder 100 caracteres"),
-  lastName: z
-    .string()
-    .min(1, "El apellido es requerido")
-    .max(100, "El apellido no puede exceder 100 caracteres"),
-  email: z
-    .string()
-    .email("Correo electrónico inválido")
-    .max(255, "El correo no puede exceder 255 caracteres"),
-  username: z
-    .string()
-    .min(3, "El usuario debe tener al menos 3 caracteres")
-    .max(50, "El usuario no puede exceder 50 caracteres")
-    .regex(
-      /^[a-zA-Z0-9_]+$/,
-      "El usuario solo puede contener letras, números y guiones bajos"
-    ),
-  password: z
-    .string()
-    .min(6, "La contraseña debe tener al menos 6 caracteres")
-    .max(100, "La contraseña no puede exceder 100 caracteres"),
-});
-
-// ============================================================
-// USUARIOS
-// ============================================================
-
 /**
  * Contraseña del usuario.
  *
@@ -72,6 +30,40 @@ const strongPassword = z
     /[^A-Za-z0-9]/,
     "La contraseña debe incluir al menos un símbolo especial"
   );
+
+export const loginSchema = z.object({
+  username: z
+    .string()
+    .min(1, "El usuario es requerido")
+    .max(100, "El usuario no puede exceder 100 caracteres"),
+  password: z
+    .string()
+    .min(1, "La contraseña es requerida")
+    .max(100, "La contraseña no puede exceder 100 caracteres"),
+});
+
+/**
+ * Registro público de usuarios.
+ *
+ * El correo electrónico ya no se pide: el formulario solo solicita nombre,
+ * apellido y contraseña. El nombre de usuario lo genera el backend a partir
+ * del nombre y el apellido (ver `lib/auth/username`).
+ */
+export const registerSchema = z.object({
+  firstName: z
+    .string()
+    .min(1, "El nombre es requerido")
+    .max(100, "El nombre no puede exceder 100 caracteres"),
+  lastName: z
+    .string()
+    .min(1, "El apellido es requerido")
+    .max(100, "El apellido no puede exceder 100 caracteres"),
+  password: strongPassword,
+});
+
+// ============================================================
+// USUARIOS
+// ============================================================
 
 /**
  * Creación de usuario desde el superadmin.

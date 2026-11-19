@@ -3,7 +3,16 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Lock, User, Mail, Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react";
+import {
+  Lock,
+  User,
+  Eye,
+  EyeOff,
+  ArrowRight,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
+import { passwordRuleFailures, checkPasswordConfirmation } from "@/lib/auth/password-policy";
 
 type View = "login" | "register";
 
@@ -69,10 +78,9 @@ export default function LoginPage() {
   // Register form
   const [regFirstName, setRegFirstName] = useState("");
   const [regLastName, setRegLastName] = useState("");
-  const [regEmail, setRegEmail] = useState("");
-  const [regUsername, setRegUsername] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [regConfirmPassword, setRegConfirmPassword] = useState("");
+  const [regUsername, setRegUsername] = useState("");
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -106,18 +114,44 @@ export default function LoginPage() {
     }
   }
 
+  /**
+   * Nombre de usuario que se generará: lo arma el servidor con el nombre y
+   * el apellido y añade un sufijo numérico si ya existe.
+   */
+  useEffect(() => {
+    const first = regFirstName.trim();
+    const last = regLastName.trim();
+
+    const timer = setTimeout(async () => {
+      if (!first || !last) {
+        setRegUsername("");
+        return;
+      }
+
+      try {
+        const res = await fetch(
+          `/api/auth/username?firstName=${encodeURIComponent(
+            first
+          )}&lastName=${encodeURIComponent(last)}`
+        );
+        const data = await res.json();
+        if (res.ok) setRegUsername(data?.data?.username ?? "");
+      } catch {
+        setRegUsername("");
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [regFirstName, regLastName]);
+
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setSuccess("");
 
-    if (regPassword !== regConfirmPassword) {
-      setError("Las contraseñas no coinciden");
-      return;
-    }
-
-    if (regPassword.length < 6) {
-      setError("La contraseña debe tener al menos 6 caracteres");
+    const check = checkPasswordConfirmation(regPassword, regConfirmPassword);
+    if (!check.valid) {
+      setError(check.message ?? "Revise la contraseña");
       return;
     }
 
@@ -130,8 +164,6 @@ export default function LoginPage() {
         body: JSON.stringify({
           firstName: regFirstName,
           lastName: regLastName,
-          email: regEmail,
-          username: regUsername,
           password: regPassword,
         }),
       });
@@ -143,10 +175,11 @@ export default function LoginPage() {
         return;
       }
 
-      setSuccess("¡Usuario creado exitosamente! Ahora puedes iniciar sesión.");
+      setSuccess(
+        `¡Usuario creado exitosamente! Tu nombre de usuario es ${data.data?.username}. Ya puedes iniciar sesión.`
+      );
       setRegFirstName("");
       setRegLastName("");
-      setRegEmail("");
       setRegUsername("");
       setRegPassword("");
       setRegConfirmPassword("");
@@ -154,7 +187,8 @@ export default function LoginPage() {
       setTimeout(() => {
         setView("login");
         setSuccess("");
-      }, 2000);
+        setLoginUsername(data.data?.username ?? "");
+      }, 2500);
     } catch {
       setError("Error de conexión. Verifica tu internet e intenta nuevamente.");
     } finally {
@@ -395,26 +429,9 @@ export default function LoginPage() {
                 </div>
               </div>
 
+              {/* El nombre de usuario lo genera el sistema: no se escribe. */}
               <div>
-                <label htmlFor="reg-email" className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Correo Electrónico
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    id="reg-email"
-                    type="email"
-                    value={regEmail}
-                    onChange={(e) => setRegEmail(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-white"
-                    placeholder="correo@ejemplo.com"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="reg-username" className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Nombre de Usuario
                 </label>
                 <div className="relative">
@@ -423,12 +440,15 @@ export default function LoginPage() {
                     id="reg-username"
                     type="text"
                     value={regUsername}
-                    onChange={(e) => setRegUsername(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-white"
-                    placeholder="usuario"
-                    required
+                    readOnly
+                    className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-700 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200"
+                    placeholder="Se genera con tu nombre y apellido"
                   />
                 </div>
+                <p className="mt-1.5 text-xs text-gray-500">
+                  Se arma con tu nombre y tu apellido. Si ya existe, se añade un
+                  número.
+                </p>
               </div>
 
               <div>
@@ -443,9 +463,9 @@ export default function LoginPage() {
                     value={regPassword}
                     onChange={(e) => setRegPassword(e.target.value)}
                     className="w-full pl-11 pr-12 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-white"
-                    placeholder="Mínimo 6 caracteres"
+                    placeholder="Mínimo 8 caracteres, una letra, un número y un símbolo"
                     required
-                    minLength={6}
+                    autoComplete="new-password"
                   />
                   <button
                     type="button"
@@ -455,6 +475,16 @@ export default function LoginPage() {
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
                 </div>
+                {regPassword && passwordRuleFailures(regPassword).length > 0 && (
+                  <ul className="mt-1.5 space-y-0.5">
+                    {passwordRuleFailures(regPassword).map((failure) => (
+                      <li key={failure} className="text-xs text-red-600 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        {failure}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               <div>

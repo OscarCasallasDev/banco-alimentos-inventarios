@@ -39,12 +39,6 @@ export function verifyPassword(password: string, passwordHash: string): boolean 
 // POLÍTICA DE CONTRASEÑAS
 // ============================================================
 
-/**
- * Reglas de seguridad de la contraseña del Banco.
- *
- * Se aplican al crear un usuario (la que asigna el superadmin) y al
- * cambiarla desde la configuración de la cuenta.
- */
 export const PASSWORD_POLICY = {
   minLength: 8,
   maxLength: 100,

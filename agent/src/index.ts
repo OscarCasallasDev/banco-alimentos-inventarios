@@ -1,11 +1,13 @@
 /**
  * Punto de entrada del agente local de sincronización.
  *
- * Se ejecuta desde la Tarea Programada de Windows cada hora:
+ * La importación del reporte de Siigo Pyme es MANUAL: se hace desde el
+ * botón «Importar Excel» del dashboard, con confirmación del usuario.
  *
- *   schtasks /create /tn "Banco de Alimentos - Sincronización Siigo" ^
- *     /tr "\"C:\\Program Files\\nodejs\\node.exe\" \"C:\\BancoAlimentos\\agente\\dist\\index.js\"" ^
- *     /sc hourly /mo 1 /rl highest
+ * Este agente queda como una herramienta opcional para quien quiera
+ * dispararlo a mano. La Tarea Programada de Windows que lo ejecutaba cada
+ * hora se instala DESHABILITADA (`install.ps1`), de modo que no hay ninguna
+ * importación automática.
  *
  * Uso manual:
  *   npm run agent:run

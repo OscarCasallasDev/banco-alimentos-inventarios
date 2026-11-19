@@ -25,6 +25,8 @@ import { getDb } from "@/lib/db/client";
 import { sql } from "drizzle-orm";
 import { getSalidasSummary, listRecentSalidas } from "@/lib/services/exit.service";
 import { getLastSuccessfulRun } from "@/lib/services/siigo-import.service";
+import { getCurrentUser } from "@/lib/auth/session";
+import ImportarExcel from "@/components/siigo/ImportarExcel";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -157,6 +159,14 @@ export default async function DashboardPage() {
     : null;
   const stale = minutesSince === null || minutesSince > staleMinutes;
 
+  // Solo quien tiene el módulo de Integración Siigo puede importar el
+  // reporte. El botón no aparece para los demás y la API lo rechaza igual.
+  const sessionUser = await getCurrentUser();
+  const puedeImportar =
+    sessionUser !== null &&
+    (sessionUser.role === "SUPERADMIN" ||
+      sessionUser.modules.includes("integracion_siigo"));
+
   return (
     <div className="space-y-5">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
@@ -241,6 +251,9 @@ export default async function DashboardPage() {
           <Loader2 className="w-4 h-4" />
           Ver importaciones
         </Link>
+
+        {/* Importación manual del reporte de Siigo. */}
+        {puedeImportar && <ImportarExcel />}
       </div>
 
       {/* Indicadores de órdenes de pedido */}

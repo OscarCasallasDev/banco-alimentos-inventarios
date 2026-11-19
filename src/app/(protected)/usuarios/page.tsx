@@ -11,6 +11,7 @@ import {
   Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { passwordRuleFailures } from "@/lib/auth/password-policy";
 import { useApiQuery } from "@/hooks/useApiQuery";
 import QueryError from "@/components/ui/QueryError";
 import { useToast } from "@/components/ui/Toast";
@@ -47,24 +48,6 @@ const roleLabels: Record<string, string> = {
   DESPACHO: "Despacho",
   CONTABILIDAD: "Contabilidad",
 };
-
-/** Reglas de seguridad de la contraseña (las mismas que valida el backend). */
-const PASSWORD_RULES = [
-  { test: (v: string) => v.length >= 8, message: "Al menos 8 caracteres" },
-  { test: (v: string) => /[A-Za-z]/.test(v), message: "Al menos una letra" },
-  { test: (v: string) => /\d/.test(v), message: "Al menos un número" },
-  {
-    test: (v: string) => /[^A-Za-z0-9]/.test(v),
-    message: "Al menos un símbolo especial",
-  },
-];
-
-function passwordErrors(password: string): string[] {
-  if (!password) return [];
-  return PASSWORD_RULES.filter((rule) => !rule.test(password)).map(
-    (rule) => rule.message
-  );
-}
 
 const emptyForm = {
   firstName: "",
@@ -172,7 +155,7 @@ export default function UsuariosPage() {
 
     // La contraseña se valida en el cliente para dar el aviso al instante.
     if (!editingId) {
-      const failures = passwordErrors(form.password);
+      const failures = passwordRuleFailures(form.password);
       if (failures.length > 0) {
         setError(`La contraseña debe cumplir: ${failures.join(", ")}.`);
         setSaving(false);
@@ -278,7 +261,7 @@ export default function UsuariosPage() {
     availableModules.map((item) => [item.module, item.label])
   );
 
-  const passwordFailures = passwordErrors(form.password);
+  const passwordFailures = passwordRuleFailures(form.password);
 
   return (
     <div className="space-y-6">

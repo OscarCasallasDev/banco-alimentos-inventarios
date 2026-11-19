@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { useApiQuery } from "@/hooks/useApiQuery";
 import { apiSend } from "@/lib/api/client";
+import { importarArchivoExcel } from "@/lib/siigo/import-excel";
 import { cn } from "@/lib/utils";
 
 // ---------- Tipos ----------
@@ -237,73 +238,25 @@ function ImportarPanel() {
     setBusy(true);
     setError(null);
     setResult(null);
-    setProgress("Calculando la huella del archivo…");
+    setStatus(null);
 
-    try {
-      // 1. Huella SHA-256 del archivo (en el navegador: es local y rápido).
-      const buffer = await file.arrayBuffer();
-      const digest = await crypto.subtle.digest("SHA-256", buffer);
-      const hash = Array.from(new Uint8Array(digest))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-
-      // 2. Crear (o recuperar) la corrida.
-      setProgress("Registrando la importación…");
-      const run = await apiSend<RunSummary>("/api/siigo/importaciones", "POST", {
-        fileSha256: hash,
-        fileName: file.name,
-        fileSize: file.size,
-        source: "MANUAL",
-      });
-
-      if (run.alreadyProcessed) {
-        setResult(run);
-        setStatus("Este archivo ya se había importado. No se procesó de nuevo.");
-        return;
-      }
-
-      // 3. URL firmada para subir el archivo (el .xlsx real pesa 8 MB y
-      //    Vercel limita el cuerpo de una petición a 4.5 MB).
-      setProgress("Preparando la carga segura…");
-      const signed = await apiSend<{
-        uploadUrl: string;
-        token: string;
-        path: string;
-      }>("/api/siigo/importaciones/archivo", "POST", {
-        fileSha256: hash,
-        fileName: file.name,
-        fileSize: file.size,
-      });
-
-      // 4. Subir el binario directamente al almacenamiento.
-      setProgress("Subiendo el archivo…");
-      const upload = await fetch(signed.uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-        body: buffer,
-      });
-      if (!upload.ok) {
-        throw new Error(
-          `No se pudo subir el archivo (${upload.status}). Verifique que el bucket de almacenamiento esté disponible.`
+    // El proceso vive en `lib/siigo/import-excel`: es el mismo que usa el
+    // botón del dashboard, con las mismas reglas y transformaciones.
+    await importarArchivoExcel<RunSummary>(file, {
+      onProgress: setProgress,
+      onResultado: (resumen) => {
+        setResult(resumen);
+        setStatus(
+          resumen.alreadyProcessed
+            ? "Este archivo ya se había importado. No se procesó de nuevo."
+            : "Importación completada"
         );
-      }
+      },
+      onError: (mensaje) => setError(mensaje),
+    });
 
-      // 5. Procesar: interpretar, guardar y cerrar la corrida.
-      setProgress("Interpretando el reporte y calculando saldos…");
-      const finished = await apiSend<RunSummary>(
-        `/api/siigo/importaciones/${run.id}/procesar-archivo`,
-        "POST",
-        { path: signed.path }
-      );
-
-      setResult(finished);
-      setStatus("Importación completada");
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-      setProgress("");
-    }
+    setBusy(false);
+    setProgress("");
   }
 
   const stale = sync?.isStale ?? true;

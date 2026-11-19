@@ -67,10 +67,19 @@ $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
 
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description "Sincroniza el inventario de Siigo Pyme con el sistema del Banco" | Out-Null
 
+# --- La tarea queda DESHABILITADA ---
+# La importacion del reporte de Siigo Pyme ahora es MANUAL: se hace desde el
+# boton "Importar Excel" del dashboard, con confirmacion del usuario.
+# La tarea se deja instalada pero sin ejecucion automatica, para que quien
+# quiera pueda dispararla a mano.
+Disable-ScheduledTask -TaskName $TaskName | Out-Null
+
 Write-Host ""
-Write-Host "Tarea registrada: $TaskName" -ForegroundColor Green
-Write-Host "Se ejecuta cada hora. Para probarla ahora:" -ForegroundColor Cyan
-Write-Host "  Start-ScheduledTask -TaskName `"$TaskName`"" -ForegroundColor Cyan
+Write-Host "Tarea registrada y DESHABILITADA: $TaskName" -ForegroundColor Green
+Write-Host "La importacion ahora es manual: use el boton 'Importar Excel' del dashboard." -ForegroundColor Yellow
+Write-Host "Para ejecutarla a mano:" -ForegroundColor Cyan
+Write-Host "  Enable-ScheduledTask -TaskName `"$TaskName`"" -ForegroundColor Cyan
+Write-Host "  Start-ScheduledTask  -TaskName `"$TaskName`"" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Para quitarla:" -ForegroundColor Cyan
 Write-Host "  Unregister-ScheduledTask -TaskName `"$TaskName`" -Confirm:`$false" -ForegroundColor Cyan
