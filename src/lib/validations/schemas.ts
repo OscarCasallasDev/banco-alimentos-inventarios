@@ -55,19 +55,31 @@ export const registerSchema = z.object({
 // USUARIOS
 // ============================================================
 
+/**
+ * Contraseña del usuario.
+ *
+ * La política (8 caracteres, una letra, un número y un símbolo) se valida
+ * aquí y también en `checkPasswordStrength`, para que el mensaje llegue
+ * igual por la API y por el formulario.
+ */
+const strongPassword = z
+  .string()
+  .min(8, "La contraseña debe tener al menos 8 caracteres")
+  .max(100, "La contraseña no puede exceder 100 caracteres")
+  .regex(/[A-Za-z]/, "La contraseña debe incluir al menos una letra")
+  .regex(/\d/, "La contraseña debe incluir al menos un número")
+  .regex(
+    /[^A-Za-z0-9]/,
+    "La contraseña debe incluir al menos un símbolo especial"
+  );
+
+/**
+ * Creación de usuario desde el superadmin.
+ *
+ * Solo cuatro campos: nombre, apellido, contraseña y rol. El nombre de
+ * usuario se genera solo y los módulos se marcan por separado.
+ */
 export const createUserSchema = z.object({
-  username: z
-    .string()
-    .min(3, "El usuario debe tener al menos 3 caracteres")
-    .max(100, "El usuario no puede exceder 100 caracteres")
-    .regex(
-      /^[a-zA-Z0-9_]+$/,
-      "El usuario solo puede contener letras, números y guiones bajos"
-    ),
-  email: z
-    .string()
-    .email("Correo electrónico inválido")
-    .max(255, "El correo no puede exceder 255 caracteres"),
   firstName: z
     .string()
     .min(1, "El nombre es requerido")
@@ -76,17 +88,25 @@ export const createUserSchema = z.object({
     .string()
     .min(1, "El apellido es requerido")
     .max(100, "El apellido no puede exceder 100 caracteres"),
-  password: z
-    .string()
-    .min(6, "La contraseña debe tener al menos 6 caracteres")
-    .max(100, "La contraseña no puede exceder 100 caracteres"),
+  password: strongPassword,
+  /** Rol escrito a mano: se normaliza en el backend. */
   role: z
-    .enum(["SUPERADMIN", "ADMIN", "RECEPCION", "DESPACHO", "CONTABILIDAD"])
-    .default("RECEPCION"),
-  status: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]).default("ACTIVE"),
+    .string()
+    .min(1, "El rol es requerido")
+    .max(40, "El rol no puede exceder 40 caracteres"),
+  /** Claves de módulo a las que tendrá acceso. */
+  modules: z.array(z.string().max(64)).default([]),
 });
 
+/** Cambio de rol, estado y permisos de un usuario (superadmin). */
 export const updateUserSchema = z.object({
+  role: z.string().min(1).max(40).optional(),
+  status: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]).optional(),
+  modules: z.array(z.string().max(64)).optional(),
+});
+
+/** Cambio de nombre de usuario y contraseña de la cuenta propia. */
+export const updateProfileSchema = z.object({
   username: z
     .string()
     .min(3, "El usuario debe tener al menos 3 caracteres")
@@ -96,30 +116,7 @@ export const updateUserSchema = z.object({
       "El usuario solo puede contener letras, números y guiones bajos"
     )
     .optional(),
-  email: z
-    .string()
-    .email("Correo electrónico inválido")
-    .max(255, "El correo no puede exceder 255 caracteres")
-    .optional(),
-  firstName: z
-    .string()
-    .min(1, "El nombre es requerido")
-    .max(100, "El nombre no puede exceder 100 caracteres")
-    .optional(),
-  lastName: z
-    .string()
-    .min(1, "El apellido es requerido")
-    .max(100, "El apellido no puede exceder 100 caracteres")
-    .optional(),
-  password: z
-    .string()
-    .min(6, "La contraseña debe tener al menos 6 caracteres")
-    .max(100, "La contraseña no puede exceder 100 caracteres")
-    .optional(),
-  role: z
-    .enum(["SUPERADMIN", "ADMIN", "RECEPCION", "DESPACHO", "CONTABILIDAD"])
-    .optional(),
-  status: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]).optional(),
+  password: strongPassword.optional(),
 });
 
 // ============================================================
@@ -626,8 +623,6 @@ export const updateLotStatusSchema = z.object({
 
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
-export type CreateUserInput = z.infer<typeof createUserSchema>;
-export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 export type UpdateProductInput = z.infer<typeof updateProductSchema>;

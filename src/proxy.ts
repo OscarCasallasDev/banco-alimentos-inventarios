@@ -26,8 +26,14 @@ export function proxy(request: NextRequest) {
     (path) => pathname === path || pathname.startsWith(`${path}/`)
   );
 
+  // La ruta actual se expone como cabecera para que el layout protegido
+  // pueda decidir si el usuario tiene acceso a esa página. Ocultar el enlace
+  // no basta: alguien puede escribir la dirección a mano.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", pathname);
+
   if (isPublic) {
-    return NextResponse.next();
+    return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
   const hasSession = Boolean(request.cookies.get(SESSION_COOKIE_NAME)?.value);
@@ -46,7 +52,7 @@ export function proxy(request: NextRequest) {
       );
     }
 
-    return NextResponse.next();
+    return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
   if (!hasSession) {
@@ -55,7 +61,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export const config = {

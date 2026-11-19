@@ -1,5 +1,5 @@
 import { getDb, withTransaction } from "@/lib/db/client";
-import { requireAdmin, requireUser } from "@/lib/auth/session";
+import { requireSuperAdmin } from "@/lib/auth/guard";
 import { jsonOk, handleRouteError } from "@/lib/api/response";
 import { checkDatabaseConnection } from "@/lib/db/connection";
 import { products } from "@/lib/db/schema";
@@ -14,10 +14,13 @@ import { updateExpirationSettingsSchema } from "@/lib/validations/schemas";
 /**
  * Estado del sistema para la pantalla de configuración.
  * No expone credenciales: solo el host y el estado de la conexión.
+ *
+ * Exclusivo del superadmin: la cuenta personal de cada usuario se gestiona
+ * en `/api/usuarios/me`.
  */
 export async function GET() {
   try {
-    await requireUser();
+    await requireSuperAdmin();
 
     const status = await checkDatabaseConnection();
     const db = getDb();
@@ -58,11 +61,11 @@ export async function GET() {
 }
 
 /**
- * Actualiza los parámetros operativos del Banco. Solo ADMIN.
+ * Actualiza los parámetros operativos del Banco. Solo el superadmin.
  */
 export async function PUT(request: Request) {
   try {
-    await requireAdmin();
+    await requireSuperAdmin();
 
     const body = await request.json();
     const input = updateExpirationSettingsSchema.parse(body);

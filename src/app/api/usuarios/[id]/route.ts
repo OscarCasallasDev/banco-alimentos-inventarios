@@ -1,5 +1,5 @@
 import { getDb, withTransaction } from "@/lib/db/client";
-import { requireUser } from "@/lib/auth/session";
+import { requireSuperAdmin } from "@/lib/auth/guard";
 import { jsonOk, handleRouteError } from "@/lib/api/response";
 import {
   deactivateUser,
@@ -8,13 +8,16 @@ import {
 } from "@/lib/services/user.service";
 import { recordAuditLog } from "@/lib/services/audit-log.service";
 import { updateUserSchema } from "@/lib/validations/schemas";
+import { normalizeRole } from "@/lib/auth/permissions";
+import { validationError } from "@/lib/utils/errors";
+import { MODULES } from "@/lib/config/modules";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireUser();
+    await requireSuperAdmin();
 
     const { id } = await params;
     const db = getDb();
@@ -31,14 +34,36 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const currentUser = await requireUser();
+    const currentUser = await requireSuperAdmin();
 
     const { id } = await params;
     const body = await request.json();
     const input = updateUserSchema.parse(body);
 
+    const role = input.role !== undefined ? normalizeRole(input.role) : undefined;
+    if (input.role !== undefined && !role) {
+      throw validationError({
+        role: [
+          `Rol desconocido: "${input.role}". Ejemplos: almacenista, coordinador, despacho, administrador.`,
+        ],
+      });
+    }
+
+    if (input.modules !== undefined) {
+      const ignorados = input.modules.filter((key) => !(key in MODULES));
+      if (ignorados.length > 0) {
+        throw validationError({
+          modules: [`Módulos no reconocidos: ${ignorados.join(", ")}`],
+        });
+      }
+    }
+
     const updated = await withTransaction(async (tx) => {
-      const user = await updateUser(tx, id, input);
+      const user = await updateUser(tx, id, {
+        role: role ?? undefined,
+        status: input.status,
+        modules: input.modules,
+      });
 
       await recordAuditLog(tx, {
         userId: currentUser.id,
@@ -65,7 +90,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const currentUser = await requireUser();
+    const currentUser = await requireSuperAdmin();
 
     const { id } = await params;
 

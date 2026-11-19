@@ -1,5 +1,5 @@
 import { getDb, withTransaction } from "@/lib/db/client";
-import { requireUser } from "@/lib/auth/session";
+import { requireModuleAccess } from "@/lib/auth/guard";
 import { jsonOk, handleRouteError } from "@/lib/api/response";
 import {
   deactivateWarehouse,
@@ -15,7 +15,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireUser();
+    await requireModuleAccess("bodegas");
 
     const { id } = await params;
     const db = getDb();
@@ -32,7 +32,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = await requireUser();
+    const user = await requireModuleAccess("bodegas");
 
     const { id } = await params;
     const body = await request.json();
@@ -68,7 +68,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = await requireUser();
+    const user = await requireModuleAccess("bodegas");
 
     const { id } = await params;
 

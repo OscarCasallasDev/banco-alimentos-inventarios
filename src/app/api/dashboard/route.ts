@@ -1,11 +1,11 @@
 import { getDb } from "@/lib/db/client";
-import { requireUser } from "@/lib/auth/session";
+import { requireModuleAccess } from "@/lib/auth/guard";
 import { jsonOk, handleRouteError } from "@/lib/api/response";
 import { getDashboardSummary } from "@/lib/services/dashboard.service";
 
 export async function GET() {
   try {
-    await requireUser();
+    await requireModuleAccess("dashboard");
 
     const db = getDb();
     const data = await getDashboardSummary(db);

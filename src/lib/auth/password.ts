@@ -34,3 +34,56 @@ export function verifyPassword(password: string, passwordHash: string): boolean 
 
   return timingSafeEqual(stored, computed);
 }
+
+// ============================================================
+// POLÍTICA DE CONTRASEÑAS
+// ============================================================
+
+/**
+ * Reglas de seguridad de la contraseña del Banco.
+ *
+ * Se aplican al crear un usuario (la que asigna el superadmin) y al
+ * cambiarla desde la configuración de la cuenta.
+ */
+export const PASSWORD_POLICY = {
+  minLength: 8,
+  maxLength: 100,
+} as const;
+
+/** Caracteres que cuentan como símbolo especial. */
+const SPECIAL_CHARACTERS = /[^A-Za-z0-9]/;
+
+export interface PasswordCheck {
+  valid: boolean;
+  /** Motivos del rechazo, listos para mostrar al usuario. */
+  errors: string[];
+}
+
+/**
+ * Valida la contraseña contra la política de seguridad.
+ */
+export function checkPasswordStrength(password: string): PasswordCheck {
+  const errors: string[] = [];
+
+  if (password.length < PASSWORD_POLICY.minLength) {
+    errors.push(`Debe tener al menos ${PASSWORD_POLICY.minLength} caracteres.`);
+  }
+
+  if (password.length > PASSWORD_POLICY.maxLength) {
+    errors.push(`No puede exceder ${PASSWORD_POLICY.maxLength} caracteres.`);
+  }
+
+  if (!/[A-Za-z]/.test(password)) {
+    errors.push("Debe incluir al menos una letra.");
+  }
+
+  if (!/\d/.test(password)) {
+    errors.push("Debe incluir al menos un número.");
+  }
+
+  if (!SPECIAL_CHARACTERS.test(password)) {
+    errors.push("Debe incluir al menos un símbolo especial.");
+  }
+
+  return { valid: errors.length === 0, errors };
+}

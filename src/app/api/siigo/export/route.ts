@@ -3,7 +3,7 @@ import { z } from "zod";
 import { sql } from "drizzle-orm";
 import * as XLSX from "xlsx";
 import { getDb } from "@/lib/db/client";
-import { requireUser } from "@/lib/auth/session";
+import { requireModuleAccess } from "@/lib/auth/guard";
 import { jsonOk, handleRouteError } from "@/lib/api/response";
 import { todayIsoDate } from "@/lib/utils";
 import { exportToExcel } from "@/lib/siigo/exporter";
@@ -24,7 +24,7 @@ const exportSchema = z.object({
  */
 export async function GET() {
   try {
-    await requireUser();
+    await requireModuleAccess("integracion_siigo");
 
     const db = getDb();
     const [entryRows, invoiceRows, receiptRows] = await Promise.all([
@@ -77,7 +77,7 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
-    const user = await requireUser();
+    const user = await requireModuleAccess("integracion_siigo");
 
     const body = await request.json();
     const { format, documentId } = exportSchema.parse(body);

@@ -34,24 +34,23 @@ const ENVIRONMENTS = ["production", "preview", "development"];
 /**
  * Valores que en Vercel (serverless) difieren de los de desarrollo local.
  *
- * - `DATABASE_POOL_MAX`: el pooler en modo SESIÓN admite 15 conexiones para
- *   todo el proyecto y en Vercel cada instancia es un proceso aparte, así
- *   que el pool por instancia se mantiene bajo (2). El dashboard lanza 15
- *   consultas en paralelo, pero el modo sesión admite el pipelining de
- *   postgres.js, así que un pool pequeño no lo ralentiza de forma crítica.
+ * - `DATABASE_POOL_MAX`: la conexión principal usa el pooler en modo
+ *   TRANSACCIÓN, que no tiene el techo de 15 conexiones de Supabase. El pool
+ *   debe cubrir la consulta más pesada (el dashboard lanza 15 en paralelo) y
+ *   el semáforo del cliente garantiza que no haya más consultas en vuelo que
+ *   conexiones (el modo transacción no admite el pipelining).
+ *
+ * - `DATABASE_FALLBACK_POOL_MAX`: el respaldo usa el modo SESIÓN, cuyo pool
+ *   es de 15 conexiones para todo el proyecto: su pool por proceso es
+ *   pequeño.
  *
  * - `DATABASE_IDLE_TIMEOUT`: las instancias de Vercel se congelan cuando
  *   quedan inactivas; un socket congelado puede morir en silencio. Cerrar
  *   las conexiones ociosas pronto evita reutilizar una conexión zombi.
- *
- * - `DATABASE_FALLBACK_POOL_MAX`: el respaldo usa el pooler en modo
- *   TRANSACCIÓN, que no admite el pipelining: se cuelga si dos consultas
- *   comparten conexión. El pool debe ser >= el número de consultas
- *   simultáneas de la petición más pesada (el dashboard lanza 15).
  */
 const OVERRIDES = {
-  DATABASE_POOL_MAX: "2",
-  DATABASE_FALLBACK_POOL_MAX: "15",
+  DATABASE_POOL_MAX: "15",
+  DATABASE_FALLBACK_POOL_MAX: "2",
   DATABASE_IDLE_TIMEOUT: "30",
 };
 

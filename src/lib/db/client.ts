@@ -92,27 +92,20 @@ function getCandidateUrls(): string[] {
  * La principal y las de respaldo necesitan valores distintos, y no es
  * cosmético: cada modo del pooler de Supabase tiene una limitación distinta.
  *
- * MODO SESIÓN (puerto 5432) — principal:
- *   Soporta el pipelining de postgres.js (varias consultas en un solo envío
- *   TCP), así que un pool pequeño no molesta. Pero Supabase limita el pool a
- *   15 conexiones PARA TODO EL PROYECTO, y en Vercel cada instancia de
- *   función es un proceso aparte. Pool bajo = menos riesgo de agotarlo.
+ * MODO TRANSACCIÓN (puerto 6543) — principal:
+ *   No tiene el techo de 15 conexiones de Supabase (multiplexa), así que
+ *   aguanta cualquier número de instancias de Vercel. A cambio NO admite
+ *   el pipelining de postgres.js: dos consultas en la misma conexión dejan la
+ *   petición colgada. El semáforo de `ConnectionPool` lo evita.
  *
- * MODO TRANSACCIÓN (puerto 6543) — respaldo:
- *   No tiene el techo de 15 conexiones (multiplexa), así que aguanta la
- *   carga. PERO se cuelga si dos consultas viajan por la misma conexión:
- *   postgres.js las canaliza y Supavisor no lo tolera. Para evitarlo, el
- *   pool debe ser al menos tan grande como el número de consultas
- *   simultáneas de la petición más pesada (el dashboard lanza 15).
- *
- * Medido en este proyecto (15 consultas en paralelo):
- *   Sesión 5432, pool 1  -> OK      Transacción 6543, pool 5  -> COLGADO
- *   Sesión 5432, pool 5  -> OK      Transacción 6543, pool 15 -> OK
- *   Sesión 5432, pool 15 -> OK      Transacción 6543, pool 1  -> COLGADO
+ * MODO SESIÓN (puerto 5432) — respaldo:
+ *   Admite el pipelining, pero Supabase limita su pool a 15 conexiones PARA
+ *   TODO EL PROYECTO. Solo se usa si la principal falla, así que su pool es
+ *   pequeño.
  */
 function getPoolMaxes(count: number): number[] {
-  const primary = Number(process.env.DATABASE_POOL_MAX ?? 2);
-  const fallback = Number(process.env.DATABASE_FALLBACK_POOL_MAX ?? 15);
+  const primary = Number(process.env.DATABASE_POOL_MAX ?? 15);
+  const fallback = Number(process.env.DATABASE_FALLBACK_POOL_MAX ?? 2);
 
   return Array.from({ length: count }, (_, index) =>
     index === 0 ? primary : fallback
@@ -135,12 +128,18 @@ class ConnectionPool {
   private readonly urls: string[];
   private readonly maxes: number[];
   private readonly clients: (SqlClient | null)[];
+  /** Consultas en vuelo por candidata (semáforo). */
+  private readonly permits: number[];
+  /** Consultas esperando permiso, por candidata. */
+  private readonly waiters: Array<Array<() => void>>;
   private activeIndex = 0;
 
   constructor(urls: string[]) {
     this.urls = urls;
     this.maxes = getPoolMaxes(urls.length);
     this.clients = urls.map(() => null);
+    this.permits = urls.map(() => 0);
+    this.waiters = urls.map(() => []);
   }
 
   /** Número de candidatas disponibles. */
@@ -165,6 +164,45 @@ class ConnectionPool {
   /** Índice de la candidata preferida en este momento. */
   get preferredIndex(): number {
     return this.activeIndex;
+  }
+
+  /**
+   * Limita el número de consultas simultáneas por candidata.
+   *
+   * POR QUÉ: el pooler en MODO TRANSACCIÓN no admite que dos consultas
+   * viajen por la misma conexión. postgres.js las canaliza en un solo envío
+   * (pipelining) y el pooler se queda esperando: la petición se cuelga
+   * hasta que expira el tiempo máximo de la función.
+   *
+   * Con este semáforo nunca hay más consultas en vuelo que conexiones, así
+   * que cada conexión lleva una sola consulta. Además evita que las consultas
+   * en cola se queden huérfanas cuando el failover cambia de candidata.
+   */
+  async acquire(index: number): Promise<void> {
+    if (
+      this.permits[index] < this.maxes[index] &&
+      this.waiters[index].length === 0
+    ) {
+      this.permits[index] += 1;
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      this.waiters[index].push(resolve);
+    });
+    // El permiso se transfiere: no hay que volver a contarlo.
+  }
+
+  /** Devuelve el permiso de una consulta que terminó. */
+  release(index: number): void {
+    const next = this.waiters[index].shift();
+
+    if (next) {
+      next();
+      return;
+    }
+
+    this.permits[index] = Math.max(0, this.permits[index] - 1);
   }
 
   /**
@@ -266,6 +304,8 @@ function resilientQuery(
       const label = pool.labelAtIndex(index);
       const nextLabel = pool.labelAtIndex(pool.indexFrom(start, offset + 1));
 
+      await pool.acquire(index);
+
       try {
         const result = await run(pool.clientAtIndex(index));
 
@@ -291,6 +331,8 @@ function resilientQuery(
 
         // Un corte de red o una resolución DNS lenta se recupera en unos ms.
         await sleep(700 * (offset + 1));
+      } finally {
+        pool.release(index);
       }
     }
 
@@ -366,6 +408,8 @@ function resilientBegin(pool: ConnectionPool, args: unknown[]): Promise<unknown>
     const label = pool.labelAtIndex(index);
     const client = pool.clientAtIndex(index);
 
+    await pool.acquire(index);
+
     try {
       const result = await (options
         ? client.begin(options as never, fn as never)
@@ -385,6 +429,8 @@ function resilientBegin(pool: ConnectionPool, args: unknown[]): Promise<unknown>
 
       await sleep(700 * (offset + 1));
       return attempt(offset + 1);
+    } finally {
+      pool.release(index);
     }
   };
 

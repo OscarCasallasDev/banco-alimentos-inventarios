@@ -131,6 +131,13 @@ const MIGRATION_CHECKS = {
     select to_regclass('public.mv_stock_by_bodega') is not null
        and (select count(*) from pg_matviews
              where schemaname='public' and matviewname='mv_stock_consolidated') > 0 as done`,
+  "0017_permisos_por_usuario.sql": `
+    select to_regclass('public.user_modules') is not null
+       and exists (
+         select 1 from pg_type t
+         join pg_enum e on e.enumtypid = t.oid
+         where t.typname = 'user_role' and e.enumlabel = 'COORDINADOR'
+       ) as done`,
 };
 
 async function isAlreadyApplied(sql, file) {

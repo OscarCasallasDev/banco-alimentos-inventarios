@@ -23,6 +23,19 @@ function getNextPath(): string {
   return next;
 }
 
+/**
+ * Destino final del login.
+ *
+ * Si el usuario venía de una URL concreta (?next=...), se respeta: el layout
+ * protegido le dirá si no tiene permiso para ella. Si no, se entra al primer
+ * módulo autorizado, que devuelve el backend.
+ */
+function resolveTarget(defaultPath?: string): string {
+  const next = getNextPath();
+  if (next !== "/dashboard") return next;
+  return defaultPath ?? next;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [view, setView] = useState<View>("login");
@@ -82,7 +95,9 @@ export default function LoginPage() {
 
       // Navegación desde el cliente: evita recargar toda la página y
       // garantiza que el layout protegido valide la sesión en el servidor.
-      router.replace(getNextPath());
+      // El backend indica el primer módulo al que el usuario tiene acceso:
+      // así nadie aterriza en una pantalla de «acceso restringido».
+      router.replace(resolveTarget(data?.data?.defaultPath));
       router.refresh();
     } catch {
       setError("Error de conexión. Verifica tu internet e intenta nuevamente.");

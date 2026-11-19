@@ -22,6 +22,7 @@ interface HeaderProps {
 const roleLabels: Record<SessionUser["role"], string> = {
   SUPERADMIN: "Super Administrador",
   ADMIN: "Administrador",
+  COORDINADOR: "Coordinador",
   ALMACENISTA: "Almacenista",
   RECEPCION: "Recepción",
   DESPACHO: "Despacho",

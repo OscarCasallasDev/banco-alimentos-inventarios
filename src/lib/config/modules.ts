@@ -58,6 +58,7 @@ export type ModuleKey =
 export type UserRole =
   | "SUPERADMIN"
   | "ADMIN"
+  | "COORDINADOR"
   | "ALMACENISTA"
   | "RECEPCION"
   | "DESPACHO"
@@ -82,11 +83,18 @@ export interface ModuleDefinition {
 }
 
 const ADMIN_ROLES: UserRole[] = ["SUPERADMIN", "ADMIN"];
-const ALMACEN_ROLES: UserRole[] = ["SUPERADMIN", "ADMIN", "ALMACENISTA", "RECEPCION"];
+const ALMACEN_ROLES: UserRole[] = [
+  "SUPERADMIN",
+  "ADMIN",
+  "COORDINADOR",
+  "ALMACENISTA",
+  "RECEPCION",
+];
 const DESPACHO_ROLES: UserRole[] = ["SUPERADMIN", "ADMIN", "DESPACHO"];
 const TODO: UserRole[] = [
   "SUPERADMIN",
   "ADMIN",
+  "COORDINADOR",
   "ALMACENISTA",
   "RECEPCION",
   "DESPACHO",

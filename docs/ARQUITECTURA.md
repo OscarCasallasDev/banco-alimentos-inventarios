@@ -236,7 +236,7 @@ Sistema → POST /api/siigo/export { format, documentId? }
 | Componente | Plataforma | Método |
 |---|---|---|
 | Frontend | Vercel | Git-based deployment (rama `main`) |
-| Base de datos | Supabase | PostgreSQL managed (pooler modo **sesión** + respaldo en modo **transacción**) |
+| Base de datos | Supabase | PostgreSQL managed (pooler modo **transacción** + respaldo en modo **sesión**) |
 | Variables | Vercel + Supabase | ver tabla abajo |
 
 Variables requeridas en producción (Vercel → Settings → Environment Variables,
@@ -244,11 +244,11 @@ para Production, Preview y Development):
 
 | Variable | Requerida | Para qué sirve |
 |---|---|---|
-| `DATABASE_URL` | Sí | Conexión principal: pooler modo sesión (5432) |
-| `DATABASE_FALLBACK_URLS` | No | Respaldo automático: pooler modo transacción (6543) |
+| `DATABASE_URL` | Sí | Conexión principal: pooler modo transacción (6543) |
+| `DATABASE_FALLBACK_URLS` | No | Respaldo automático: pooler modo sesión (5432) |
 | `SESSION_SECRET` | Sí | Firma de la cookie de sesión (mín. 32 caracteres) |
-| `DATABASE_POOL_MAX` | No | Pool de la principal. `2` (el modo sesión admite 15 en total) |
-| `DATABASE_FALLBACK_POOL_MAX` | No | Pool del respaldo. `15` (el modo transacción no admite pipelining) |
+| `DATABASE_POOL_MAX` | No | Pool de la principal. `15` |
+| `DATABASE_FALLBACK_POOL_MAX` | No | Pool del respaldo. `2` |
 | `DATABASE_IDLE_TIMEOUT` | No | Cierre de conexiones ociosas. `30` en Vercel (instancias congeladas) |
 | `SUPABASE_URL` | No | API de Storage (importación de Siigo) |
 | `SUPABASE_SECRET_KEY` | No | Acceso con permisos a Storage. Requerido para subir el .xlsx de Siigo |
@@ -264,12 +264,12 @@ para Production, Preview y Development):
 > | Pipelining de postgres.js | ✅ funciona | ❌ se cuelga |
 > | Conexiones simultáneas | ❌ máximo 15 en todo el proyecto | ✅ multiplexa |
 >
-> El dashboard lanza 15 consultas en paralelo, así que la principal debe
-> admitir pipelining → modo sesión. Pero en Vercel cada instancia es un
-> proceso aparte y el pool de 15 se agota con una ráfaga → el respaldo en
-> modo transacción (con pool grande) absorbe esa carga. Medido con 15
-> consultas en paralelo: sesión pool=1 → OK, transacción pool=5 → COLGADO,
-> transacción pool=15 → OK.
+> La principal es la de **transacción** porque en Vercel cada instancia es
+> un proceso aparte y el pool de 15 se agota con una ráfaga de navegación. El
+> **semáforo** del cliente (`ConnectionPool.acquire/release`) garantiza que
+> nunca haya más consultas en vuelo que conexiones, que es lo que el modo
+> transacción exige. La de **sesión** queda como respaldo: admite el
+> pipelining y solo se usa si la principal falla.
 >
 > Sin `DATABASE_URL` la aplicación compila pero **todas las rutas que tocan la
 > base de datos fallan**. La API responde `503 CONFIGURATION_ERROR` con el

@@ -16,7 +16,7 @@
 import { cookies } from "next/headers";
 import { cache } from "react";
 import { createHmac, timingSafeEqual } from "crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { unauthorizedError, forbiddenError } from "@/lib/utils/errors";
@@ -36,6 +36,13 @@ export interface SessionUser {
   lastName: string;
   role: UserRole;
   status: UserStatus;
+  /**
+   * Módulos a los que el usuario tiene acceso (tabla `user_modules`).
+   *
+   * El superadmin los tiene todos: nunca puede quedar bloqueado por sus
+   * propios permisos.
+   */
+  modules: string[];
 }
 
 /**
@@ -144,6 +151,11 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
       lastName: users.lastName,
       role: users.role,
       status: users.status,
+      // Módulos autorizados: subconsulta para no añadir un segundo round-trip.
+      modules: sql<string[]>`coalesce(
+        (select array_agg(um.module_key) from "user_modules" um where um."user_id" = ${users.id}),
+        '{}'::varchar[]
+      )`,
     })
     .from(users)
     .where(eq(users.id, userId))
@@ -151,7 +163,10 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
 
   if (!user || user.status !== "ACTIVE") return null;
 
-  return user;
+  return {
+    ...user,
+    modules: [...(user.modules ?? [])],
+  };
 });
 
 /**

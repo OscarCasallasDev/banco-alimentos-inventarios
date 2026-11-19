@@ -20,9 +20,13 @@ interface SidebarProps {
 /**
  * Navegación lateral.
  *
- * Los módulos que se muestran dependen de DOS cosas:
+ * Los módulos que se muestran dependen de TRES cosas:
  *   1. La bandera del módulo (`feature_flags`) — reversible por el administrador.
- *   2. El rol del usuario.
+ *   2. Los permisos individuales del usuario (`user_modules`): el superadmin
+ *      decide a qué módulos entra cada persona.
+ *   3. El superadmin, que ve todos los módulos activos.
+ *
+ * La CONFIGURACIÓN siempre aparece: es donde cada usuario gestiona su cuenta.
  *
  * Los módulos en espera NO aparecen, pero sus rutas, tablas y datos siguen
  * intactos: se pueden reactivar desde Configuración sin reconstruir nada.
@@ -42,7 +46,9 @@ export default function Sidebar({
   const navigation = MODULE_ORDER.filter((key: ModuleKey) => {
     const definition = MODULES[key];
     if (!enabled.has(definition.flag)) return false;
-    return definition.roles.includes(user.role);
+    if (key === "configuracion") return true;
+    if (user.role === "SUPERADMIN") return true;
+    return user.modules.includes(key);
   }).map((key) => ({ key, ...MODULES[key] }));
 
   async function handleLogout() {

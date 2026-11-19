@@ -1,5 +1,5 @@
 import { getDb } from "@/lib/db/client";
-import { requireUser } from "@/lib/auth/session";
+import { requireModuleAccess } from "@/lib/auth/guard";
 import { jsonOk, handleRouteError } from "@/lib/api/response";
 import { listInventory } from "@/lib/services/inventory.service";
 import { inventoryQuerySchema } from "@/lib/validations/schemas";
@@ -13,7 +13,7 @@ import { inventoryQuerySchema } from "@/lib/validations/schemas";
  */
 export async function GET(request: Request) {
   try {
-    await requireUser();
+    await requireModuleAccess("inventario");
 
     const { searchParams } = new URL(request.url);
     const filters = inventoryQuerySchema.parse(

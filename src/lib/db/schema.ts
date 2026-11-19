@@ -20,6 +20,7 @@ import {
   jsonb,
   uniqueIndex,
   index,
+  primaryKey,
   pgEnum,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
@@ -36,6 +37,7 @@ export const userRoleEnum = pgEnum("user_role", [
   "RECEPCION",
   "DESPACHO",
   "CONTABILIDAD",
+  "COORDINADOR",
 ]);
 
 export const userStatusEnum = pgEnum("user_status", [
@@ -242,7 +244,8 @@ export const users = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     username: varchar("username", { length: 100 }).notNull().unique(),
-    email: varchar("email", { length: 255 }).notNull(),
+    /** Opcional: el formulario de alta solo pide nombre, apellido, clave y rol. */
+    email: varchar("email", { length: 255 }),
     passwordHash: text("password_hash").notNull(),
     firstName: varchar("first_name", { length: 100 }).notNull(),
     lastName: varchar("last_name", { length: 100 }).notNull(),
@@ -269,6 +272,33 @@ export const roles = pgTable("roles", {
   permissions: text("permissions").array().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+// ---------- user_modules ----------
+
+/**
+ * Módulos autorizados para cada usuario.
+ *
+ * El superadmin decide, al crear el usuario, a qué módulos tiene acceso.
+ * Es la fuente de verdad de la navegación y del acceso a las rutas: el
+ * backend valida contra esta tabla, no contra lo que se ve en pantalla.
+ *
+ * La clave primaria compuesta impide que un módulo se guarde dos veces
+ * para el mismo usuario.
+ */
+export const userModules = pgTable(
+  "user_modules",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    moduleKey: varchar("module_key", { length: 64 }).notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.moduleKey] }),
+    index("idx_user_modules_user").on(table.userId),
+  ]
+);
 
 // ---------- categories ----------
 

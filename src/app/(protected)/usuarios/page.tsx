@@ -1,48 +1,78 @@
 "use client";
 
-import { Users, Plus, Search, Edit, Trash2, X, AlertCircle } from "lucide-react";
+import {
+  Users,
+  Plus,
+  Search,
+  Edit,
+  Trash2,
+  X,
+  AlertCircle,
+  Check,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApiQuery } from "@/hooks/useApiQuery";
 import QueryError from "@/components/ui/QueryError";
 import { useToast } from "@/components/ui/Toast";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface User {
   id: string;
   username: string;
-  email: string;
+  email: string | null;
   firstName: string;
   lastName: string;
-  role: "SUPERADMIN" | "ADMIN" | "RECEPCION" | "DESPACHO" | "CONTABILIDAD";
+  role: string;
   status: "ACTIVE" | "INACTIVE" | "SUSPENDED";
   lastLoginAt: string | null;
   createdAt: string;
+  /** Módulos a los que tiene acceso. */
+  modules: string[];
+}
+
+/** Módulo disponible para asignar (viene de las banderas del sistema). */
+interface ModuleItem {
+  module: string;
+  label: string;
+  description: string;
+  enabled: boolean;
 }
 
 const roleLabels: Record<string, string> = {
   SUPERADMIN: "Super Admin",
   ADMIN: "Administrador",
+  COORDINADOR: "Coordinador",
+  ALMACENISTA: "Almacenista",
   RECEPCION: "Recepción",
   DESPACHO: "Despacho",
   CONTABILIDAD: "Contabilidad",
 };
 
-const emptyForm: {
-  username: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  password: string;
-  role: "SUPERADMIN" | "ADMIN" | "RECEPCION" | "DESPACHO" | "CONTABILIDAD";
-  status: "ACTIVE" | "INACTIVE" | "SUSPENDED";
-} = {
-  username: "",
-  email: "",
+/** Reglas de seguridad de la contraseña (las mismas que valida el backend). */
+const PASSWORD_RULES = [
+  { test: (v: string) => v.length >= 8, message: "Al menos 8 caracteres" },
+  { test: (v: string) => /[A-Za-z]/.test(v), message: "Al menos una letra" },
+  { test: (v: string) => /\d/.test(v), message: "Al menos un número" },
+  {
+    test: (v: string) => /[^A-Za-z0-9]/.test(v),
+    message: "Al menos un símbolo especial",
+  },
+];
+
+function passwordErrors(password: string): string[] {
+  if (!password) return [];
+  return PASSWORD_RULES.filter((rule) => !rule.test(password)).map(
+    (rule) => rule.message
+  );
+}
+
+const emptyForm = {
   firstName: "",
   lastName: "",
   password: "",
-  role: "RECEPCION",
-  status: "ACTIVE",
+  role: "",
+  status: "ACTIVE" as "ACTIVE" | "INACTIVE" | "SUSPENDED",
+  modules: [] as string[],
 };
 
 export default function UsuariosPage() {
@@ -56,33 +86,83 @@ export default function UsuariosPage() {
     refetch: refetchUsers,
   } = useApiQuery<User[]>("/api/usuarios");
 
+  // Módulos disponibles: los que están activos en el sistema.
+  const { data: moduleData } = useApiQuery<{ items: ModuleItem[] }>(
+    "/api/configuracion/modulos"
+  );
+  const availableModules = (moduleData?.items ?? []).filter(
+    (item) => item.enabled
+  );
+
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [suggested, setSuggested] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   function openCreate() {
     setForm(emptyForm);
     setEditingId(null);
+    setSuggested("");
     setError("");
     setShowModal(true);
   }
 
   function openEdit(user: User) {
     setForm({
-      username: user.username,
-      email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
       password: "",
       role: user.role,
       status: user.status,
+      modules: user.modules ?? [],
     });
     setEditingId(user.id);
+    setSuggested(user.username);
     setError("");
     setShowModal(true);
+  }
+
+  // Nombre de usuario propuesto: se consulta al backend para descartar
+  // duplicados. Es solo una sugerencia: el que vale es el que asigne el
+  // backend al crear la cuenta.
+  useEffect(() => {
+    if (editingId) return;
+
+    const first = form.firstName.trim();
+    const last = form.lastName.trim();
+
+    const timer = setTimeout(async () => {
+      if (!first || !last) {
+        setSuggested("");
+        return;
+      }
+
+      try {
+        const res = await fetch(
+          `/api/usuarios/username?firstName=${encodeURIComponent(
+            first
+          )}&lastName=${encodeURIComponent(last)}`
+        );
+        const data = await res.json();
+        if (res.ok) setSuggested(data?.data?.username ?? "");
+      } catch {
+        setSuggested("");
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [form.firstName, form.lastName, editingId]);
+
+  function toggleModule(moduleKey: string) {
+    setForm((current) => ({
+      ...current,
+      modules: current.modules.includes(moduleKey)
+        ? current.modules.filter((key) => key !== moduleKey)
+        : [...current.modules, moduleKey],
+    }));
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -90,14 +170,34 @@ export default function UsuariosPage() {
     setSaving(true);
     setError("");
 
+    // La contraseña se valida en el cliente para dar el aviso al instante.
+    if (!editingId) {
+      const failures = passwordErrors(form.password);
+      if (failures.length > 0) {
+        setError(`La contraseña debe cumplir: ${failures.join(", ")}.`);
+        setSaving(false);
+        return;
+      }
+    }
+
     try {
       const url = editingId ? `/api/usuarios/${editingId}` : "/api/usuarios";
       const method = editingId ? "PUT" : "POST";
 
+      const body = editingId
+        ? { role: form.role, status: form.status, modules: form.modules }
+        : {
+            firstName: form.firstName,
+            lastName: form.lastName,
+            password: form.password,
+            role: form.role,
+            modules: form.modules,
+          };
+
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(body),
       });
 
       const data = await res.json();
@@ -106,6 +206,14 @@ export default function UsuariosPage() {
         setError(data.error?.message || "Error al guardar");
         return;
       }
+
+      showToast(
+        "success",
+        editingId ? "Usuario actualizado" : "Usuario creado",
+        editingId
+          ? `Los permisos de ${data.data?.username} se guardaron.`
+          : `El usuario ${data.data?.username} ya puede iniciar sesión.`
+      );
 
       setShowModal(false);
       refetchUsers();
@@ -166,19 +274,27 @@ export default function UsuariosPage() {
     SUSPENDED: "bg-red-100 text-red-800",
   };
 
+  const labelByModule = new Map(
+    availableModules.map((item) => [item.module, item.label])
+  );
+
+  const passwordFailures = passwordErrors(form.password);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Usuarios</h1>
-          <p className="text-gray-600 mt-1">Gestión de usuarios del sistema</p>
+          <p className="text-gray-600 mt-1">
+            Gestión de usuarios y permisos de acceso del sistema
+          </p>
         </div>
         <button
           onClick={openCreate}
           className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
         >
           <Plus className="w-4 h-4" />
-          Nuevo Usuario
+          Crear nuevo usuario
         </button>
       </div>
 
@@ -205,6 +321,7 @@ export default function UsuariosPage() {
                 <th className="text-left py-3 px-4 font-medium text-gray-600">Usuario</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">Nombre</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">Rol</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">Módulos</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">Estado</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">Acciones</th>
               </tr>
@@ -212,7 +329,7 @@ export default function UsuariosPage() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center text-gray-500">
+                  <td colSpan={6} className="py-12 text-center text-gray-500">
                     <div className="flex items-center justify-center gap-2">
                       <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600" />
                       Cargando...
@@ -221,24 +338,60 @@ export default function UsuariosPage() {
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center text-gray-500">
+                  <td colSpan={6} className="py-12 text-center text-gray-500">
                     <Users className="w-10 h-10 mx-auto mb-2 text-gray-300" />
                     No hay usuarios registrados
                   </td>
                 </tr>
               ) : (
                 filtered.map((user) => (
-                  <tr key={user.id} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="py-3 px-4 font-mono text-gray-900">{user.username}</td>
-                    <td className="py-3 px-4 text-gray-900">{user.firstName} {user.lastName}</td>
+                  <tr
+                    key={user.id}
+                    className="border-b border-gray-100 hover:bg-gray-50"
+                  >
+                    <td className="py-3 px-4 font-mono text-gray-900">
+                      {user.username}
+                    </td>
+                    <td className="py-3 px-4 text-gray-900">
+                      {user.firstName} {user.lastName}
+                    </td>
                     <td className="py-3 px-4">
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
-                        {roleLabels[user.role]}
+                        {roleLabels[user.role] ?? user.role}
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      <span className={cn("inline-flex items-center px-2 py-1 rounded-full text-xs font-medium", statusColors[user.status])}>
-                        {user.status === "ACTIVE" ? "Activo" : user.status === "INACTIVE" ? "Inactivo" : "Suspendido"}
+                      <div className="flex flex-wrap gap-1">
+                        {user.role === "SUPERADMIN" ? (
+                          <span className="text-xs text-gray-500">
+                            Acceso completo
+                          </span>
+                        ) : user.modules.length === 0 ? (
+                          <span className="text-xs text-gray-400">Ninguno</span>
+                        ) : (
+                          user.modules.map((key) => (
+                            <span
+                              key={key}
+                              className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700"
+                            >
+                              {labelByModule.get(key) ?? key}
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span
+                        className={cn(
+                          "inline-flex items-center px-2 py-1 rounded-full text-xs font-medium",
+                          statusColors[user.status]
+                        )}
+                      >
+                        {user.status === "ACTIVE"
+                          ? "Activo"
+                          : user.status === "INACTIVE"
+                            ? "Inactivo"
+                            : "Suspendido"}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-right">
@@ -272,101 +425,145 @@ export default function UsuariosPage() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <h2 className="text-lg font-semibold text-gray-900">
-                {editingId ? "Editar Usuario" : "Nuevo Usuario"}
+                {editingId ? "Editar Usuario" : "Crear nuevo usuario"}
               </h2>
-              <button onClick={() => setShowModal(false)} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg">
+              <button
+                onClick={() => setShowModal(false)}
+                className="p-2 text-gray-400 hover:text-gray-600 rounded-lg"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSave} className="p-6 space-y-4">
               {error && (
-                <div className="flex items-center gap-2 bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm">
-                  <AlertCircle className="w-4 h-4" />
+                <div className="flex items-start gap-2 bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm">
+                  <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                   {error}
                 </div>
               )}
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Usuario *</label>
-                <input
-                  type="text"
-                  value={form.username}
-                  onChange={(e) => setForm({ ...form, username: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico *</label>
-                <input
-                  type="email"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  required
-                  placeholder="usuario@bancoalimentos.org"
-                />
-              </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nombre *
+                  </label>
                   <input
                     type="text"
                     value={form.firstName}
-                    onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+                    onChange={(e) =>
+                      setForm({ ...form, firstName: e.target.value })
+                    }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                     required
+                    disabled={Boolean(editingId)}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Apellido *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Apellido *
+                  </label>
                   <input
                     type="text"
                     value={form.lastName}
-                    onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+                    onChange={(e) =>
+                      setForm({ ...form, lastName: e.target.value })
+                    }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                     required
+                    disabled={Boolean(editingId)}
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Contraseña {!editingId && "*"}
-                </label>
-                <input
-                  type="password"
-                  value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  required={!editingId}
-                  placeholder={editingId ? "Dejar vacío para no cambiar" : ""}
-                />
+              {/* El nombre de usuario se arma solo con nombre y apellido. */}
+              <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                <p className="text-xs font-medium text-gray-600">
+                  Nombre de usuario generado
+                </p>
+                <p className="font-mono text-sm text-gray-900 mt-0.5">
+                  {editingId
+                    ? suggested
+                    : suggested || "Escriba el nombre y el apellido"}
+                </p>
+                {!editingId && suggested && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Es el nombre con el que el usuario inicia sesión.
+                  </p>
+                )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              {!editingId && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Rol *</label>
-                  <select
-                    value={form.role}
-                    onChange={(e) => setForm({ ...form, role: e.target.value as "SUPERADMIN" | "ADMIN" | "RECEPCION" | "DESPACHO" | "CONTABILIDAD" })}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Contraseña *
+                  </label>
+                  <input
+                    type="password"
+                    value={form.password}
+                    onChange={(e) =>
+                      setForm({ ...form, password: e.target.value })
+                    }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  >
-                    <option value="SUPERADMIN">Super Admin</option>
-                    <option value="ADMIN">Administrador</option>
-                    <option value="RECEPCION">Recepción</option>
-                    <option value="DESPACHO">Despacho</option>
-                    <option value="CONTABILIDAD">Contabilidad</option>
-                  </select>
+                    required
+                    autoComplete="new-password"
+                  />
+                  {passwordFailures.length > 0 && (
+                    <ul className="mt-2 space-y-0.5">
+                      {passwordFailures.map((failure) => (
+                        <li
+                          key={failure}
+                          className="text-xs text-red-600 flex items-center gap-1"
+                        >
+                          <AlertCircle className="w-3 h-3" />
+                          {failure}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {form.password && passwordFailures.length === 0 && (
+                    <p className="mt-2 text-xs text-green-700 flex items-center gap-1">
+                      <Check className="w-3 h-3" />
+                      La contraseña cumple la política de seguridad.
+                    </p>
+                  )}
                 </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Rol *
+                </label>
+                <input
+                  type="text"
+                  value={form.role}
+                  onChange={(e) => setForm({ ...form, role: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  required
+                  placeholder="almacenista"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Se escribe a mano y se normaliza: «Almacenista», «ALMACENISTA»
+                  y «almacenista» son el mismo rol.
+                </p>
+              </div>
+
+              {editingId && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Estado
+                  </label>
                   <select
                     value={form.status}
-                    onChange={(e) => setForm({ ...form, status: e.target.value as "ACTIVE" | "INACTIVE" | "SUSPENDED" })}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        status: e.target.value as
+                          | "ACTIVE"
+                          | "INACTIVE"
+                          | "SUSPENDED",
+                      })
+                    }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                   >
                     <option value="ACTIVE">Activo</option>
@@ -374,13 +571,61 @@ export default function UsuariosPage() {
                     <option value="SUSPENDED">Suspendido</option>
                   </select>
                 </div>
+              )}
+
+              {/* Permisos de acceso a módulos. */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Permisos de acceso a módulos
+                </label>
+                <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-56 overflow-y-auto">
+                  {availableModules.length === 0 ? (
+                    <p className="px-4 py-3 text-sm text-gray-500">
+                      No hay módulos activos en el sistema.
+                    </p>
+                  ) : (
+                    availableModules.map((item) => (
+                      <label
+                        key={item.module}
+                        className="flex items-start gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={form.modules.includes(item.module)}
+                          onChange={() => toggleModule(item.module)}
+                          className="mt-1 w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        />
+                        <span>
+                          <span className="block text-sm text-gray-900">
+                            {item.label}
+                          </span>
+                          <span className="block text-xs text-gray-500">
+                            {item.description}
+                          </span>
+                        </span>
+                      </label>
+                    ))
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  El usuario solo podrá ver y usar los módulos marcados. La
+                  configuración de su cuenta siempre está disponible.
+                </p>
               </div>
 
               <div className="flex justify-end gap-3 pt-4">
-                <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
                   Cancelar
                 </button>
-                <button type="submit" disabled={saving} className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
+                >
                   {saving ? "Guardando..." : "Guardar"}
                 </button>
               </div>

@@ -30,10 +30,50 @@ export type Permission = (typeof PERMISSIONS)[number];
 export type RoleName =
   | "SUPERADMIN"
   | "ADMIN"
+  | "COORDINADOR"
   | "ALMACENISTA"
   | "RECEPCION"
   | "DESPACHO"
   | "CONTABILIDAD";
+
+/**
+ * Alias de escritura libre -> rol real.
+ *
+ * El superadmin escribe el rol a mano, así que «Almacenista», «ALMACENISTA»
+ * y «almacenista» deben reconocer el mismo rol, igual que «administrador»
+ * o «  Almacenista  ».
+ */
+const ROLE_ALIASES: Record<string, RoleName> = {
+  SUPERADMIN: "SUPERADMIN",
+  "SUPER ADMIN": "SUPERADMIN",
+  SUPERADMINISTRADOR: "SUPERADMIN",
+  ADMIN: "ADMIN",
+  ADMINISTRADOR: "ADMIN",
+  COORDINADOR: "COORDINADOR",
+  COORDINACION: "COORDINADOR",
+  ALMACENISTA: "ALMACENISTA",
+  ALMACEN: "ALMACENISTA",
+  RECEPCION: "RECEPCION",
+  RECEPCIONISTA: "RECEPCION",
+  DESPACHO: "DESPACHO",
+  DESPACHADOR: "DESPACHO",
+  CONTABILIDAD: "CONTABILIDAD",
+  CONTADOR: "CONTABILIDAD",
+};
+
+/**
+ * Normaliza el rol escrito a mano y devuelve el rol real.
+ *
+ * @returns el rol normalizado, o `null` si no corresponde a ninguno.
+ */
+export function normalizeRole(input: string): RoleName | null {
+  const key = input.trim().replace(/\s+/g, " ").toUpperCase();
+  return ROLE_ALIASES[key] ?? null;
+}
+
+/** Rol escrito a mano -> rol normalizado, para mostrarlo en la interfaz. */
+export const ROLE_INPUT_HINT =
+  "Ejemplos: almacenista, coordinador, despacho, administrador.";
 
 /** Matriz inicial (semilla). La base de datos es la fuente de verdad. */
 export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, Permission[]> = {
@@ -55,6 +95,17 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, Permission[]> = {
     "users.manage",
     "settings.manage",
     "modules.toggle",
+  ],
+  COORDINADOR: [
+    "inventory.read",
+    "salidas.read",
+    "salidas.create",
+    "salidas.edit",
+    "salidas.generate",
+    "salidas.view_document",
+    "salidas.receive",
+    "siigo.import.read",
+    "programs.manage",
   ],
   ALMACENISTA: [
     "inventory.read",
@@ -97,4 +148,27 @@ export function roleHasPermission(
   stored?: string[] | null
 ): boolean {
   return permissionsForRole(role, stored).includes(permission);
+}
+
+/**
+ * Indica si el usuario puede entrar a un módulo.
+ *
+ * Tres reglas, en este orden:
+ *   1. La CONFIGURACIÓN siempre es accesible: es donde cada usuario gestiona
+ *      su nombre de usuario y su contraseña.
+ *   2. El superadmin entra siempre: no puede quedar bloqueado por sus
+ *      propios permisos.
+ *   3. Los demás entran solo a los módulos que el superadmin les autorizó
+ *      (tabla `user_modules`).
+ *
+ * @param moduleKey Clave del módulo (ver `lib/config/modules`).
+ */
+export function canAccessModule(
+  role: string,
+  modules: string[],
+  moduleKey: string
+): boolean {
+  if (moduleKey === "configuracion") return true;
+  if (role === "SUPERADMIN") return true;
+  return modules.includes(moduleKey);
 }

@@ -29,10 +29,11 @@ export const CONNECTION_ERROR_CODES = new Set([
   "08006", // connection_failure
   "53300", // too_many_connections
   "53400", // configuration_limit_exceeded
+  "57014", // query_canceled (incluye "canceling statement due to statement timeout")
 ]);
 
 const CONNECTION_MESSAGE_PATTERN =
-  /getaddrinfo|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|CONNECT_TIMEOUT|connection terminated|terminating connection|server closed the connection|EMAXCONNSESSION|max clients reached|too many clients|too many connections|connection limit exceeded/i;
+  /getaddrinfo|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|CONNECT_TIMEOUT|connection terminated|terminating connection|server closed the connection|EMAXCONNSESSION|max clients reached|too many clients|too many connections|connection limit exceeded|statement timeout/i;
 
 /**
  * Revisa un error y toda su cadena de `cause`.

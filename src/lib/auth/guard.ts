@@ -15,7 +15,7 @@ import {
   permissionsForRole,
   type Permission,
 } from "@/lib/auth/permissions";
-import { MODULES, type ModuleKey } from "@/lib/config/modules";
+import { MODULES, moduleForApiScope, type ModuleKey } from "@/lib/config/modules";
 import { isFeatureEnabled } from "@/lib/config/features";
 import { cached } from "@/lib/cache/memory-cache";
 
@@ -95,9 +95,16 @@ export async function requireAnyPermission(
 }
 
 /**
- * Exige que el módulo esté habilitado y que el rol tenga acceso.
+ * Exige que el módulo esté habilitado y que el usuario tenga acceso.
  *
- * Se usa en las rutas API de los módulos que pueden quedar en espera.
+ * El acceso a un módulo se decide en DOS lugares y ambos deben cumplirse:
+ *
+ *   1. La bandera del módulo (`feature_flags`): decide si el módulo opera.
+ *   2. Los permisos individuales del usuario (`user_modules`): el superadmin
+ *      decide a qué módulos entra cada persona.
+ *
+ * El SUPERADMIN siempre pasa: no puede quedar bloqueado por sus propios
+ * permisos.
  */
 export async function requireModuleAccess(
   module: ModuleKey
@@ -116,9 +123,32 @@ export async function requireModuleAccess(
     );
   }
 
-  if (!definition.roles.includes(user.role)) {
+  if (user.role === "SUPERADMIN") {
+    return user;
+  }
+
+  if (!user.modules.includes(module)) {
     throw forbiddenError(
-      `Su rol no tiene acceso al módulo "${definition.label}".`
+      `Su usuario no tiene acceso al módulo "${definition.label}".`
+    );
+  }
+
+  return user;
+}
+
+/**
+ * Exige una sesión de SUPERADMIN.
+ *
+ * La administración de usuarios, roles, permisos y banderas es exclusiva del
+ * superadmin: ningún otro rol puede llegar a ella ni por la interfaz ni
+ * llamando directamente a la API.
+ */
+export async function requireSuperAdmin(): Promise<SessionUser> {
+  const user = await requireUser();
+
+  if (user.role !== "SUPERADMIN") {
+    throw forbiddenError(
+      "Esta operación es exclusiva del superadministrador."
     );
   }
 
@@ -142,6 +172,26 @@ export async function requireModulePermission(
   }
 
   return user;
+}
+
+/**
+ * Autoriza una petición de API según el módulo al que pertenece su ruta.
+ *
+ * Evita que un usuario entre a un módulo por la puerta de atrás: aunque la
+ * interfaz no le muestre el enlace, la API rechaza la operación.
+ *
+ * Las rutas que no pertenecen a ningún módulo (catálogos auxiliares) solo
+ * exigen sesión.
+ */
+export async function requireApiModule(request: Request): Promise<SessionUser> {
+  const pathname = new URL(request.url).pathname;
+  const moduleKey = moduleForApiScope(pathname);
+
+  if (!moduleKey) {
+    return requireUser();
+  }
+
+  return requireModuleAccess(moduleKey);
 }
 
 // ============================================================
