@@ -34,27 +34,22 @@ const ENVIRONMENTS = ["production", "preview", "development"];
 /**
  * Valores que en Vercel (serverless) difieren de los de desarrollo local.
  *
- * - `DATABASE_POOL_MAX`: el pooler de Supabase en modo sesión admite un
- *   máximo de 15 conexiones simultáneas PARA TODO EL PROYECTO. En Vercel
- *   cada instancia de función es un proceso independiente, así que un `max`
- *   alto agota el pool y provoca
- *   "(EMAXCONNSESSION) max clients reached in session mode".
+ * - `DATABASE_POOL_MAX`: con el pooler en modo TRANSACCIÓN el límite ya no
+ *   son las 15 conexiones de Supabase (ese pooler multiplexa), así que se
+ *   puede permitir un pool más grande por proceso. Aun así se mantiene
+ *   moderado: en Vercel cada instancia es un proceso aparte y un pool
+ *   grande multiplica el consumo de conexiones del servidor.
  *
  * - `DATABASE_IDLE_TIMEOUT`: las instancias de Vercel se congelan cuando
  *   quedan inactivas; un socket congelado puede morir en silencio. Cerrar
  *   las conexiones ociosas pronto evita reutilizar una conexión zombi.
  *
- * - `DATABASE_FALLBACK_URLS`: el pooler en MODO TRANSACCIÓN (puerto 6543)
- *   queda vacío a propósito. Medido en este proyecto, ese modo se bloquea
- *   de forma intermitente al encadenar una transacción con consultas
- *   paralelas (postgres.js las canaliza) y deja la petición colgada para
- *   siempre. Un respaldo que cuelga es peor que no tener respaldo: el
- *   error real se reporta al instante con la conexión principal.
+ * `DATABASE_FALLBACK_URLS` NO se sobrescribe: se toma de `.env.local`, que
+ * ya apunta al pooler en modo sesión (5432) como red de seguridad.
  */
 const OVERRIDES = {
-  DATABASE_POOL_MAX: "2",
+  DATABASE_POOL_MAX: "5",
   DATABASE_IDLE_TIMEOUT: "30",
-  DATABASE_FALLBACK_URLS: "",
 };
 
 /**

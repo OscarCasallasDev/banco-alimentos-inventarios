@@ -91,15 +91,38 @@ En **Settings > Database → Connection string**, copiar la del **Pooler** en
 modo **Session** (puerto `5432`):
 
 ```
-postgresql://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres
+postgresql://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres
 ```
 
-> ⚠️ **No usar el modo Transaction (puerto 6543).** Medido en este proyecto,
-> ese modo se bloquea de forma intermitente al encadenar una transacción con
-> consultas paralelas (postgres.js las canaliza por la misma conexión) y
-> deja la petición colgada para siempre. Además, el modo Session es el
-> único que respeta correctamente los `pg_advisory_xact_lock` que usa el
-> sistema para serializar salidas concurrentes.
+> ⚠️ **Usa el modo Transaction (6543), no el modo Session (5432).**
+>
+> El modo sesión abre una conexión del servidor por cada cliente y Supabase
+> limita el pool a **15 conexiones para todo el proyecto**. En Vercel cada
+> instancia de función es un proceso aparte, así que una ráfaga de peticiones
+> agota el pool y provoca:
+>
+> ```
+> (EMAXCONNSESSION) max clients reached in session mode - max clients are limited to pool_size: 15
+> ```
+>
+> Medido en este proyecto con 12 peticiones simultáneas:
+>
+> | Modo | Instancias en error |
+> |---|---|
+> | Sesión (5432), `max=1` | 5 de 12 |
+> | Sesión (5432), `max=2` | 5 de 12 |
+> | **Transacción (6543), `max=5`** | **0 de 12** |
+>
+> El modo transacción multiplexa muchas conexiones sobre pocas del servidor,
+> que es justo lo que necesita un despliegue serverless. La aplicación usa
+> `prepare: false` (obligatorio en este modo) y no emplea `SET`, tablas
+> temporales ni `LISTEN/NOTIFY`, por lo que es compatible. Los
+> `pg_advisory_xact_lock` que serializan salidas concurrentes se verificaron
+> con transacciones simultáneas sobre la misma clave.
+>
+> Como red de seguridad, `DATABASE_FALLBACK_URLS` apunta al pooler en modo
+> **sesión** (5432): es estable y no se agota, y la aplicación cambia a él
+> sola si la principal falla por un problema de red.
 
 ---
 
@@ -120,9 +143,9 @@ cp .env.example .env.local
 
 | Nombre | Tipo | Valor |
 |--------|------|-------|
-| `DATABASE_URL` | **Secret** | URL del pooler en modo sesión (puerto 5432) |
-| `DATABASE_FALLBACK_URLS` | Secret | Vacío (ver nota abajo) |
-| `DATABASE_POOL_MAX` | Config | `2` en Vercel |
+| `DATABASE_URL` | **Secret** | URL del pooler en modo **transacción** (puerto 6543) |
+| `DATABASE_FALLBACK_URLS` | Secret | Pooler en modo sesión (puerto 5432) |
+| `DATABASE_POOL_MAX` | Config | `5` |
 | `DATABASE_IDLE_TIMEOUT` | Config | `30` |
 | `SUPABASE_URL` | **Secret** | `https://[PROJECT_REF].supabase.co` |
 | `SUPABASE_SECRET_KEY` | **Secret** | `sb_secret_...` |
@@ -153,16 +176,13 @@ npm run vercel:env -- --dry-run   # muestra qué haría, sin cambiar nada
 ```
 
 Requiere haber hecho `npx vercel login` una vez. El script aplica unos
-valarios distintos en Vercel por las restricciones del entorno serverless
-(`DATABASE_POOL_MAX=2`, `DATABASE_IDLE_TIMEOUT=30` y
-`DATABASE_FALLBACK_URLS` vacío).
+valores distintos en Vercel por las restricciones del entorno serverless
+(`DATABASE_POOL_MAX=5`, `DATABASE_IDLE_TIMEOUT=30`).
 
-> **Sobre `DATABASE_FALLBACK_URLS`:** se deja vacío a propósito. La
-> aplicación tiene lógica de failover entre varias URLs, pero el único
-> candidato adicional posible (el pooler en modo transacción, 6543) se
-> cuelga de forma intermitente. Un respaldo que cuelga es **peor** que no
-> tener respaldo: el error real se reporta al instante con la conexión
-> principal.
+> **Sobre `DATABASE_FALLBACK_URLS`:** apunta al pooler en modo **sesión**
+> (5432). La aplicación tiene lógica de failover entre varias URLs: si la
+> principal (modo transacción) falla por un problema de red, cambia sola a
+> esta. Es estable y no se agota, así que sirve de red de seguridad.
 
 ---
 
@@ -235,27 +255,26 @@ E2E_URL=https://banco-alimentos-inventarios.vercel.app npm run test:e2e
 
 ## Límites conocidos del despliegue en Vercel
 
-### 15 conexiones simultáneas a la base de datos
+### El techo de 15 conexiones del pooler (resuelto)
 
-El pooler de Supabase en modo sesión admite un máximo de **15 conexiones
+El pooler de Supabase en **modo sesión** admite un máximo de **15 conexiones
 simultáneas para todo el proyecto**. En Vercel cada instancia de función es
 un proceso independiente, así que el número de conexiones crece con el
-número de instancias activas.
+número de instancias activas y una ráfaga de navegación agota el pool.
 
-Por eso `DATABASE_POOL_MAX` es `2` en producción: con 2 conexiones por
-instancia, el sistema tolera hasta 7 instancias concurrentes antes de
-agotar el pool.
+Este proyecto usa el pooler en **modo transacción** (6543) como conexión
+principal, que multiplexa muchas conexiones sobre pocas del servidor. Ver
+el Paso 1.6 para la tabla comparativa.
 
-Si aparece el error:
+Si aun así apareciera:
 
 ```
 (EMAXCONNSESSION) max clients reached in session mode - max clients are limited to pool_size: 15
 ```
 
-significa que se alcanzó el límite. La aplicación lo reconoce y responde
-`503 DATABASE_UNAVAILABLE` en lugar de un error genérico. Para resolverlo:
-reducir `DATABASE_POOL_MAX` a `1`, o ampliar el pool de Supabase desde el
-panel (proyectos de pago permiten configurarlo).
+significa que se está usando el respaldo en modo sesión. La aplicación lo
+reconoce, cambia sola a la siguiente candidata y responde
+`503 DATABASE_UNAVAILABLE` en lugar de un error genérico.
 
 ### Instancias congeladas
 
@@ -264,6 +283,22 @@ puede morir en silencio y dejar una conexión «zombi» que la siguiente
 petición intenta reutilizar. `DATABASE_IDLE_TIMEOUT=30` cierra las
 conexiones ociosas antes de que ocurra, de modo que la siguiente petición
 abre una conexión nueva (el handshake TLS con Supabase cuesta ~0,5 s).
+
+### Duración máxima de las funciones
+
+El plan Hobby limita las funciones a **60 segundos**, aunque el código
+declare `maxDuration = 300` en las rutas de importación de Siigo y de
+vencimientos. Con el reporte real de 8 MB, esas importaciones pueden quedar
+cortadas en producción. La alternativa es el agente local
+(`npm run agent:run`), que procesa el archivo en el equipo del Banco.
+
+### Latencia por región
+
+El plan Hobby despliega las funciones únicamente en `iad1` (Virginia), y el
+proyecto de Supabase está en `us-west-2`. Cada petición cruza el país. No es
+un error, pero se nota en los tiempos de respuesta. Con un plan que permita
+varias regiones conviene alinear `regions` en `vercel.json` con la región
+de Supabase.
 
 ---
 

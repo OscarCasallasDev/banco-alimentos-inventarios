@@ -236,7 +236,7 @@ Sistema → POST /api/siigo/export { format, documentId? }
 | Componente | Plataforma | Método |
 |---|---|---|
 | Frontend | Vercel | Git-based deployment (rama `main`) |
-| Base de datos | Supabase | PostgreSQL managed (pooler modo sesión, puerto 5432) |
+| Base de datos | Supabase | PostgreSQL managed (pooler **modo transacción**, puerto 6543) |
 | Variables | Vercel + Supabase | ver tabla abajo |
 
 Variables requeridas en producción (Vercel → Settings → Environment Variables,
@@ -244,17 +244,23 @@ para Production, Preview y Development):
 
 | Variable | Requerida | Para qué sirve |
 |---|---|---|
-| `DATABASE_URL` | Sí | Conexión a PostgreSQL (pooler modo sesión) |
+| `DATABASE_URL` | Sí | Conexión a PostgreSQL (pooler modo transacción, 6543) |
 | `SESSION_SECRET` | Sí | Firma de la cookie de sesión (mín. 32 caracteres) |
-| `DATABASE_POOL_MAX` | No | Conexiones por proceso. `2` en Vercel: el pooler admite 15 en total |
+| `DATABASE_POOL_MAX` | No | Conexiones por proceso. `5` en Vercel |
 | `DATABASE_IDLE_TIMEOUT` | No | Cierre de conexiones ociosas. `30` en Vercel (instancias congeladas) |
-| `DATABASE_FALLBACK_URLS` | No |VACío: el pooler en modo transacción (6543) se cuelga con este sistema |
+| `DATABASE_FALLBACK_URLS` | No | Respaldo: pooler en modo sesión (5432), estable y sin techo de 15 |
 | `SUPABASE_URL` | No | API de Storage (importación de Siigo) |
 | `SUPABASE_SECRET_KEY` | No | Acceso con permisos a Storage. Requerido para subir el .xlsx de Siigo |
 | `NEXT_PUBLIC_SUPABASE_URL` | No | Se incrusta en el bundle en el BUILD |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | No | Se incrusta en el bundle en el BUILD |
 | `SUPABASE_PUBLISHABLE_KEY` | No | Clave publicable de la API de Supabase |
 
+> **Por qué el pooler en modo transacción (6543) y no en modo sesión (5432):**
+> el modo sesión limita el pool a 15 conexiones PARA TODO EL PROYECTO y en
+> Vercel cada instancia de función es un proceso aparte, así que una ráfaga
+> de peticiones lo agota (`EMAXCONNSESSION`). Medido con 12 peticiones
+> simultáneas: modo sesión → 5 en error; modo transacción → 0 en error.
+>
 > Sin `DATABASE_URL` la aplicación compila pero **todas las rutas que tocan la
 > base de datos fallan**. La API responde `503 CONFIGURATION_ERROR` con el
 > nombre exacto de la variable que falta.

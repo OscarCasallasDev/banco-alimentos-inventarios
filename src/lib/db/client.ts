@@ -114,20 +114,24 @@ class ConnectionPool {
   getClient(): SqlClient {
     if (!this.clients[this.activeIndex]) {
       const client = postgres(this.currentUrl, {
-        // El pooler de Supabase (modo sesión) admite un máximo de 15
-        // conexiones simultáneas PARA TODO EL PROYECTO. En Vercel cada
-        // instancia de función es un proceso aparte, así que un `max` alto
-        // agota el pool con facilidad y provoca
+        // El pooler de Supabase en MODO SESIÓN (5432) admite un máximo de 15
+        // conexiones simultáneas PARA TODO EL PROYECTO, y en Vercel cada
+        // instancia de función es un proceso aparte: una ráfaga de peticiones
+        // agota el pool y provoca
         // "(EMAXCONNSESSION) max clients reached in session mode".
-        // Por eso el valor por defecto es bajo y se ajusta por entorno.
-        max: Number(process.env.DATABASE_POOL_MAX ?? 3),
+        // Por eso la conexión principal usa el pooler en MODO TRANSACCIÓN
+        // (6543), que multiplexa muchas conexiones sobre pocas del servidor.
+        // El valor se mantiene moderado porque un pool grande multiplica el
+        // consumo por instancia.
+        max: Number(process.env.DATABASE_POOL_MAX ?? 5),
         // Cierra las conexiones ociosas pronto: en Vercel las instancias se
         // congelan y el socket puede morir en silencio, dejando una
         // conexión "zombi" que la siguiente petición reutiliza.
         idle_timeout: Number(process.env.DATABASE_IDLE_TIMEOUT ?? 30),
         connect_timeout: 15,
         max_lifetime: 60 * 30,
-        // El pooler en modo transacción no admite prepared statements.
+        // Obligatorio con el pooler en modo transacción: no admite prepared
+        // statements, porque las reutiliza entre transacciones.
         prepare: false,
         // Nombre de la aplicación: permite identificar estas conexiones
         // en `pg_stat_activity` desde el panel de Supabase.

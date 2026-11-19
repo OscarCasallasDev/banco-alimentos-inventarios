@@ -89,6 +89,16 @@ export function extractPassword(url) {
  * El POOLER se prueba primero porque tiene direcciones fijas y es estable;
  * el host directo se deja como último recurso porque su resolución DNS es
  * intermitente.
+ *
+ * ORDEN: el pooler en MODO TRANSACCIÓN (6543) va primero.
+ *
+ *   El modo sesión (5432) abre una conexión del servidor por cada cliente y
+ *   Supabase limita el pool a 15 conexiones PARA TODO EL PROYECTO. En
+ *   Vercel cada instancia de función es un proceso aparte, así que una ráfaga
+ *   de peticiones agota el pool y provoca
+ *   "(EMAXCONNSESSION) max clients reached in session mode".
+ *   El modo transacción multiplexa muchas conexiones sobre pocas del
+ *   servidor, que es justo lo que necesita un despliegue serverless.
  */
 export function buildConnectionCandidates(databaseUrl, regions = []) {
   const candidates = [];
@@ -109,18 +119,18 @@ export function buildConnectionCandidates(databaseUrl, regions = []) {
       const host = `aws-0-${region}.pooler.supabase.com`;
 
       candidates.push({
-        label: `Pooler sesión (${region}:5432)`,
-        url: `postgresql://postgres.${projectRef}:${encodeURIComponent(
-          password
-        )}@${host}:5432/postgres`,
-        stable: true,
-      });
-
-      candidates.push({
         label: `Pooler transacción (${region}:6543)`,
         url: `postgresql://postgres.${projectRef}:${encodeURIComponent(
           password
         )}@${host}:6543/postgres`,
+        stable: true,
+      });
+
+      candidates.push({
+        label: `Pooler sesión (${region}:5432)`,
+        url: `postgresql://postgres.${projectRef}:${encodeURIComponent(
+          password
+        )}@${host}:5432/postgres`,
         stable: true,
       });
     }
