@@ -121,6 +121,15 @@ function getPoolMaxes(count: number): number[] {
 
 /**
  * Pool de conexiones con capacidad de failover entre candidatas.
+ *
+ * La failover es POR INTENTO, no global: cada consulta que falla prueba la
+ * siguiente candidata por su cuenta. Así, cuando el dashboard lanza 15
+ * consultas en paralelo y todas chocan con el mismo problema, cada una
+ * tiene su propia oportunidad de reintentar.
+ *
+ * El estado global (`activeIndex`) es solo una PREFERENCIA: se actualiza
+ * hacia la candidata que funcionó, para que las consultas siguientes
+ * empiecen por ahí.
  */
 class ConnectionPool {
   private readonly urls: string[];
@@ -134,28 +143,25 @@ class ConnectionPool {
     this.clients = urls.map(() => null);
   }
 
-  get currentUrl(): string {
-    return this.urls[this.activeIndex];
-  }
-
-  /** Tamaño del pool de la candidata activa. */
-  get currentMax(): number {
-    return this.maxes[this.activeIndex];
-  }
-
   /** Número de candidatas disponibles. */
   get size(): number {
     return this.urls.length;
   }
 
+  /** Índice absoluto de la candidata situada `offset` posiciones después de la activa. */
+  indexAt(offset: number): number {
+    return (this.activeIndex + offset) % this.urls.length;
+  }
+
   /**
-   * Devuelve el cliente de la candidata activa, creándolo si hace falta.
+   * Cliente de la candidata indicada por su índice absoluto.
+   * Lo crea la primera vez que se usa.
    */
-  getClient(): SqlClient {
-    if (!this.clients[this.activeIndex]) {
-      const client = postgres(this.currentUrl, {
+  clientAtIndex(index: number): SqlClient {
+    if (!this.clients[index]) {
+      const client = postgres(this.urls[index], {
         // El tamaño del pool depende del modo del pooler (ver `getPoolMaxes`).
-        max: this.currentMax,
+        max: this.maxes[index],
         // Cierra las conexiones ociosas pronto: en Vercel las instancias se
         // congelan y el socket puede morir en silencio, dejando una
         // conexión "zombi" que la siguiente petición reutiliza.
@@ -174,17 +180,31 @@ class ConnectionPool {
       // primera petición del usuario no espere el handshake.
       void client.unsafe("select 1").catch(() => {});
 
-      this.clients[this.activeIndex] = client;
+      this.clients[index] = client;
     }
 
-    return this.clients[this.activeIndex]!;
+    return this.clients[index]!;
   }
 
   /**
-   * Rota a la siguiente candidata y devuelve su cliente.
+   * Identificador legible (host:puerto) de una candidata, SIN credenciales,
+   * para los registros.
    */
-  rotate(): void {
-    this.activeIndex = (this.activeIndex + 1) % this.urls.length;
+  labelAtIndex(index: number): string {
+    try {
+      const url = new URL(this.urls[index]);
+      return `${url.hostname}:${url.port || 5432}`;
+    } catch {
+      return "desconocida";
+    }
+  }
+
+  /**
+   * Marca la candidata como preferida: la siguiente consulta empieza por
+   * ella. Solo se llama cuando la candidata funcionó.
+   */
+  preferIndex(index: number): void {
+    this.activeIndex = index;
   }
 
   /**
@@ -213,30 +233,50 @@ function resilientQuery(
 ): unknown {
   /**
    * Ejecuta la consulta reintentando con otra candidata si hay fallo de red.
+   *
+   * El reintento es POR CONSULTA: cada una prueba las candidatas por su
+   * cuenta. Así, cuando el dashboard lanza 15 consultas en paralelo y todas
+   * chocan con el mismo problema, cada una tiene su propia oportunidad.
    */
   const attempt = async <T>(
     run: (client: SqlClient) => Promise<T>
   ): Promise<T> => {
+    const total = pool.size;
     let lastError: unknown;
 
-    for (let tryIndex = 0; tryIndex < pool.size; tryIndex += 1) {
+    for (let offset = 0; offset < total; offset++) {
+      // Los índices se calculan una sola vez: si otra consulta cambia la
+      // preferencia mientras esta espera, el reintento sigue apuntando a la
+      // candidata correcta.
+      const index = pool.indexAt(offset);
+      const label = pool.labelAtIndex(index);
+      const nextLabel = pool.labelAtIndex(pool.indexAt(offset + 1));
+
       try {
-        return await run(pool.getClient());
+        const result = await run(pool.clientAtIndex(index));
+
+        // La candidata que funcionó pasa a ser la preferida: las consultas
+        // siguientes empiezan por ella y evitan el mismo fallo.
+        pool.preferIndex(index);
+
+        return result;
       } catch (error) {
         lastError = error;
 
-        if (!isConnectionError(error) || tryIndex === pool.size - 1) {
-          throw error;
-        }
+        if (!isConnectionError(error)) throw error;
+
+        // Si no queda otra candidata, el error que se propaga es el de esta:
+        // es el que explica el fallo de verdad.
+        if (offset === total - 1) throw error;
 
         console.warn(
-          `[db] Fallo de conexión: ${(error as Error).message}. ` +
-            `Reintentando con la siguiente conexión disponible…`
+          `[db] Fallo de conexión en ${label}: ` +
+            `${(error as Error).message}. ` +
+            `Reintentando con ${nextLabel}…`
         );
 
         // Un corte de red o una resolución DNS lenta se recupera en unos ms.
-        await sleep(700 * (tryIndex + 1));
-        pool.rotate();
+        await sleep(700 * (offset + 1));
       }
     }
 
@@ -294,7 +334,7 @@ function resilientQuery(
  * Envuelve el cliente de postgres.js con la capacidad de failover.
  */
 function createResilientClient(pool: ConnectionPool): SqlClient {
-  const base = pool.getClient();
+  const base = pool.clientAtIndex(pool.indexAt(0));
 
   /**
    * Reconstruye una consulta con texto y parámetros en un cliente concreto.
@@ -308,7 +348,7 @@ function createResilientClient(pool: ConnectionPool): SqlClient {
         return (text: string, values?: unknown[]) => {
           const params = Array.isArray(values) ? values : [];
           return resilientQuery(
-            pool.getClient().unsafe(text, params as never[]),
+            pool.clientAtIndex(pool.indexAt(0)).unsafe(text, params as never[]),
             pool,
             (client) => buildQuery(client, text, params)
           );
@@ -334,7 +374,7 @@ function createResilientClient(pool: ConnectionPool): SqlClient {
         );
 
         return resilientQuery(
-          pool.getClient().unsafe(text, values as never[]),
+          pool.clientAtIndex(pool.indexAt(0)).unsafe(text, values as never[]),
           pool,
           (client) => buildQuery(client, text, values)
         );
