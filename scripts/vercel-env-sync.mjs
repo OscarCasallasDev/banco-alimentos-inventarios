@@ -137,18 +137,44 @@ function readAuthToken() {
 const API_BASE = "https://api.vercel.com";
 const token = readAuthToken();
 
-async function api(method, endpoint, body) {
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+/**
+ * Llama a la API de Vercel con reintentos.
+ *
+ * La conexión desde la máquina del usuario puede cortarse de forma
+ * intermitente (ECONNRESET). Un fallo puntual de red no debe abortar la
+ * sincronización a medias y dejar el proyecto con variables incompletas.
+ */
+async function api(method, endpoint, body, attempt = 0) {
+  const MAX_ATTEMPTS = 4;
+
+  let response;
+
+  try {
+    response = await fetch(`${API_BASE}${endpoint}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (error) {
+    if (attempt < MAX_ATTEMPTS - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1)));
+      return api(method, endpoint, body, attempt + 1);
+    }
+    throw new Error(`fallo de red (${error.message})`);
+  }
 
   if (!response.ok) {
     const text = await response.text();
+
+    // 5xx: error del servidor, se puede reintentar.
+    if (response.status >= 500 && attempt < MAX_ATTEMPTS - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1)));
+      return api(method, endpoint, body, attempt + 1);
+    }
+
     throw new Error(`${method} ${endpoint} → ${response.status}: ${text}`);
   }
 
@@ -225,12 +251,16 @@ for (const variable of VARIABLES) {
 
   try {
     if (current) {
-      // Vercel no permite cambiar el tipo de una variable ya creada:
-      // si el tipo no coincide, se borra y se vuelve a crear.
-      const currentType = current.type === "secret" ? "encrypted" : "plain";
-      const desiredType = variable.sensitive ? "encrypted" : "plain";
+      // Vercel no permite cambiar el tipo de una variable ya creada: si el
+      // tipo no coincide, se borra y se vuelve a crear.
+      //
+      // Tipos que devuelve la API: "plain" | "encrypted" | "secret" |
+      // "system". Tanto "encrypted" como "secret" son valores sensibles.
+      const currentIsSensitive =
+        current.type === "encrypted" || current.type === "secret";
+      const desiredIsSensitive = variable.sensitive;
 
-      if (currentType !== desiredType) {
+      if (currentIsSensitive !== desiredIsSensitive) {
         await api(
           "DELETE",
           `/v10/projects/${PROJECT_ID}/env/${current.id}?teamId=${encodeURIComponent(TEAM_ID)}`
@@ -241,10 +271,11 @@ for (const variable of VARIABLES) {
           payload
         );
       } else {
+        // El tipo no se envía: Vercel lo rechaza en un PATCH.
         await api(
           "PATCH",
           `/v10/projects/${PROJECT_ID}/env/${current.id}?teamId=${encodeURIComponent(TEAM_ID)}`,
-          { ...payload, type: undefined }
+          { key: payload.key, value: payload.value, target: payload.target }
         );
       }
     } else {
