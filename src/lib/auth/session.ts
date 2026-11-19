@@ -20,6 +20,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { unauthorizedError, forbiddenError } from "@/lib/utils/errors";
+import { MissingEnvError } from "@/lib/utils/env";
 import {
   SESSION_COOKIE_NAME,
   SESSION_MAX_AGE_SECONDS,
@@ -44,8 +45,11 @@ function getSessionSecret(): string {
   const secret = process.env.SESSION_SECRET;
 
   if (!secret || secret.length < 32) {
-    throw new Error(
-      "SESSION_SECRET no está definida o es demasiado corta (mínimo 32 caracteres)"
+    throw new MissingEnvError(
+      "SESSION_SECRET",
+      !secret
+        ? "Configúrala en el panel de Vercel (Settings → Environment Variables) o en .env.local para desarrollo local."
+        : "Debe tener al menos 32 caracteres. Genera uno con: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
     );
   }
 

@@ -22,6 +22,7 @@
                     "db:setup":  "node scripts/db-setup.mjs",
                     "db:setup:reset":  "node scripts/db-setup.mjs --reset",
                     "db:auditar":  "node scripts/audit-lots.mjs",
+                    "vercel:env":  "node scripts/vercel-env-sync.mjs",
                     "typecheck":  "tsc --noEmit",
                     "siigo:import":  "tsx scripts/siigo-import.ts",
                     "agent:run":  "tsx agent/src/index.ts",

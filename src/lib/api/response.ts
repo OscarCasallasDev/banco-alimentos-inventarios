@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { ApplicationError, handleApiError } from "@/lib/utils/errors";
 import { isConnectionError } from "@/lib/utils/connection";
+import { isMissingEnvError } from "@/lib/utils/env";
 import type { ApiError, ApiResponse } from "@/types/api";
 
 /**
@@ -98,12 +99,19 @@ export function handleRouteError(error: unknown, context: string): NextResponse 
     return jsonError(body.code, body.message, status, body.details);
   }
 
+  // Variable de entorno ausente (mal configuración del despliegue).
+  // Antes esto devolvía un 500 genérico que ocultaba la causa real.
+  if (isMissingEnvError(error)) {
+    console.error(`[${context}] Configuración incompleta:`, error.message);
+    return jsonError("CONFIGURATION_ERROR", error.message, 503);
+  }
+
   // Sin conexión con la base de datos: mensaje accionable para el usuario.
   if (isConnectionError(error)) {
     console.error(`[${context}] Sin conexión con la base de datos:`, error);
     return jsonError(
       "DATABASE_UNAVAILABLE",
-      "No hay conexión con la base de datos. Ejecuta «npm run db:check» y reintenta.",
+      "No hay conexión con la base de datos. Intenta de nuevo en unos segundos.",
       503
     );
   }

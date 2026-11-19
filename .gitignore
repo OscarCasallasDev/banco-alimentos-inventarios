@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# La plantilla de variables SÍ se versiona: documenta qué necesita la
+# aplicación en local y en el despliegue de Vercel.
+!.env.example
 
 # vercel
 .vercel
@@ -41,6 +44,6 @@ yarn-error.log*
 next-env.d.ts
 
 # Fixture grande del reporte detallado (8 MB). Se copia manualmente para
-# ejecutar las pruebas que lo usan; estas se omiten si no est� presente.
+# ejecutar las pruebas que lo usan; estas se omiten si no est� presente.
 tests/fixtures/siigo-reporte-inventarios.xlsx
 

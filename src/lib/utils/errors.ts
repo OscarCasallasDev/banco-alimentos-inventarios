@@ -17,6 +17,8 @@ export type ErrorCode =
   | "INVALID_CREDENTIALS"
   | "INTERNAL_ERROR"
   | "DATABASE_ERROR"
+  | "DATABASE_UNAVAILABLE"
+  | "CONFIGURATION_ERROR"
   | "EXPORT_ERROR";
 
 export interface AppError {
@@ -114,6 +116,8 @@ export function handleApiError(error: unknown): { status: number; body: AppError
       INVALID_CREDENTIALS: 401,
       INTERNAL_ERROR: 500,
       DATABASE_ERROR: 500,
+      DATABASE_UNAVAILABLE: 503,
+      CONFIGURATION_ERROR: 503,
       EXPORT_ERROR: 500,
     };
 

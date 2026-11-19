@@ -33,6 +33,7 @@ import postgres from "postgres";
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import * as schema from "./schema";
 import { isConnectionError } from "@/lib/utils/connection";
+import { MissingEnvError } from "@/lib/utils/env";
 
 export type Database = PostgresJsDatabase<typeof schema>;
 
@@ -74,8 +75,11 @@ function getCandidateUrls(): string[] {
   }
 
   if (urls.length === 0) {
-    throw new Error(
-      "DATABASE_URL no está definida. Configura la variable de entorno en .env.local"
+    // `MissingEnvError` permite que la API responda 503 con un mensaje
+    // accionable en vez de un 500 genérico que oculta la causa.
+    throw new MissingEnvError(
+      "DATABASE_URL",
+      "Configúrala en el panel de Vercel (Settings → Environment Variables) o en .env.local para desarrollo local."
     );
   }
 
@@ -110,14 +114,24 @@ class ConnectionPool {
   getClient(): SqlClient {
     if (!this.clients[this.activeIndex]) {
       const client = postgres(this.currentUrl, {
-        max: Number(process.env.DATABASE_POOL_MAX ?? 10),
-        // El handshake TLS con Supabase cuesta ~1 s. Mantener las conexiones
-        // vivas evita pagar ese coste en cada petición.
-        idle_timeout: Number(process.env.DATABASE_IDLE_TIMEOUT ?? 120),
+        // El pooler de Supabase (modo sesión) admite un máximo de 15
+        // conexiones simultáneas PARA TODO EL PROYECTO. En Vercel cada
+        // instancia de función es un proceso aparte, así que un `max` alto
+        // agota el pool con facilidad y provoca
+        // "(EMAXCONNSESSION) max clients reached in session mode".
+        // Por eso el valor por defecto es bajo y se ajusta por entorno.
+        max: Number(process.env.DATABASE_POOL_MAX ?? 3),
+        // Cierra las conexiones ociosas pronto: en Vercel las instancias se
+        // congelan y el socket puede morir en silencio, dejando una
+        // conexión "zombi" que la siguiente petición reutiliza.
+        idle_timeout: Number(process.env.DATABASE_IDLE_TIMEOUT ?? 30),
         connect_timeout: 15,
         max_lifetime: 60 * 30,
         // El pooler en modo transacción no admite prepared statements.
         prepare: false,
+        // Nombre de la aplicación: permite identificar estas conexiones
+        // en `pg_stat_activity` desde el panel de Supabase.
+        connection: { application_name: "banco-alimentos-inventarios" },
         onnotice: () => {},
       });
 
