@@ -20,7 +20,7 @@
  *     se descartan en silencio.
  */
 
-import { and, desc, eq, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { getDb, withTransaction, type DbExecutor } from "@/lib/db/client";
 import {
   apiKeys,
@@ -29,6 +29,7 @@ import {
   siigoImportRows,
   siigoImportRuns,
   siigoWarehouseMap,
+  siigoBalances,
   warehouses,
 } from "@/lib/db/schema";
 import { conflictError, notFoundError } from "@/lib/utils/errors";
@@ -743,8 +744,10 @@ export async function finalizeRun(
             newRecords: resumenResult.warehouses,
             errorSummary: {
               note:
-                "Reporte resumen: se actualizaron bodegas, ubicaciones y productos. " +
-                "Las existencias NO se modificaron porque este reporte no trae saldos.",
+                "Reporte resumen: se actualizaron bodegas, ubicaciones, productos y " +
+                `existencias (${resumenResult.existencias} registros). ` +
+                "Cada existencia es la suma de entradas menos la suma de salidas " +
+                "del producto en su bodega.",
             },
           })
           .where(eq(siigoImportRuns.id, runId))
@@ -1084,6 +1087,22 @@ async function upsertBalances(
 
     const values = sql.join(rows, sql`, `);
 
+    // El reporte DETALLADO guarda el detalle por ubicación. La existencia
+    // consolidada que dejó el reporte RESUMEN (location_code = 0) pasa a ser
+    // histórica para que la misma bodega no se cuente dos veces. No se borra
+    // nada: esas filas quedan con is_active = false.
+    await tx.execute(sql`
+      UPDATE siigo_balances b
+      SET is_active = false, synced_at = now()
+      WHERE b.is_active
+        AND b.location_code = 0
+        AND EXISTS (
+          SELECT 1 FROM (VALUES ${values}) AS v
+          WHERE v.column1::uuid = b.product_id
+            AND v.column3::int = b.siigo_bodega_code
+        )
+    `);
+
     await tx.execute(sql`
       INSERT INTO siigo_balances (
         product_id, warehouse_id, siigo_bodega_code, location_code,
@@ -1216,14 +1235,35 @@ async function importResumen(
   locations: number;
   products: number;
   movements: number;
+  existencias: number;
 }> {
   // ---------- Bodegas ----------
+  //
+  // La bodega se identifica EXCLUSIVAMENTE por su código numérico (columna B
+  // del reporte). Los rótulos de las columnas A y C pueden cambiar entre
+  // reportes (campañas, nombres alternativos) y se guardan como NOMBRES
+  // ASOCIADOS de la misma bodega: nunca crean una bodega aparte.
   const bodegaRows = report.resumen.reduce((map, row) => {
-    if (!map.has(row.bodegaCode)) {
-      map.set(row.bodegaCode, row.bodegaName);
+    let entry = map.get(row.bodegaCode);
+
+    if (!entry) {
+      entry = { name: "", aliases: [] as string[] };
+      map.set(row.bodegaCode, entry);
     }
+
+    for (const candidate of [row.bodegaName, row.bodegaLabel]) {
+      const value = (candidate ?? "").trim();
+      if (!value) continue;
+      if (!entry.aliases.includes(value)) entry.aliases.push(value);
+    }
+
+    // El nombre principal es el de la columna C (descripción de la bodega).
+    if (!entry.name && row.bodegaName?.trim()) {
+      entry.name = row.bodegaName.trim();
+    }
+
     return map;
-  }, new Map<number, string>());
+  }, new Map<number, { name: string; aliases: string[] }>());
 
   let newWarehouses = 0;
   let updatedWarehouses = 0;
@@ -1234,7 +1274,10 @@ async function importResumen(
   if (warehouseItems.length > 0) {
     const values = sql.join(
       warehouseItems.map(
-        ([code, name]) => sql`(${code}::int, ${name || `Bodega Siigo ${code}`}::text)`
+        ([code, info]) =>
+          sql`(${code}::int, ${
+            info.name || `Bodega Siigo ${code}`
+          }::text, ${info.aliases.join(" · ")}::text)`
       ),
       sql`, `
     );
@@ -1242,13 +1285,13 @@ async function importResumen(
     const inserted = await tx.execute<{ siigo_code: number; is_new: boolean }>(sql`
       INSERT INTO warehouses (
         code, name, description, type, status, source, siigo_code,
-        observations, created_at, updated_at
+        alias_names, observations, created_at, updated_at
       )
       SELECT 'S' || v.code::text, v.name,
              'Bodega importada desde Siigo Pyme (código ' || v.code::text || ')',
              'PROPIA'::warehouse_type, 'ACTIVE'::warehouse_status, 'SIIGO',
-             v.code, 'Importada desde el reporte de Siigo Pyme', now(), now()
-      FROM (VALUES ${values}) AS v(code, name)
+             v.code, v.aliases, 'Importada desde el reporte de Siigo Pyme', now(), now()
+      FROM (VALUES ${values}) AS v(code, name, aliases)
       WHERE NOT EXISTS (
         SELECT 1 FROM warehouses w WHERE w.siigo_code = v.code
       )
@@ -1259,10 +1302,22 @@ async function importResumen(
     // Actualización de nombres (idempotente: no duplica bodegas).
     await tx.execute(sql`
       UPDATE warehouses w
-      SET name = v.name, updated_at = now()
-      FROM (VALUES ${values}) AS v(code, name)
+      SET name = v.name,
+          alias_names = v.aliases,
+          updated_at = now()
+      FROM (VALUES ${values}) AS v(code, name, aliases)
       WHERE w.siigo_code = v.code AND v.name <> '' AND w.name <> v.name
     `);
+
+    // Los nombres asociados se actualizan aunque el nombre principal no
+    // haya cambiado (pueden aparecer rótulos nuevos con el mismo código).
+    await tx.execute(sql`
+      UPDATE warehouses w
+      SET alias_names = v.aliases, updated_at = now()
+      FROM (VALUES ${values}) AS v(code, name, aliases)
+      WHERE w.siigo_code = v.code AND w.alias_names IS DISTINCT FROM v.aliases
+    `);
+
     updatedWarehouses = Math.max(
       0,
       warehouseItems.length - newWarehouses
@@ -1352,6 +1407,117 @@ async function importResumen(
     for (const row of (rows as unknown as { code: string; id: string }[]) ?? []) {
       productIds.set(row.code, row.id);
     }
+  }
+
+  // ---------- Existencias ----------
+  //
+  // REGLA DE NEGOCIO DEL BANCO:
+  //
+  //     existencia = Σ(ENTRADAS, col I) − Σ(SALIDAS, col L)
+  //
+  // agrupado por CÓDIGO DE PRODUCTO (col G) + CÓDIGO DE BODEGA (col B).
+  //
+  // Primero se suman TODAS las filas del mismo producto en la misma bodega
+  // y después se restan. Las columnas D, E, F (ubicación) se IGNORAN: la
+  // existencia es una por bodega. La columna O tampoco se usa para el
+  // cálculo.
+  const existencias = report.resumen.reduce((map, row) => {
+    const key = `${row.productCode}|${row.bodegaCode}`;
+    const current = map.get(key) ?? {
+      productCode: row.productCode,
+      bodegaCode: row.bodegaCode,
+      qtyIn: 0,
+      qtyOut: 0,
+    };
+    current.qtyIn = round3(current.qtyIn + row.qtyIn);
+    current.qtyOut = round3(current.qtyOut + row.qtyOut);
+    map.set(key, current);
+    return map;
+  }, new Map<string, {
+    productCode: string;
+    bodegaCode: number;
+    qtyIn: number;
+    qtyOut: number;
+  }>());
+
+  const existenciasItems = [...existencias.values()].filter((item) =>
+    productIds.has(item.productCode)
+  );
+
+  // El reporte es la fuente de las existencias de sus bodegas: se apaga el
+  // detalle por ubicación que hubiera de una importación anterior para que
+  // la misma bodega no se cuente dos veces. No se borra nada: las filas
+  // quedan como histórico con is_active = false.
+  const bodegasDelArchivo = [...new Set(existenciasItems.map((i) => i.bodegaCode))];
+  if (bodegasDelArchivo.length > 0) {
+    await tx.execute(sql`
+      UPDATE siigo_balances
+      SET is_active = false, synced_at = now()
+      WHERE ${siigoBalances.isActive}
+        AND ${siigoBalances.locationCode} <> 0
+        AND ${inArray(siigoBalances.siigoBodegaCode, bodegasDelArchivo)}
+    `);
+  }
+
+  let existenciasEscritas = 0;
+  const EXISTENCIAS_CHUNK = 500;
+  for (let i = 0; i < existenciasItems.length; i += EXISTENCIAS_CHUNK) {
+    const chunk = existenciasItems.slice(i, i + EXISTENCIAS_CHUNK);
+    const values = sql.join(
+      chunk.map((item) => {
+        const productId = productIds.get(item.productCode)!;
+        const quantity = round3(item.qtyIn - item.qtyOut);
+        return sql`(
+          ${productId}::uuid,
+          ${item.bodegaCode}::int,
+          0::int,
+          ${quantity}::numeric,
+          ${quantity}::numeric,
+          ${item.qtyIn}::numeric,
+          ${item.qtyOut}::numeric,
+          ${quantity < 0}
+        )`;
+      }),
+      sql`, `
+    );
+
+    await tx.execute(sql`
+      INSERT INTO siigo_balances (
+        product_id, warehouse_id, siigo_bodega_code, location_code,
+        quantity, reported_quantity, qty_secondary, opening_quantity,
+        review_required, review_note, is_negative, import_run_id, synced_at, is_active
+      )
+      SELECT
+        v.p,
+        w.id,
+        v.bod,
+        v.ubi,
+        v.qty,
+        v.qty,
+        0,
+        0,
+        false,
+        NULL,
+        v.neg,
+        ${runId}::uuid,
+        now(),
+        true
+      FROM (VALUES ${values}) AS v(p, bod, ubi, qty, rep, qin, qout, neg)
+      LEFT JOIN warehouses w ON w.siigo_code = v.bod
+      ON CONFLICT (product_id, siigo_bodega_code, location_code) DO UPDATE SET
+        warehouse_id = COALESCE(excluded.warehouse_id, siigo_balances.warehouse_id),
+        quantity = excluded.quantity,
+        reported_quantity = excluded.reported_quantity,
+        opening_quantity = excluded.opening_quantity,
+        qty_secondary = 0,
+        review_required = false,
+        review_note = NULL,
+        is_negative = excluded.is_negative,
+        import_run_id = excluded.import_run_id,
+        synced_at = now(),
+        is_active = true
+    `);
+    existenciasEscritas += chunk.length;
   }
 
   // ---------- Movimientos agregados ----------
@@ -1451,6 +1617,7 @@ async function importResumen(
     locations: locationRows.size,
     products: productRows.size,
     movements,
+    existencias: existenciasEscritas,
   };
 }
 

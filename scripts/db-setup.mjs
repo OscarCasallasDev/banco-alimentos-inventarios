@@ -144,6 +144,12 @@ const MIGRATION_CHECKS = {
       where schemaname = 'public' and matviewname = 'mv_stock_consolidated'
         and definition like '%lower(p.code)%'
     ) as done`,
+  "0019_nombres_asociados_bodega.sql": `
+    select exists (
+      select 1 from information_schema.columns
+      where table_schema = 'public' and table_name = 'warehouses'
+        and column_name = 'alias_names'
+    ) as done`,
 };
 
 async function isAlreadyApplied(sql, file) {

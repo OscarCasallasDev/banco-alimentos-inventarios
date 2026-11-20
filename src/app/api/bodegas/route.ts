@@ -1,16 +1,11 @@
-import { NextRequest } from "next/server";
-import { getDb, withTransaction } from "@/lib/db/client";
+import { NextRequest, type NextResponse } from "next/server";
+import { getDb } from "@/lib/db/client";
 import { requireModulePermission } from "@/lib/auth/guard";
 import { requireUser } from "@/lib/auth/session";
 import { jsonOk, handleRouteError } from "@/lib/api/response";
-import {
-  createWarehouse,
-  invalidateWarehousesCache,
-  listWarehouses,
-} from "@/lib/services/warehouse.service";
-import { recordAuditLog } from "@/lib/services/audit-log.service";
+import { listWarehouses } from "@/lib/services/warehouse.service";
 import { listWarehouseSummary } from "@/lib/services/warehouse.service";
-import { createWarehouseSchema } from "@/lib/validations/schemas";
+import { forbiddenError } from "@/lib/utils/errors";
 
 export async function GET(request: NextRequest) {
   try {
@@ -38,30 +33,18 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(): Promise<NextResponse> {
   try {
-    const user = await requireUser();
+    await requireUser();
 
-    const body = await request.json();
-    const input = createWarehouseSchema.parse(body);
-
-    const warehouse = await withTransaction(async (tx) => {
-      const created = await createWarehouse(tx, input);
-
-      await recordAuditLog(tx, {
-        userId: user.id,
-        action: "WAREHOUSE_CREATE",
-        entity: "warehouses",
-        entityId: created.id,
-        details: `Bodega ${created.code} — ${created.name}`,
-      });
-
-      return created;
-    });
-
-    invalidateWarehousesCache();
-
-    return jsonOk(warehouse, 201);
+    // El catálogo de bodegas se alimenta del reporte de Siigo Pyme: cada
+    // bodega se identifica por su código numérico (columna B) y se actualiza
+    // en cada importación, sin duplicarse. La creación manual queda
+    // deshabilitada: se pediría al administrador que la crease desde el
+    // reporte.
+    throw forbiddenError(
+      "Las bodegas se crean automáticamente al importar el reporte de Siigo Pyme."
+    );
   } catch (error) {
     return handleRouteError(error, "bodegas:POST");
   }

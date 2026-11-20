@@ -65,11 +65,11 @@ function construirReporte(filas: unknown[][]): Buffer {
 describe("Lectura del Excel de Siigo (bodega por código numérico)", () => {
   const filas = [
     // A (rótulo)         B (código)  C (descripción)        D  E   F     G (producto)           H (descripción)   I(entradas) J K L(salidas) M N  O(dif)
-    [texto("0001 PRINCIPAL"), 1, texto("Principal"), texto("U1"), 1, texto("Estante 1"), texto("001000100001"), texto("Cobertura de chocolate"), 50, 0, 0, 0, 0, 0, 50],
-    [texto("0001 CAMPANA"), 1, texto("Campaña Juntos Somos Más Fuertes"), texto("U4"), 4, texto("Estante 4"), texto("001000100001"), texto("Cobertura de chocolate"), 50, 0, 0, 0, 0, 0, 50],
-    [texto("0002 PRINCIPAL"), 2, texto("Bodega secundaria"), texto("U1"), 1, texto("Estante 1"), texto("001000100001"), texto("Cobertura de chocolate"), 30, 0, 0, 0, 0, 0, 30],
-    [texto("0003 OTRA"), 3, texto("Otra descripción"), texto("U1"), 1, texto("Estante 1"), texto("001000100001"), texto("Cobertura de chocolate"), 20, 0, 0, 0, 0, 0, 20],
-    [texto("0001 PRINCIPAL"), 1, texto("Principal"), texto("U1"), 1, texto("Estante 1"), texto("002000100001"), texto("Cobertura de chocolate"), 20, 0, 0, 0, 0, 0, 20],
+    [texto("0001 PRINCIPAL"), 1, texto("Principal"), texto("U1"), 1, texto("Estante 1"), texto("001000100001"), texto("Cobertura de chocolate"), 90, 0, 0, 116, 0, 0, 999],
+    [texto("0001 CAMPANA"), 1, texto("Campaña Juntos Somos Más Fuertes"), texto("U4"), 4, texto("Estante 4"), texto("001000100001"), texto("Cobertura de chocolate"), 0, 0, 0, 6, 0, 0, 999],
+    [texto("0002 PRINCIPAL"), 2, texto("Bodega secundaria"), texto("U1"), 1, texto("Estante 1"), texto("001000100001"), texto("Cobertura de chocolate"), 30, 0, 0, 0, 0, 0, 999],
+    [texto("0003 OTRA"), 3, texto("Otra descripción"), texto("U1"), 1, texto("Estante 1"), texto("001000100001"), texto("Cobertura de chocolate"), 20, 0, 0, 0, 0, 0, 999],
+    [texto("0001 PRINCIPAL"), 1, texto("Principal"), texto("U1"), 1, texto("Estante 1"), texto("002000100001"), texto("Cobertura de chocolate"), 20, 0, 0, 0, 0, 0, 999],
   ];
 
   const buffer = construirReporte(filas);
@@ -111,11 +111,26 @@ describe("Lectura del Excel de Siigo (bodega por código numérico)", () => {
     expect(codigos.size).toBe(2);
   });
 
-  it("conserva las entradas, salidas y la diferencia reportada", () => {
-    expect(resultado.rows[0].qtyIn).toBe(50);
-    expect(resultado.rows[0].qtyOut).toBe(0);
-    expect(resultado.rows[0].netQuantity).toBe(50);
-    expect(resultado.rows[0].computedDifference).toBe(50);
+  it("ignora la columna O y calcula el neto con I y L", () => {
+    // La columna O dice 999, pero el cálculo obligatorio es I − L.
+    expect(resultado.rows[0].netQuantity).toBe(-26);
+    expect(resultado.rows[0].computedDifference).toBe(-26);
+    expect(resultado.rows[0].reportedDifference).toBe(999);
+    expect(
+      resultado.issues.some((i) => i.code === "DIFERENCIA_NO_COINCIDE")
+    ).toBe(true);
+  });
+
+  it("conserva las entradas, salidas y la diferencia calculada", () => {
+    expect(resultado.rows[0].qtyIn).toBe(90);
+    expect(resultado.rows[0].qtyOut).toBe(116);
+    expect(resultado.rows[0].netQuantity).toBe(-26);
+    expect(resultado.rows[0].computedDifference).toBe(-26);
+  });
+
+  it("guarda el rótulo de la columna A como nombre asociado", () => {
+    expect(resultado.rows[0].bodegaLabel).toBe("0001 PRINCIPAL");
+    expect(resultado.rows[1].bodegaLabel).toBe("0001 CAMPANA");
   });
 
   it("normaliza el código de Siigo al formato canónico", () => {

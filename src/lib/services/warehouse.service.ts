@@ -37,6 +37,7 @@ export async function listWarehouses(
           observations: warehouses.observations,
           source: warehouses.source,
           siigoCode: warehouses.siigoCode,
+          aliasNames: warehouses.aliasNames,
           createdAt: warehouses.createdAt,
           updatedAt: warehouses.updatedAt,
         })

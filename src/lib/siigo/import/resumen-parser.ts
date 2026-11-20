@@ -75,7 +75,9 @@ export interface ResumenRow {
   rowNumber: number;
   /** Código de bodega (numérico, tal como viene de Siigo). */
   bodegaCode: number;
-  /** Nombre de la bodega (puede venir truncado en el reporte). */
+  /** Rótulo de bodega de la columna A (p. ej. "0001 PRINCIPAL"). */
+  bodegaLabel: string;
+  /** Nombre de la bodega (columna C; puede venir truncado en el reporte). */
   bodegaName: string;
   /** Código de ubicación. */
   locationCode: number;
@@ -88,14 +90,17 @@ export interface ResumenRow {
   qtyIn: number;
   qtyOut: number;
   /**
-   * Diferencia entre entradas y salidas (columna O del reporte).
+   * Movimiento neto: ENTRADAS − SALIDAS.
    *
-   * Es el dato que el Banco entrega como «cantidad». NO es el saldo
-   * físico: es el movimiento neto del periodo del reporte.
+   * Se calcula con las columnas I y L. La columna O del reporte NO se usa
+   * para el cálculo de existencias: si el Banco informa un valor distinto,
+   * se registra como incidencia y manda el cálculo con I y L.
    */
   netQuantity: number;
   /** Entradas − salidas calculado (contraste de la columna O). */
   computedDifference: number;
+  /** Diferencia entre la columna O y el cálculo I − L (0 si no viene). */
+  reportedDifference: number;
 }
 
 export interface ResumenParseResult {
@@ -219,15 +224,19 @@ export function parseResumenReport(buffer: Buffer): ResumenParseResult {
     }
 
     const bodegaCode = Math.trunc(cellNumber(cells[1]));
+    const bodegaLabel = cellText(cells[0]).trim();
     const bodegaName = cellText(cells[2]).trim();
     const locationCode = Math.trunc(cellNumber(cells[4]));
     const locationName = cellText(cells[5]).trim();
     const productName = cellText(cells[7]).trim();
 
-    if (!Number.isFinite(bodegaCode) || bodegaCode < 0) {
+    // El Banco trabaja con SIETE bodegas, identificadas por su código
+    // numérico (columna B). Cualquier otro código es inválido: se informa
+    // y la fila NO se asigna a ninguna bodega.
+    if (!Number.isFinite(bodegaCode) || bodegaCode < 1 || bodegaCode > 7) {
       issues.push({
         code: "BODEGA_INVALIDA",
-        message: `BODEGA inválida en la fila ${rowNumber}.`,
+        message: `BODEGA inválida en la fila ${rowNumber}: el código "${cellText(cells[1]).trim()}" está fuera del rango 1-7.`,
         rowNumber,
       });
       continue;
@@ -246,20 +255,22 @@ export function parseResumenReport(buffer: Buffer): ResumenParseResult {
     const qtyIn = round3(cellNumber(cells[8])); // I — entradas
     const qtyOut = round3(cellNumber(cells[11])); // L — salidas
 
-    // La columna O es la diferencia que entrega Siigo. En 3 filas del
-    // archivo real llega vacía: en ese caso se usa I − L como respaldo.
-    const hasDifference =
+    // La existencia se calcula con I y L. La columna O se conserva solo
+    // como contraste: si no coincide, se registra la incidencia y manda el
+    // cálculo con las entradas y las salidas.
+    const hasReported =
       cells[14] !== undefined && cellText(cells[14]).trim() !== "";
     const computedDifference = round3(qtyIn - qtyOut);
-    const netQuantity = round3(
-      hasDifference ? cellNumber(cells[14]) : computedDifference
-    );
+    const reportedDifference = hasReported
+      ? round3(cellNumber(cells[14]))
+      : 0;
+    const netQuantity = computedDifference;
 
-    if (hasDifference && Math.abs(netQuantity - computedDifference) > 0.001) {
+    if (hasReported && Math.abs(reportedDifference - computedDifference) > 0.001) {
       issues.push({
         code: "DIFERENCIA_NO_COINCIDE",
         message:
-          `La columna O (${netQuantity}) no coincide con I ? L (${computedDifference}) en la fila ${rowNumber}. Se usa la columna O.`,
+          `La columna O (${reportedDifference}) no coincide con I - L (${computedDifference}) en la fila ${rowNumber}. Se usa I - L.`,
         rowNumber,
       });
     }
@@ -267,6 +278,7 @@ export function parseResumenReport(buffer: Buffer): ResumenParseResult {
     rows.push({
       rowNumber,
       bodegaCode,
+      bodegaLabel,
       bodegaName,
       locationCode,
       locationName,
@@ -276,6 +288,7 @@ export function parseResumenReport(buffer: Buffer): ResumenParseResult {
       qtyOut,
       netQuantity,
       computedDifference,
+      reportedDifference,
     });
 
     warehouses.add(String(bodegaCode));

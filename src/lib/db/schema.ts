@@ -388,6 +388,12 @@ export const warehouses = pgTable(
     source: varchar("source", { length: 20 }).notNull().default("MANUAL"),
     /** Código de bodega en Siigo Pyme. */
     siigoCode: integer("siigo_code"),
+    /**
+     * Otros nombres o descripciones con los que la bodega aparece en el
+     * reporte de Siigo (columnas A y C). Es la MISMA bodega: la identifica
+     * su código numérico, no su rótulo.
+     */
+    aliasNames: text("alias_names"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

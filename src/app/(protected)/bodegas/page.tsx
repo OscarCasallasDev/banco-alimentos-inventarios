@@ -3,7 +3,6 @@
 import { useState } from "react";
 import {
   Warehouse,
-  Plus,
   Search,
   Edit,
   Trash2,
@@ -28,6 +27,8 @@ interface WarehouseItem {
   source: string;
   /** C?digo de bodega en Siigo Pyme. */
   siigoCode: number | null;
+  /** Otros nombres con los que la bodega aparece en el reporte de Siigo. */
+  aliasNames: string | null;
   /** Resumen de existencias importadas. */
   siigoSummary: {
     productCount: number;
@@ -105,13 +106,6 @@ export default function BodegasPage() {
     return Object.keys(errors).length === 0;
   }
 
-  function openCreate() {
-    setForm(emptyForm);
-    setEditingId(null);
-    setError("");
-    setFieldErrors({});
-    setShowModal(true);
-  }
 
   function openEdit(warehouse: WarehouseItem) {
     setForm({
@@ -202,23 +196,17 @@ export default function BodegasPage() {
             Bodegas del sistema y las importadas desde Siigo Pyme
           </p>
         </div>
-        <button
-          onClick={openCreate}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
-        >
-          <Plus className="w-4 h-4" />
-          Nueva Bodega
-        </button>
       </div>
 
       {/* Origen del catálogo */}
       <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800">
         <Info className="w-4 h-4 shrink-0 mt-0.5" />
         <p>
-          El catálogo de bodegas se alimenta del reporte de Siigo Pyme: las
-          bodegas importadas se identifican por su código de Siigo y su nombre
-          se actualiza en cada importación, sin duplicarlas. «Nueva Bodega» es
-          para las bodegas que no vienen de Siigo.
+          El catálogo de bodegas se alimenta del reporte de Siigo Pyme: cada
+          bodega se identifica por su <strong>código numérico</strong> y su
+          nombre se actualiza en cada importación, sin duplicarlas. Los otros
+          nombres con los que aparece en el reporte se muestran como nombres
+          asociados. No se crean bodegas a mano.
         </p>
       </div>
 
@@ -246,6 +234,7 @@ export default function BodegasPage() {
               <tr className="bg-gray-50 border-b border-gray-200">
                 <th className="text-left py-3 px-4 font-medium text-gray-600">Código</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">Nombre</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">Otros nombres</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">Tipo</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">Estado</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">Acciones</th>
@@ -272,7 +261,23 @@ export default function BodegasPage() {
                 filtered.map((warehouse) => (
                   <tr key={warehouse.id} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="py-3 px-4 font-mono text-gray-900">{warehouse.code}</td>
-                    <td className="py-3 px-4 text-gray-900">{warehouse.name}</td>
+                    <td className="py-3 px-4 text-gray-900">
+                      {warehouse.name}
+                      {warehouse.siigoCode !== null && (
+                        <p className="text-[11px] text-gray-500">
+                          Bodega {warehouse.siigoCode}
+                        </p>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-xs text-gray-600">
+                      {warehouse.aliasNames ? (
+                        <span title={warehouse.aliasNames}>
+                          {warehouse.aliasNames}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
+                    </td>
                     <td className="py-3 px-4">
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-accent-100 text-accent-800">
                         {typeLabels[warehouse.type]}
