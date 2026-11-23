@@ -12,11 +12,19 @@
  *      una petición, así que no puede pasar por la API).
  *   4. Pedir al backend que interprete el archivo y actualice los datos.
  *
- * La huella también evita importar dos veces el mismo archivo: el backend
- * reconoce la corrida y la marca como ya procesada.
+ * La huella identifica el archivo. La importación manual siempre reprocesa
+ * el archivo elegido (`force`) para que una nueva carga actualice la fecha y
+ * la hora de la última importación, incluso si el Excel es el mismo.
  */
 
 import { apiSend } from "@/lib/api/client";
+
+/**
+ * La importación actualiza miles de existencias en la base de datos y puede
+ * tardar más que una petición normal. El cliente debe esperar a que el
+ * backend confirme el cierre de la corrida, no abortar a los 20 segundos.
+ */
+const IMPORT_TIMEOUT_MS = 5 * 60 * 1000;
 
 export interface ImportarExcelCallbacks<T> {
   /** Mensaje de progreso para la interfaz. */
@@ -42,8 +50,8 @@ export function esArchivoImportable(fileName: string): boolean {
  * El tipo del resultado lo decide quien llama: la API devuelve las fechas
  * como texto, mientras que el servicio interno las maneja como `Date`.
  *
- * @returns el resumen de la corrida, o `null` si el archivo ya se había
- *          importado antes (en ese caso se informa por `onResultado`).
+ * @returns el resumen de la corrida cerrada, o `null` si ocurrió un error
+ *          (el detalle se informa por `onError`).
  */
 export async function importarArchivoExcel<T>(
   file: File,
@@ -67,12 +75,13 @@ export async function importarArchivoExcel<T>(
       fileName: file.name,
       fileSize: file.size,
       source: "MANUAL",
+      force: true,
     });
 
     if ((run as { alreadyProcessed?: boolean }).alreadyProcessed) {
       onResultado?.(run);
       onProgress?.("Este archivo ya se había importado.");
-      return null;
+      return run;
     }
 
     // 3. URL firmada para subir el binario a Storage.
@@ -108,8 +117,18 @@ export async function importarArchivoExcel<T>(
     const finished = await apiSend<T>(
       `/api/siigo/importaciones/${(run as { id: string }).id}/procesar-archivo`,
       "POST",
-      { path: signed.path }
+      { path: signed.path },
+      { timeoutMs: IMPORT_TIMEOUT_MS }
     );
+
+    // Solo se informa éxito cuando el backend confirmó el cierre de la
+    // corrida y los datos quedaron guardados.
+    const status = (finished as { status?: string }).status;
+    if (status !== "COMPLETED") {
+      throw new Error(
+        "La importación no terminó correctamente. Los datos no se actualizaron."
+      );
+    }
 
     onResultado?.(finished);
     onProgress?.("Importación completada");

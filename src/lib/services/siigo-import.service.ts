@@ -316,21 +316,11 @@ export async function createRun(
     return { ...toSummary(existing), alreadyProcessed: true };
   }
 
-  // Reproceso forzado: la corrida anterior deja el estado COMPLETED para que
-  // el índice único por hash no la bloquee (queda como REJECTED en el
-  // historial, que es un registro auditable).
-  if (existing && input.force) {
-    await db
-      .update(siigoImportRuns)
-      .set({
-        status: "REJECTED",
-        finishedAt: new Date(),
-        errorSummary: {
-          message: "Reprocesada por solicitud del administrador.",
-        },
-      })
-      .where(eq(siigoImportRuns.id, existing.id));
-  }
+  // Reproceso forzado: la corrida anterior NO se marca como reemplazada
+  // todavía. Se conserva como COMPLETED (última importación exitosa) mientras
+  // la nueva corrida se procesa; solo se reemplaza al confirmar el cierre
+  // exitoso. Así, si la reimportación falla, el dashboard sigue mostrando la
+  // última importación buena.
 
   // Una importación activa bloquea el paso: evita dos procesos simultáneos.
   const [active] = await db
@@ -670,6 +660,32 @@ export async function saveResumenRows(
   return { accepted: rows.length };
 }
 
+/**
+ * Reemplaza la corrida COMPLETED anterior del mismo archivo.
+ *
+ * Se ejecuta dentro de la transacción de cierre, justo antes de marcar la
+ * nueva corrida como COMPLETED. Si el procesamiento falla, la corrida
+ * anterior permanece intacta y el dashboard conserva su fecha y su archivo.
+ */
+async function supersedePreviousRun(
+  tx: DbExecutor,
+  runId: string,
+  fileSha256: string
+): Promise<void> {
+  await tx.execute(sql`
+    UPDATE siigo_import_runs
+    SET status = 'REJECTED',
+        finished_at = now(),
+        error_summary = jsonb_build_object(
+          'message',
+          'Reimportada correctamente desde el mismo archivo.'
+        )
+    WHERE file_sha256 = ${fileSha256}
+      AND status = 'COMPLETED'
+      AND id <> ${runId}::uuid
+  `);
+}
+
 export async function finalizeRun(
   runId: string,
   reportParam?: NormalizedReport
@@ -729,6 +745,7 @@ export async function finalizeRun(
         );
 
         await refreshConsolidatedView(tx);
+        await supersedePreviousRun(tx, runId, run.fileSha256);
 
         const [updated] = await tx
           .update(siigoImportRuns)
@@ -738,6 +755,7 @@ export async function finalizeRun(
             finishedAt: new Date(),
             durationMs: Date.now() - started,
             productsCount: resumenResult.products,
+            balancesCount: resumenResult.existencias,
             movementsCount: resumenResult.movements,
             warehousesCount: resumenResult.warehouses,
             locationsCount: resumenResult.locations,
@@ -836,6 +854,7 @@ export async function finalizeRun(
       // Se refresca la vista materializada para que el inventario y el
       // buscador de la orden vean los datos nuevos de inmediato.
       await refreshConsolidatedView(tx);
+      await supersedePreviousRun(tx, runId, run.fileSha256);
 
       const [updated] = await tx
         .update(siigoImportRuns)
@@ -1518,6 +1537,20 @@ async function importResumen(
         is_active = true
     `);
     existenciasEscritas += chunk.length;
+  }
+
+  // El reporte es la fuente completa de sus bodegas. Cualquier existencia
+  // activa que no haya sido reescrita en esta corrida (por ejemplo, saldos
+  // por ubicación o grupos que ya no aparecen) queda como histórica. No se
+  // borra nada: solo deja de contarse en el inventario.
+  if (bodegasDelArchivo.length > 0) {
+    await tx.execute(sql`
+      UPDATE siigo_balances
+      SET is_active = false, synced_at = now()
+      WHERE is_active
+        AND ${inArray(siigoBalances.siigoBodegaCode, bodegasDelArchivo)}
+        AND import_run_id <> ${runId}::uuid
+    `);
   }
 
   // ---------- Movimientos agregados ----------

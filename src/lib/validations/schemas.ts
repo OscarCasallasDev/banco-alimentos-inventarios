@@ -815,6 +815,8 @@ export const createSiigoRunSchema = z.object({
   fileSize: z.number().int().min(0).optional(),
   source: z.enum(["MANUAL", "AGENT"]).optional().default("MANUAL"),
   agentId: z.string().max(120).optional(),
+  /** Reprocesa el archivo aunque ya se haya importado (importación manual). */
+  force: z.boolean().optional(),
   meta: z
     .object({
       title: z.string().optional(),

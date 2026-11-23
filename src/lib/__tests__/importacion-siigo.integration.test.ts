@@ -21,6 +21,7 @@ import {
   createRun,
   saveResumenRows,
   finalizeRun,
+  getLastSuccessfulRun,
 } from "@/lib/services/siigo-import.service";
 import {
   listConsolidatedStock,
@@ -83,6 +84,7 @@ const FILAS = [
 describeDb("Importación manual del reporte resumen de Siigo", () => {
   let sha256 = "";
   let runId = "";
+  let resumenRows: ReturnType<typeof parseResumenReport>["rows"] = [];
   /** Estado real del catálogo, para restaurarlo al terminar. */
   let nombresPrevios: { siigoCode: number; name: string; aliasNames: string | null }[] = [];
   let balancesPrevios: { id: string }[] = [];
@@ -115,7 +117,11 @@ describeDb("Importación manual del reporte resumen de Siigo", () => {
       .select({ id: siigoBalances.id })
       .from(siigoBalances)
       .where(
-        sql`${siigoBalances.isActive} and ${siigoBalances.locationCode} <> 0 and ${siigoBalances.siigoBodegaCode} = ${BODEGA}`
+        sql`${siigoBalances.isActive}
+            and ${siigoBalances.siigoBodegaCode} = ${BODEGA}
+            and ${siigoBalances.productId} not in (
+              select id from products where code in (${COD_A}, ${COD_B})
+            )`
       );
     balancesPrevios = bal;
 
@@ -143,6 +149,7 @@ describeDb("Importación manual del reporte resumen de Siigo", () => {
     sha256 = reporte.sha256;
 
     const parsed = parseResumenReport(reporte.buffer);
+    resumenRows = parsed.rows;
     expect(parsed.rows.length).toBe(3);
 
     const run = await createRun(
@@ -199,10 +206,13 @@ describeDb("Importación manual del reporte resumen de Siigo", () => {
               sql`${siigoLocations.siigoBodegaCode} = ${row.siigoBodegaCode} and ${siigoLocations.locationCode} = ${row.locationCode}`
             );
         }
-        // Las ubicaciones nuevas creadas por la prueba se eliminan.
+        // Las ubicaciones nuevas creadas por la prueba (incluidas las de una
+        // reimportación forzada) se eliminan.
         await db.execute(sql`
           DELETE FROM siigo_locations
-          WHERE import_run_id = ${runId}::uuid
+          WHERE import_run_id IN (
+            SELECT id FROM siigo_import_runs WHERE file_sha256 = ${sha256}
+          )
         `);
       },
       // Se restauran los nombres y los alias de las bodegas.
@@ -324,6 +334,44 @@ describeDb("Importación manual del reporte resumen de Siigo", () => {
     expect((bodegasDespues as unknown as { n: number }[])[0].n).toBe(
       (bodegasAntes as unknown as { n: number }[])[0].n
     );
+  });
+
+  it("reimportar el mismo archivo actualiza la última importación exitosa", async () => {
+    // La reimportación manual usa `force`: debe crear una nueva corrida y
+    // convertirse en la última importación exitosa del dashboard.
+    const forced = await createRun(
+      {
+        fileSha256: sha256,
+        fileName: "prueba-importacion-siigo.xlsx",
+        fileSize: 1,
+        source: "MANUAL",
+        force: true,
+      },
+      null
+    );
+    expect(forced.alreadyProcessed).toBe(false);
+
+    await saveResumenRows(forced.id, resumenRows);
+    const summary = await finalizeRun(forced.id);
+    expect(summary.status).toBe("COMPLETED");
+
+    const last = await getLastSuccessfulRun();
+    expect(last?.id).toBe(forced.id);
+    expect(last?.fileName).toBe("prueba-importacion-siigo.xlsx");
+
+    // Los datos siguen siendo los mismos: la reimportación no duplica.
+    const db = getDb();
+    const filas = (await db.execute(sql`
+      SELECT p.code, sb.quantity
+      FROM siigo_balances sb
+      JOIN products p ON p.id = sb.product_id
+      WHERE p.code IN (${COD_A}, ${COD_B}) AND sb.is_active
+      ORDER BY p.code
+    `)) as unknown as { code: string; quantity: string }[];
+
+    expect(filas).toHaveLength(2);
+    expect(Number(filas.find((f) => f.code === COD_A)?.quantity)).toBe(-32);
+    expect(Number(filas.find((f) => f.code === COD_B)?.quantity)).toBe(25);
   });
 
   it("una bodega con varios nombres sigue siendo una sola bodega", async () => {

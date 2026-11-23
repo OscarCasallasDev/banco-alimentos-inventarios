@@ -52,6 +52,7 @@ interface StockRow {
 interface ExistenciaResponse {
   items: StockRow[];
   totals: {
+    uniqueProducts: number;
     groups: number;
     positive: number;
     zero: number;
@@ -179,9 +180,17 @@ export default function InventarioPage() {
 
       {/* Resumen por disponibilidad */}
       {totals && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-            <p className="text-xs text-gray-500">Productos consolidados</p>
+            <p className="text-xs text-gray-500">Productos únicos</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">
+              {formatNumber(totals.uniqueProducts)}
+            </p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+            <p className="text-xs text-gray-500">
+              Existencias por producto y bodega
+            </p>
             <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">
               {formatNumber(totals.groups)}
             </p>

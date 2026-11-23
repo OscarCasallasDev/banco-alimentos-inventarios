@@ -147,8 +147,8 @@ describe("Lector del reporte resumido (archivo real)", () => {
 
   it("un mismo producto puede aparecer en varias ubicaciones de la misma bodega", () => {
     if (!HAS_FIXTURE) return;
-    // Es lo que permite consolidar por descripción y bodega sumando las
-    // ubicaciones.
+    // Es lo que permite consolidar por código de producto y bodega sumando
+    // las ubicaciones.
     const porProducto = new Map<string, number>();
     for (const row of result.rows) {
       const clave = `${row.productCode}|${row.bodegaCode}`;
@@ -156,6 +156,36 @@ describe("Lector del reporte resumido (archivo real)", () => {
     }
     const conVarias = [...porProducto.values()].filter((n) => n > 1);
     expect(conVarias.length).toBeGreaterThan(0);
+  });
+
+  it("coincide con los totales de referencia del archivo real", () => {
+    if (!HAS_FIXTURE) return;
+
+    const productos = new Set(result.rows.map((row) => row.productCode));
+    const grupos = new Set(
+      result.rows.map((row) => `${row.productCode}|${row.bodegaCode}`)
+    );
+
+    expect(result.rows).toHaveLength(2_209);
+    expect(productos.size).toBe(1_344);
+    expect(grupos.size).toBe(1_789);
+  });
+
+  it("consolida el aceite de oliva: dos ubicaciones, una sola existencia de 5", () => {
+    if (!HAS_FIXTURE) return;
+
+    const aceite = result.rows.filter(
+      (row) => row.productCode.replace(/\D/g, "") === "0010001003992"
+    );
+    expect(aceite).toHaveLength(2);
+    expect(new Set(aceite.map((row) => row.productCode)).size).toBe(1);
+    expect(new Set(aceite.map((row) => row.bodegaCode))).toEqual(new Set([1]));
+    expect(new Set(aceite.map((row) => row.locationCode)).size).toBe(2);
+    expect(aceite.reduce((sum, row) => sum + row.qtyIn, 0)).toBe(34);
+    expect(aceite.reduce((sum, row) => sum + row.qtyOut, 0)).toBe(29);
+    expect(
+      aceite.reduce((sum, row) => sum + row.qtyIn - row.qtyOut, 0)
+    ).toBe(5);
   });
 });
 

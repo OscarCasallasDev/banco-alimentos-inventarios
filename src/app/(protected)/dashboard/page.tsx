@@ -105,10 +105,34 @@ function formatDateTime(value: string | Date | null): string {
   if (!value) return "—";
   const date = typeof value === "string" ? new Date(value) : value;
   if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("es-CO", {
-    dateStyle: "medium",
-    timeStyle: "short",
+
+  const timeZone = "America/Bogota";
+  const fecha = new Intl.DateTimeFormat("es-CO", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone,
   }).format(date);
+  const hora = new Intl.DateTimeFormat("es-CO", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone,
+  }).format(date);
+
+  return `${fecha} - ${hora}`;
+}
+
+/** «Hace 0 minutos», «Hace 5 minutos», «Hace 2 horas»… */
+function formatElapsed(minutes: number | null): string {
+  if (minutes === null) return "";
+  const total = Math.max(0, Math.floor(minutes));
+  if (total < 1) return "Hace 0 minutos.";
+  if (total < 60) {
+    return `Hace ${total} minuto${total === 1 ? "" : "s"}.`;
+  }
+  const hours = Math.floor(total / 60);
+  return `Hace ${hours} hora${hours === 1 ? "" : "s"}.`;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -153,9 +177,9 @@ export default async function DashboardPage() {
     console.error("No se pudo cargar el tablero:", error);
   }
 
-  const staleMinutes = 60;
+  const staleMinutes = Number(process.env.SYNC_STALE_MINUTES ?? 60);
   const minutesSince = lastRun?.finishedAt
-    ? (now.getTime() - new Date(lastRun.finishedAt).getTime()) / 60000
+    ? Math.max(0, (now.getTime() - new Date(lastRun.finishedAt).getTime()) / 60000)
     : null;
   const stale = minutesSince === null || minutesSince > staleMinutes;
 
@@ -218,29 +242,31 @@ export default async function DashboardPage() {
                 stale ? "text-amber-800" : "text-emerald-800"
               )}
             >
-              {stale
-                ? "El inventario está desactualizado"
-                : "El inventario está actualizado"}
+              {stale ? "Inventario desactualizado" : "Inventario actualizado"}
             </p>
-            <p
-              className={cn(
-                "text-sm mt-0.5",
-                stale ? "text-amber-700" : "text-emerald-700"
-              )}
-            >
-              {lastRun
-                ? `Última importación: ${formatDateTime(lastRun.finishedAt)}` +
-                  (lastRun.reportDate
-                    ? ` · Reporte del ${lastRun.reportDate}`
-                    : "") +
-                  (lastRun.reportFormat === "RESUMEN"
-                    ? " · Reporte resumen por bodega"
-                    : "") +
-                  (minutesSince !== null
-                    ? ` · hace ${Math.round(minutesSince)} minutos`
-                    : "")
-                : "Todavía no se ha importado ningún reporte de Siigo Pyme."}
-            </p>
+            {lastRun ? (
+              <div
+                className={cn(
+                  "text-sm mt-0.5 space-y-0.5",
+                  stale ? "text-amber-700" : "text-emerald-700"
+                )}
+              >
+                <p>Última importación: {formatDateTime(lastRun.finishedAt)}</p>
+                <p className="truncate">
+                  Archivo: {lastRun.fileName ?? "—"}
+                </p>
+                <p>{formatElapsed(minutesSince)}</p>
+              </div>
+            ) : (
+              <p
+                className={cn(
+                  "text-sm mt-0.5",
+                  stale ? "text-amber-700" : "text-emerald-700"
+                )}
+              >
+                Todavía no se ha importado ningún reporte de Siigo Pyme.
+              </p>
+            )}
           </div>
         </div>
 

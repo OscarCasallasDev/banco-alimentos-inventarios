@@ -48,7 +48,8 @@ export default function ImportarExcel({ onFinished }: ImportarExcelProps) {
     setSelected(null);
     setConfirming(false);
     setProgress("");
-    setError(null);
+    // No se limpia `error`: si la importación falló, la notificación debe
+    // seguir visible después de cerrar la pantalla de carga.
     if (inputRef.current) inputRef.current.value = "";
   }
 
@@ -102,10 +103,7 @@ export default function ImportarExcel({ onFinished }: ImportarExcelProps) {
     setProgress("");
 
     if (resumen) {
-      const filas = resumen.processedRows ?? resumen.totalRows ?? 0;
-      setDone(
-        `Importación completada: ${filas} fila(s) procesada(s). El inventario ya está actualizado.`
-      );
+      setDone("Tu importación ha sido exitosa");
       onFinished?.(resumen);
       router.refresh();
     }

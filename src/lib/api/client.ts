@@ -61,10 +61,11 @@ function redirectToLogin() {
 async function request(
   endpoint: string,
   init: RequestInit,
-  externalSignal?: AbortSignal
+  externalSignal?: AbortSignal,
+  timeoutMs = REQUEST_TIMEOUT_MS
 ): Promise<{ response: Response; payload: unknown }> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   const abortFromCaller = () => controller.abort();
   externalSignal?.addEventListener("abort", abortFromCaller, { once: true });
@@ -155,13 +156,19 @@ export async function apiGet<T>(
 export async function apiSend<T>(
   endpoint: string,
   method: "POST" | "PUT" | "DELETE",
-  body?: unknown
+  body?: unknown,
+  options?: { timeoutMs?: number }
 ): Promise<T> {
-  const { response, payload } = await request(endpoint, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const { response, payload } = await request(
+    endpoint,
+    {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    },
+    undefined,
+    options?.timeoutMs
+  );
 
   if (!response.ok || !(payload as { success?: boolean } | null)?.success) {
     throw toApiError(

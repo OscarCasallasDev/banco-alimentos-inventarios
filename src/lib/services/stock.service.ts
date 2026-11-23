@@ -95,6 +95,9 @@ export interface ConsolidatedStockResult {
   total: number;
   /** Totales del conjunto filtrado (no solo de la página). */
   totals: {
+    /** Productos distintos (un producto en varias bodegas cuenta una vez). */
+    uniqueProducts: number;
+    /** Registros de existencia consolidados por producto y bodega. */
     groups: number;
     positive: number;
     zero: number;
@@ -228,6 +231,7 @@ export async function listConsolidatedStock(
       f.review_required,
       f.net_weight_grams,
       f.synced_at,
+      (SELECT COUNT(DISTINCT f2.representative_product_id)::int FROM filtrado f2) AS total_productos,
       COUNT(*) OVER ()::int AS total_registros,
       COUNT(*) FILTER (WHERE (f.quantity - f.reserved) > 0) OVER ()::int AS total_positivos,
       COUNT(*) FILTER (WHERE (f.quantity - f.reserved) = 0) OVER ()::int AS total_cero,
@@ -248,6 +252,7 @@ export async function listConsolidatedStock(
     items,
     total: Number(first?.total_registros ?? 0),
     totals: {
+      uniqueProducts: Number(first?.total_productos ?? 0),
       groups: Number(first?.total_registros ?? 0),
       positive: Number(first?.total_positivos ?? 0),
       zero: Number(first?.total_cero ?? 0),
