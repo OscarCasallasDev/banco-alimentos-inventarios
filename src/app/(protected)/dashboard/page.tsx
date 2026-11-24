@@ -13,7 +13,6 @@ import {
   Boxes,
   AlertTriangle,
   CheckCircle2,
-  Clock,
   PackageCheck,
   TrendingDown,
   Warehouse,
@@ -138,9 +137,9 @@ function formatElapsed(minutes: number | null): string {
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: "Borrador",
   GENERATED: "Generada",
-  DELIVERED: "Recibida en despacho",
-  CONFIRMED_SIIGO: "Confirmada en Siigo",
-  CANCELLED: "Anulada",
+  DELIVERED: "Lista para imprimir",
+  CONFIRMED_SIIGO: "Lista para imprimir",
+  CANCELLED: "Histórica",
 };
 
 export default async function DashboardPage() {
@@ -161,7 +160,6 @@ export default async function DashboardPage() {
     byStatus: {} as Record<string, number>,
     todayCount: 0,
     todayQuantity: 0,
-    pendingReconciliation: 0,
   };
   let recent: Awaited<ReturnType<typeof listRecentSalidas>> = [];
 
@@ -283,7 +281,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Indicadores de órdenes de pedido */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <Link
           href="/salidas-almacen"
           className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 hover:border-primary-300 transition-colors"
@@ -292,9 +290,9 @@ export default async function DashboardPage() {
             <ArrowUpFromLine className="w-3.5 h-3.5" /> Órdenes generadas
           </p>
           <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">
-            {summary.byStatus.GENERATED ?? 0}
+            {summary.total}
           </p>
-          <p className="text-xs text-gray-400 mt-0.5">esperando entrega</p>
+          <p className="text-xs text-gray-400 mt-0.5">histórico del sistema</p>
         </Link>
 
         <Link
@@ -307,27 +305,7 @@ export default async function DashboardPage() {
           <p className="text-2xl font-bold text-violet-700 mt-1 tabular-nums">
             {summary.byStatus.DELIVERED ?? 0}
           </p>
-          <p className="text-xs text-gray-400 mt-0.5">por confirmar en Siigo</p>
-        </Link>
-
-        <Link
-          href="/salidas-almacen"
-          className={cn(
-            "rounded-xl border shadow-sm p-4 hover:border-primary-300 transition-colors",
-            summary.pendingReconciliation > 0
-              ? "bg-amber-50 border-amber-200"
-              : "bg-white border-gray-200"
-          )}
-        >
-          <p className="text-xs text-gray-500 flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5" /> Pendientes de confirmar
-          </p>
-          <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">
-            {summary.pendingReconciliation}
-          </p>
-          <p className="text-xs text-gray-400 mt-0.5">
-            aún no reflejadas en Siigo
-          </p>
+          <p className="text-xs text-gray-400 mt-0.5">listas para imprimir</p>
         </Link>
 
         <Link
@@ -381,13 +359,13 @@ export default async function DashboardPage() {
           className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 hover:border-primary-300 transition-colors"
         >
           <p className="text-xs text-gray-500 flex items-center gap-1.5">
-            <Warehouse className="w-3.5 h-3.5" /> Bodegas disponibles
+            <Warehouse className="w-3.5 h-3.5" /> Bodegas registradas
           </p>
           <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">
             {bodegas.total}
           </p>
           <p className="text-xs text-gray-400 mt-0.5">
-            {bodegas.siigo} importadas de Siigo
+            {bodegas.siigo} importadas de Siigo Pyme
           </p>
         </Link>
 

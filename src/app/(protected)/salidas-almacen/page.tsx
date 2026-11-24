@@ -16,11 +16,8 @@ import {
   Search,
   Printer,
   RefreshCw,
-  AlertTriangle,
   ChevronLeft,
   ChevronRight,
-  CheckCircle2,
-  Clock,
   PackageCheck,
 } from "lucide-react";
 import { useApiQuery } from "@/hooks/useApiQuery";
@@ -43,7 +40,6 @@ interface Salida {
   date: string;
   time: string;
   status: string;
-  reconciliationStatus: string;
   programName: string;
   warehouseName: string | null;
   userName: string;
@@ -63,7 +59,6 @@ interface SalidasResponse {
     byStatus: Record<string, number>;
     todayCount: number;
     todayQuantity: number;
-    pendingReconciliation: number;
   };
   pagination: { page: number; pageSize: number; total: number; totalPages: number };
 }
@@ -71,18 +66,25 @@ interface SalidasResponse {
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: "Borrador",
   GENERATED: "Generada",
-  DELIVERED: "Recibida en despacho",
-  CONFIRMED_SIIGO: "Confirmada en Siigo",
-  CANCELLED: "Anulada",
+  DELIVERED: "Lista para imprimir",
+  CONFIRMED_SIIGO: "Lista para imprimir",
+  CANCELLED: "Histórica",
 };
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: "bg-gray-100 text-gray-700 border-gray-200",
   GENERATED: "bg-blue-50 text-blue-700 border-blue-200",
-  DELIVERED: "bg-violet-50 text-violet-700 border-violet-200",
+  DELIVERED: "bg-emerald-50 text-emerald-700 border-emerald-200",
   CONFIRMED_SIIGO: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  CANCELLED: "bg-red-50 text-red-700 border-red-200",
+  CANCELLED: "bg-gray-100 text-gray-600 border-gray-200",
 };
+
+/** Solo estos estados se ofrecen en el filtro; los históricos no. */
+const STATUS_FILTERS = [
+  { value: "DRAFT", label: "Borrador" },
+  { value: "GENERATED", label: "Generada" },
+  { value: "DELIVERED", label: "Lista para imprimir" },
+];
 
 function formatNumber(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
@@ -161,14 +163,14 @@ export default function SalidasAlmacenPage() {
       {summary && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-            <p className="text-xs text-gray-500">Salidas generadas</p>
+            <p className="text-xs text-gray-500">Generadas sin recepción</p>
             <p className="text-2xl font-bold text-gray-900 mt-1">
               {summary.byStatus.GENERATED ?? 0}
             </p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-            <p className="text-xs text-gray-500">Recibidas en despacho</p>
-            <p className="text-2xl font-bold text-violet-700 mt-1">
+            <p className="text-xs text-gray-500">Listas para imprimir</p>
+            <p className="text-2xl font-bold text-emerald-700 mt-1">
               {summary.byStatus.DELIVERED ?? 0}
             </p>
           </div>
@@ -181,20 +183,10 @@ export default function SalidasAlmacenPage() {
               </span>
             </p>
           </div>
-          <div
-            className={cn(
-              "rounded-xl border shadow-sm p-4",
-              summary.pendingReconciliation > 0
-                ? "bg-amber-50 border-amber-200"
-                : "bg-white border-gray-200"
-            )}
-          >
-            <p className="text-xs text-gray-500">Por conciliar con Siigo</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1 flex items-center gap-2">
-              {summary.pendingReconciliation}
-              {summary.pendingReconciliation > 0 && (
-                <AlertTriangle className="w-5 h-5 text-amber-600" />
-              )}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+            <p className="text-xs text-gray-500">Borradores</p>
+            <p className="text-2xl font-bold text-gray-700 mt-1">
+              {summary.byStatus.DRAFT ?? 0}
             </p>
           </div>
         </div>
@@ -224,9 +216,9 @@ export default function SalidasAlmacenPage() {
             aria-label="Filtrar por estado"
           >
             <option value="">Todos los estados</option>
-            {Object.entries(STATUS_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
+            {STATUS_FILTERS.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
               </option>
             ))}
           </select>
@@ -272,18 +264,6 @@ export default function SalidasAlmacenPage() {
                       >
                         {STATUS_LABELS[salida.status] ?? salida.status}
                       </span>
-                      {salida.reconciliationStatus === "PENDING" &&
-                        salida.status !== "DRAFT" &&
-                        salida.status !== "CANCELLED" && (
-                          <span className="text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 inline-flex items-center gap-1">
-                            <Clock className="w-3 h-3" /> Pendiente de conciliar
-                          </span>
-                        )}
-                      {salida.reconciliationStatus === "MATCHED" && (
-                        <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5 inline-flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" /> Conciliada
-                        </span>
-                      )}
                     </div>
 
                     <p className="text-sm text-gray-700 mt-1">

@@ -13,6 +13,10 @@ export const metadata: Metadata = {
     "Sistema de gestión, trazabilidad y conciliación de inventarios para el Banco Arquidiocesano de Alimentos de Ibagué",
 };
 
+export const viewport = {
+  colorScheme: "light" as const,
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{

@@ -71,9 +71,7 @@ export async function POST(request: Request) {
         action: "USER_CREATE",
         entity: "users",
         entityId: newUser.id,
-        details: `Usuario ${newUser.username} creado con rol ${newUser.role} y módulos: ${
-          modules.join(", ") || "ninguno"
-        }`,
+        details: `Se creó el usuario ${newUser.firstName} ${newUser.lastName} (${newUser.username}) con rol ${newUser.role}`,
       });
 
       return newUser;

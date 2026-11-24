@@ -61,8 +61,6 @@ interface Salida {
   date: string;
   time: string;
   status: string;
-  reconciliationStatus: string;
-  reconciliationNote: string | null;
   notes: string | null;
   delivererName: string | null;
   delivererDocument: string | null;
@@ -88,9 +86,9 @@ interface Salida {
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: "Borrador",
   GENERATED: "Generada",
-  DELIVERED: "Recibida en despacho",
-  CONFIRMED_SIIGO: "Confirmada en Siigo",
-  CANCELLED: "Anulada",
+  DELIVERED: "Lista para imprimir",
+  CONFIRMED_SIIGO: "Lista para imprimir",
+  CANCELLED: "Histórica",
 };
 
 function formatNumber(value: number | null | undefined): string {

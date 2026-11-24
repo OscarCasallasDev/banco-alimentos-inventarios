@@ -226,6 +226,22 @@ describe("Bloques de firmas del documento", () => {
     expect(bloque).toContain("Hora:");
     expect(bloque).toContain("Estado:");
   });
+
+  it("la impresión fuerza fondo blanco y texto negro aunque el móvil use modo oscuro", () => {
+    const globals = readFileSync(
+      path.join(process.cwd(), "src", "app", "globals.css"),
+      "utf8"
+    );
+    expect(globals).toContain("color-scheme: light");
+    expect(globals).toMatch(/@media print[\s\S]*background:\s*#fff\s*!important/);
+    expect(globals).toMatch(/@media print[\s\S]*color:\s*#000\s*!important/);
+    expect(globals).toContain("-webkit-print-color-adjust: exact");
+  });
+
+  it("los estados visibles ya no mencionan conciliación con Siigo", () => {
+    expect(tsx).not.toContain("CONFIRMADA EN SIIGO");
+    expect(tsx).not.toContain("ANULADA");
+  });
 });
 
 describe("Conversión de unidades de impresión", () => {

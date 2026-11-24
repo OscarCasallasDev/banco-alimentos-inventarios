@@ -4,15 +4,14 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Menu,
-  Bell,
   User,
   LogOut,
   ChevronDown,
-  AlertCircle,
   CheckCircle,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { SessionUser } from "@/lib/auth/session";
+import NotificationBell from "@/components/layout/NotificationBell";
 
 interface HeaderProps {
   user: SessionUser;
@@ -64,11 +63,9 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const notificationsRef = useRef<HTMLDivElement>(null);
 
   const userName = `${user.firstName} ${user.lastName}`.trim();
   const userRole = roleLabels[user.role] ?? user.role;
@@ -78,12 +75,6 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setDropdownOpen(false);
-      }
-      if (
-        notificationsRef.current &&
-        !notificationsRef.current.contains(event.target as Node)
-      ) {
-        setNotificationsOpen(false);
       }
     }
 
@@ -142,34 +133,7 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
         {/* Acciones */}
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Notificaciones */}
-          <div className="relative" ref={notificationsRef}>
-            <button
-              type="button"
-              onClick={() => setNotificationsOpen((open) => !open)}
-              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg relative"
-              aria-label="Notificaciones"
-              aria-expanded={notificationsOpen}
-            >
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-            </button>
-
-            {notificationsOpen && (
-              <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-lg border border-gray-200 p-4 z-50">
-                <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 mb-2">
-                  <AlertCircle className="w-4 h-4 text-primary-600" />
-                  Notificaciones
-                </div>
-                <p className="text-sm text-gray-600">
-                  No hay notificaciones pendientes.
-                </p>
-                <p className="text-xs text-gray-400 mt-2">
-                  La configuración de alertas automáticas está pendiente de
-                  validación con el Banco.
-                </p>
-              </div>
-            )}
-          </div>
+          <NotificationBell />
 
           {/* Usuario con menú desplegable */}
           <div className="relative" ref={dropdownRef}>

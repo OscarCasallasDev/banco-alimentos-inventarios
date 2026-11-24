@@ -10,6 +10,7 @@ import {
   updateExpirationSettings,
 } from "@/lib/config/inventory";
 import { updateExpirationSettingsSchema } from "@/lib/validations/schemas";
+import { recordAuditLog } from "@/lib/services/audit-log.service";
 
 /**
  * Estado del sistema para la pantalla de configuración.
@@ -65,14 +66,21 @@ export async function GET() {
  */
 export async function PUT(request: Request) {
   try {
-    await requireSuperAdmin();
+    const user = await requireSuperAdmin();
 
     const body = await request.json();
     const input = updateExpirationSettingsSchema.parse(body);
 
-    const thresholds = await withTransaction(async (tx) =>
-      updateExpirationSettings(tx, input)
-    );
+    const thresholds = await withTransaction(async (tx) => {
+      const updated = await updateExpirationSettings(tx, input);
+      await recordAuditLog(tx, {
+        userId: user.id,
+        action: "CONFIG_UPDATE",
+        entity: "system",
+        details: `Actualizó las alertas de vencimiento a ${input.alertDays} días (crítico: ${input.criticalDays}).`,
+      });
+      return updated;
+    });
 
     return jsonOk(thresholds);
   } catch (error) {

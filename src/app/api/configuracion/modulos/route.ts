@@ -14,6 +14,8 @@ import {
   setFeatureFlag,
 } from "@/lib/config/features";
 import { MODULES, MODULE_ORDER } from "@/lib/config/modules";
+import { getDb } from "@/lib/db/client";
+import { recordAuditLog } from "@/lib/services/audit-log.service";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -56,10 +58,10 @@ export async function PUT(request: NextRequest) {
     const user = await requireSuperAdmin();
     const input = bodySchema.parse(await request.json());
 
-    const known = MODULE_ORDER.some(
+    const moduleKey = MODULE_ORDER.find(
       (key) => MODULES[key].flag === input.key
     );
-    if (!known) {
+    if (!moduleKey) {
       return jsonOk(
         { error: `La bandera "${input.key}" no corresponde a ningún módulo.` },
         400
@@ -67,6 +69,12 @@ export async function PUT(request: NextRequest) {
     }
 
     await setFeatureFlag(input.key, input.enabled, user.id);
+    await recordAuditLog(getDb(), {
+      userId: user.id,
+      action: "MODULE_TOGGLE",
+      entity: "feature_flags",
+      details: `${input.enabled ? "Activó" : "Desactivó"} el módulo ${MODULES[moduleKey].label}.`,
+    });
     return jsonOk({ key: input.key, enabled: input.enabled });
   } catch (error) {
     return handleRouteError(error, "features:update");

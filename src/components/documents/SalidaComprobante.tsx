@@ -55,9 +55,9 @@ export interface ComprobanteSalida {
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: "BORRADOR",
   GENERATED: "GENERADA",
-  DELIVERED: "RECIBIDA EN DESPACHO",
-  CONFIRMED_SIIGO: "CONFIRMADA EN SIIGO",
-  CANCELLED: "ANULADA",
+  DELIVERED: "LISTA PARA IMPRIMIR",
+  CONFIRMED_SIIGO: "LISTA PARA IMPRIMIR",
+  CANCELLED: "HISTÓRICA",
 };
 
 function formatNumber(value: number | null | undefined): string {

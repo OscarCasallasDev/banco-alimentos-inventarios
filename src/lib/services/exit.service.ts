@@ -1153,7 +1153,13 @@ export async function listSalidas(
   const conditions = [sql`s.deleted_at IS NULL`];
 
   if (filters.status) {
-    conditions.push(sql`s.status = ${filters.status}`);
+    // «Lista para imprimir» agrupa las recibidas actuales y las históricas
+    // que antes se presentaban como confirmadas en Siigo.
+    conditions.push(
+      filters.status === "DELIVERED"
+        ? sql`s.status IN ('DELIVERED', 'CONFIRMED_SIIGO')`
+        : sql`s.status = ${filters.status}`
+    );
   }
   if (filters.programId) {
     conditions.push(sql`s.program_id = ${filters.programId}::uuid`);
@@ -1281,7 +1287,6 @@ export async function getSalidasSummary(): Promise<{
   byStatus: Record<string, number>;
   todayCount: number;
   todayQuantity: number;
-  pendingReconciliation: number;
 }> {
   const db = getDb();
   const rows = await db.execute<{
@@ -1289,25 +1294,18 @@ export async function getSalidasSummary(): Promise<{
     draft: number;
     generated: number;
     delivered: number;
-    confirmed: number;
-    cancelled: number;
     today_count: number;
     today_quantity: string;
-    pending_reconciliation: number;
   }>(sql`
     SELECT
       COUNT(*)::int AS total,
       COUNT(*) FILTER (WHERE status = 'DRAFT')::int AS draft,
       COUNT(*) FILTER (WHERE status = 'GENERATED')::int AS generated,
-      COUNT(*) FILTER (WHERE status = 'DELIVERED')::int AS delivered,
-      COUNT(*) FILTER (WHERE status = 'CONFIRMED_SIIGO')::int AS confirmed,
-      COUNT(*) FILTER (WHERE status = 'CANCELLED')::int AS cancelled,
-      COUNT(*) FILTER (WHERE date = ${todayIso()})::int AS today_count,
-      COALESCE(SUM(total_quantity) FILTER (WHERE date = ${todayIso()}), 0) AS today_quantity,
       COUNT(*) FILTER (
-        WHERE status IN ('GENERATED','DELIVERED','CONFIRMED_SIIGO')
-          AND reconciliation_status IN ('PENDING','PARTIAL')
-      )::int AS pending_reconciliation
+        WHERE receiver_name IS NOT NULL AND receiver_document IS NOT NULL
+      )::int AS delivered,
+      COUNT(*) FILTER (WHERE date = ${todayIso()})::int AS today_count,
+      COALESCE(SUM(total_quantity) FILTER (WHERE date = ${todayIso()}), 0) AS today_quantity
     FROM salidas
   `);
 
@@ -1319,12 +1317,9 @@ export async function getSalidasSummary(): Promise<{
       DRAFT: Number(row?.draft ?? 0),
       GENERATED: Number(row?.generated ?? 0),
       DELIVERED: Number(row?.delivered ?? 0),
-      CONFIRMED_SIIGO: Number(row?.confirmed ?? 0),
-      CANCELLED: Number(row?.cancelled ?? 0),
     },
     todayCount: Number(row?.today_count ?? 0),
     todayQuantity: Number(row?.today_quantity ?? 0),
-    pendingReconciliation: Number(row?.pending_reconciliation ?? 0),
   };
 }
 

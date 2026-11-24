@@ -42,7 +42,7 @@ export async function POST(request: Request) {
       action: "USER_CREATE",
       entity: "users",
       entityId: user.id,
-      details: `Registro público de ${user.username}`,
+      details: `Se registró un usuario nuevo: ${user.firstName} ${user.lastName}`,
     });
 
     return jsonOk(

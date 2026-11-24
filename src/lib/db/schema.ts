@@ -179,6 +179,9 @@ export const auditLogActionEnum = pgEnum("audit_log_action", [
   "USER_DEACTIVATE",
   "ORDER_UPDATE",
   "ORDER_DELETE",
+  "ORDER_RECEIVE",
+  "CONFIG_UPDATE",
+  "MODULE_TOGGLE",
   "LOT_CREATE",
   "LOT_UPDATE",
   "LOT_BLOCK",
@@ -1053,6 +1056,30 @@ export const auditLogs = pgTable(
     index("idx_logs_user").on(table.userId),
     index("idx_logs_created").on(table.createdAt),
     index("idx_logs_action").on(table.action),
+  ]
+);
+
+/**
+ * Estado de lectura de las notificaciones.
+ *
+ * Las notificaciones se derivan de `audit_logs`; aquí solo se guarda qué
+ * usuario ya leyó cada evento. Cada usuario tiene su propio estado.
+ */
+export const notificationReads = pgTable(
+  "notification_reads",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    auditLogId: uuid("audit_log_id")
+      .notNull()
+      .references(() => auditLogs.id, { onDelete: "cascade" }),
+    readAt: timestamp("read_at").notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("notification_reads_unique").on(table.userId, table.auditLogId),
+    index("idx_notification_reads_user").on(table.userId),
   ]
 );
 
