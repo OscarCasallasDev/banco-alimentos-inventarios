@@ -1,19 +1,17 @@
 /**
  * Detalle de una salida de almacén.
  *
- * Permite revisar el documento generado, registrar quién recibe en despacho
- * y confirmar que la salida ya quedó anotada en Siigo Pyme.
+ * Permite revisar el documento generado y registrar quién recibe en despacho.
  *
- * FLUJO PARA EL ALMACENISTA
+ * FLUJO
  *
- * El almacenista solo se ocupa de:
  *   1. Generar el documento (imprimir).
- *   2. Anotar quién recibe en despacho (nombre y cédula).
- *   3. Editar o eliminar la orden si quedó mal.
+ *   2. Registrar quién recibe (nombre y cédula).
+ *   3. El superadmin puede editar o eliminar la orden si quedó mal.
  *
- * NO hay un botón de "registrar recepción" ni una hora manual: la fecha y
- * la hora las registra el sistema y no son editables. Tampoco hay acciones
- * de anulación: una orden incorrecta se corrige editándola o eliminándola.
+ * La fecha y la hora de recepción las registra el sistema. La operación en
+ * Siigo Pyme se realiza directamente por despacho y no forma parte de este
+ * flujo.
  */
 
 "use client";
@@ -24,9 +22,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Printer,
-  CheckCircle2,
   PackageCheck,
-  Clock,
   AlertTriangle,
   Loader2,
   FileText,
@@ -36,7 +32,7 @@ import {
 } from "lucide-react";
 import { useApiQuery } from "@/hooks/useApiQuery";
 import { apiSend } from "@/lib/api/client";
-import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/Toast";
 
 interface SalidaItem {
   id: string;
@@ -124,10 +120,13 @@ export default function SalidaDetallePage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const id = params.id;
+  const { showToast } = useToast();
 
   const { data, isLoading, error, refetch } = useApiQuery<Salida>(
     `/api/salidas/${id}`
   );
+  const { data: me } = useApiQuery<{ role: string }>("/api/usuarios/me");
+  const isSuperAdmin = me?.role === "SUPERADMIN";
 
   const [action, setAction] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -135,8 +134,6 @@ export default function SalidaDetallePage() {
   // del formulario: el estado se deriva de la orden, no se copia en un efecto.
   const [receiverName, setReceiverName] = useState("");
   const [receiverDocument, setReceiverDocument] = useState("");
-  const [firmaConfirmadaEstado, setFirmaConfirmada] = useState(false);
-  const [siigoRef, setSiigoRef] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Se sincroniza una sola vez, cuando llega la orden, sin disparar renders
@@ -144,13 +141,11 @@ export default function SalidaDetallePage() {
   const [datosIniciales, setDatosIniciales] = useState<{
     name: string;
     document: string;
-    firma: boolean;
   } | null>(null);
   if (data && datosIniciales === null) {
     setDatosIniciales({
       name: data.receiverName ?? "",
       document: data.receiverDocument ?? "",
-      firma: Boolean(data.receiverName && data.receiverDocument),
     });
   }
   const [editados, setEditados] = useState(false);
@@ -158,9 +153,6 @@ export default function SalidaDetallePage() {
   const documentoRecepcion = editados
     ? receiverDocument
     : (datosIniciales?.document ?? "");
-  const firmaConfirmada = editados
-    ? firmaConfirmadaEstado
-    : (datosIniciales?.firma ?? false);
 
   async function ejecutar(nombre: string, body: Record<string, unknown>) {
     setAction(nombre);
@@ -178,15 +170,30 @@ export default function SalidaDetallePage() {
 
   /** Guarda la identificación de quién recibe (sin hora manual). */
   async function guardarRecepcion() {
+    const nombre = nombreRecepcion.trim();
+    const documento = documentoRecepcion.trim();
+
+    if (!nombre || !documento) {
+      setActionError(
+        "Escriba el nombre y la cédula de quien recibe en despacho."
+      );
+      return;
+    }
+
     setAction("recepcion");
     setActionError(null);
     try {
       await apiSend(`/api/salidas/${id}/recepcion`, "PUT", {
-        receiverName: nombreRecepcion.trim() || undefined,
-        receiverDocument: documentoRecepcion.trim() || undefined,
+        receiverName: nombre,
+        receiverDocument: documento,
       });
       await refetch();
       router.refresh();
+      showToast(
+        "success",
+        "Recepción guardada",
+        "Ya puede imprimir el comprobante de la orden."
+      );
     } catch (err) {
       setActionError((err as Error).message);
     } finally {
@@ -241,8 +248,9 @@ export default function SalidaDetallePage() {
   const puedeGenerar = data.status === "DRAFT";
   const puedeRecibir =
     data.status === "GENERATED" || data.status === "DELIVERED";
-  const puedeConfirmar =
-    data.status === "GENERATED" || data.status === "DELIVERED";
+  const puedeEditar =
+    isSuperAdmin &&
+    (data.status === "DRAFT" || data.status === "GENERATED");
   // Solo se puede eliminar una orden que no llegó a Siigo Pyme; las demás
   // se ocultan del listado conservando su historial.
   const puedeEliminar =
@@ -268,18 +276,6 @@ export default function SalidaDetallePage() {
             <span className="text-xs font-semibold rounded-full border border-gray-200 bg-gray-100 text-gray-700 px-2 py-0.5">
               {STATUS_LABELS[data.status] ?? data.status}
             </span>
-            {data.reconciliationStatus === "PENDING" &&
-              data.status !== "DRAFT" &&
-              data.status !== "CANCELLED" && (
-                <span className="text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 inline-flex items-center gap-1">
-                  <Clock className="w-3 h-3" /> Pendiente de conciliar con Siigo
-                </span>
-              )}
-            {data.reconciliationStatus === "MATCHED" && (
-              <span className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5 inline-flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3" /> Conciliada con Siigo
-              </span>
-            )}
           </div>
           <p className="text-sm text-gray-600 mt-0.5">
             {formatDate(data.date)} · {data.time} · {data.programName} ·{" "}
@@ -297,7 +293,7 @@ export default function SalidaDetallePage() {
               <span className="hidden sm:inline">Ver comprobante</span>
             </Link>
           )}
-          {data.status === "DRAFT" && (
+          {puedeEditar && (
             <Link
               href={`/salidas-almacen/${data.id}/editar`}
               className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 bg-white rounded-lg font-medium hover:bg-gray-50"
@@ -313,13 +309,6 @@ export default function SalidaDetallePage() {
         <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-800">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
           <span>{actionError}</span>
-        </div>
-      )}
-
-      {data.reconciliationNote && (
-        <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800">
-          <Info className="w-4 h-4 shrink-0 mt-0.5" />
-          <span>{data.reconciliationNote}</span>
         </div>
       )}
 
@@ -443,6 +432,62 @@ export default function SalidaDetallePage() {
               </p>
             </section>
           )}
+
+          {/* Recepción en despacho, debajo del detalle de la orden. */}
+          {puedeRecibir && (
+            <section className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+              <h2 className="text-sm font-semibold text-gray-900 mb-3">
+                Recepción en despacho
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-xs font-medium text-gray-700">
+                    Nombre de quien recibe en despacho *
+                  </span>
+                  <input
+                    type="text"
+                    value={nombreRecepcion}
+                    onChange={(event) => {
+                      setReceiverName(event.target.value);
+                      setEditados(true);
+                    }}
+                    placeholder="Nombre de quien recibe"
+                    className="mt-1 w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-gray-700">
+                    Cédula de quien recibe en despacho *
+                  </span>
+                  <input
+                    type="text"
+                    value={documentoRecepcion}
+                    onChange={(event) => {
+                      setReceiverDocument(event.target.value);
+                      setEditados(true);
+                    }}
+                    placeholder="Documento de identificación"
+                    className="mt-1 w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                  />
+                </label>
+              </div>
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={guardarRecepcion}
+                  disabled={action !== null}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-40"
+                >
+                  {action === "recepcion" ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <PackageCheck className="w-4 h-4" />
+                  )}
+                  Guardar información de recepción
+                </button>
+              </div>
+            </section>
+          )}
         </div>
 
         {/* Panel lateral */}
@@ -532,120 +577,8 @@ export default function SalidaDetallePage() {
                 </button>
               )}
 
-              {puedeRecibir && (
-                <div className="space-y-2">
-                  <p className="text-xs text-gray-600">
-                    Confirme quién recibe la orden en despacho. La fecha y la
-                    hora las registra el sistema automáticamente.
-                  </p>
-                  <label className="block">
-                    <span className="text-[11px] font-medium text-gray-600">
-                      Nombre de quien recibe en despacho *
-                    </span>
-                    <input
-                      type="text"
-                      value={nombreRecepcion}
-                      onChange={(event) => {
-                        setReceiverName(event.target.value);
-                        setEditados(true);
-                      }}
-                      placeholder="Nombre de quien recibe"
-                      className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-[11px] font-medium text-gray-600">
-                      Cédula de quien recibe en despacho *
-                    </span>
-                    <input
-                      type="text"
-                      value={documentoRecepcion}
-                      onChange={(event) => {
-                        setReceiverDocument(event.target.value);
-                        setEditados(true);
-                      }}
-                      placeholder="Documento de identificación"
-                      className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                    />
-                  </label>
-                  <label className="flex items-start gap-2 rounded-lg bg-gray-50 px-3 py-2">
-                    <input
-                      type="checkbox"
-                      checked={firmaConfirmada}
-                      onChange={(event) => {
-                        setFirmaConfirmada(event.target.checked);
-                        setEditados(true);
-                      }}
-                      className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                    />
-                    <span className="text-xs text-gray-700">
-                      Confirmo que la persona indicada firmó el documento
-                      impreso.
-                    </span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={guardarRecepcion}
-                    disabled={action !== null}
-                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-40"
-                  >
-                    {action === "recepcion" ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <PackageCheck className="w-4 h-4" />
-                    )}
-                    Confirmar recepción en despacho
-                  </button>
-                  {data.receiverTime && (
-                    <p className="text-[11px] text-gray-500">
-                      Recepción registrada el{" "}
-                      {formatDateTime(data.deliveredAt)} ({data.receiverTime}).
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {puedeConfirmar && (
-                <div className="space-y-2">
-                  <p className="text-xs text-gray-600">
-                    Anote el documento con el que la salida quedó registrada en
-                    Siigo Pyme.
-                  </p>
-                  <input
-                    type="text"
-                    value={siigoRef}
-                    onChange={(event) => setSiigoRef(event.target.value)}
-                    placeholder="Número de documento en Siigo"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      ejecutar("confirmar", {
-                        action: "confirmar_siigo",
-                        siigoDocumentRef: siigoRef || undefined,
-                      })
-                    }
-                    disabled={action !== null}
-                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:opacity-40"
-                  >
-                    {action === "confirmar" ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="w-4 h-4" />
-                    )}
-                    Confirmar en Siigo Pyme
-                  </button>
-                  <p className="text-[11px] text-gray-500">
-                    La reserva de existencias se liberará cuando la próxima
-                    importación refleje el descuento; así no se descuenta dos
-                    veces.
-                  </p>
-                </div>
-              )}
-
               {/* Gestión de la orden: editar o eliminar */}
-              {data.status === "DRAFT" && (
+              {puedeEditar && (
                 <div className="border-t border-gray-200 pt-4">
                   <Link
                     href={`/salidas-almacen/${data.id}/editar`}
@@ -703,23 +636,5 @@ export default function SalidaDetallePage() {
         </aside>
       </div>
     </div>
-  );
-}
-
-function Info({ className }: { className?: string }) {
-  return (
-    <svg
-      className={cn("w-4 h-4 shrink-0 mt-0.5", className)}
-      fill="none"
-      viewBox="0 0 24 24"
-      strokeWidth={2}
-      stroke="currentColor"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"
-      />
-    </svg>
   );
 }

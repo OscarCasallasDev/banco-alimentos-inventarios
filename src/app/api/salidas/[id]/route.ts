@@ -4,7 +4,7 @@
 
 import { NextRequest } from "next/server";
 import { jsonOk, handleRouteError } from "@/lib/api/response";
-import { requireModulePermission } from "@/lib/auth/guard";
+import { requireModulePermission, requireSuperAdmin } from "@/lib/auth/guard";
 import {
   deleteSalida,
   getSalida,
@@ -37,7 +37,8 @@ export async function GET(_request: NextRequest, context: Context) {
 /** Edita una salida en borrador. */
 export async function PUT(request: NextRequest, context: Context) {
   try {
-    const user = await requireModulePermission("salidas_almacen", "salidas.edit");
+    // Solo el superadmin puede modificar una orden ya creada.
+    const user = await requireSuperAdmin();
     const { id } = await context.params;
     const input = updateSalidaSchema.parse(await request.json());
 

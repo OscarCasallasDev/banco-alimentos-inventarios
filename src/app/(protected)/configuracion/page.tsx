@@ -386,7 +386,7 @@ export default function ConfiguracionPage() {
             <QueryError error={error} onRetry={() => void refetch()} />
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-6">
             {/* Control de vencimientos */}
             <form
               onSubmit={handleSaveSettings}
@@ -463,11 +463,12 @@ export default function ConfiguracionPage() {
               </div>
             </form>
 
+            {/* Auditoría de órdenes, antes de los módulos */}
+            <AuditoriaOrdenesPanel />
+
             {/* Módulos */}
             <ModulosPanel />
           </div>
-
-          <AuditoriaOrdenesPanel />
         </>
       )}
     </div>

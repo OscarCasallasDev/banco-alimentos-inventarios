@@ -174,9 +174,9 @@ export default function EditarOrdenPedidoPage() {
         const salida: SalidaExistente = payload?.data;
         if (!salida) throw new Error("No se pudo cargar la orden.");
 
-        if (salida.status !== "DRAFT") {
+        if (salida.status !== "DRAFT" && salida.status !== "GENERATED") {
           setLoadError(
-            "Esta orden ya fue generada: conserva su contenido histórico y no se puede editar."
+            "Esta orden ya fue recibida en despacho y no se puede editar."
           );
           setLoading(false);
           return;

@@ -28,8 +28,10 @@ import {
   getConsolidatedStock,
 } from "@/lib/services/stock.service";
 import {
+  confirmReception,
   createSalida,
   deleteSalida,
+  generateSalida,
   getSalida,
   updateSalidaDraft,
 } from "@/lib/services/exit.service";
@@ -403,6 +405,10 @@ describeDb("Importación manual del reporte resumen de Siigo", () => {
     expect(salida.delivererDocument).toBe("123456789");
     expect(salida.userId).toBe(actor.id);
 
+    // La orden se genera (flujo real) y aun así el superadmin puede editarla.
+    const generada = await generateSalida(salida.id, actor.id);
+    expect(generada.status).toBe("GENERATED");
+
     // Un intento de cambiar el nombre desde el cuerpo se ignora: el dato
     // histórico de la orden se conserva.
     await updateSalidaDraft(salida.id, {
@@ -414,6 +420,17 @@ describeDb("Importación manual del reporte resumen de Siigo", () => {
     expect(editada.delivererName).toBe("Óscar Casallas");
     expect(editada.delivererDocument).toBe("123456789");
     expect(editada.notes).toBe("Prueba editada");
+
+    // Recepción en despacho: nombre, cédula y fecha/hora del sistema.
+    const recibida = await confirmReception(
+      salida.id,
+      "Ana Recibe",
+      "987654321"
+    );
+    expect(recibida.receiverName).toBe("Ana Recibe");
+    expect(recibida.receiverDocument).toBe("987654321");
+    expect(recibida.receiverTime).toBeTruthy();
+    expect(recibida.deliveredAt).toBeTruthy();
 
     await deleteSalida(salida.id, actor.id);
   });

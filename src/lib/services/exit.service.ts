@@ -865,13 +865,16 @@ export async function updateSalidaDraft(
     .limit(1);
 
   if (!salida) throw notFoundError("Salida");
-  if (salida.status !== "DRAFT") {
+  if (salida.status !== "DRAFT" && salida.status !== "GENERATED") {
     throw conflictError(
-      "Solo las salidas en borrador se pueden editar. Una salida generada conserva su contenido histórico."
+      "Solo se pueden editar órdenes en borrador o generadas antes de la recepción."
     );
   }
 
   await withTransaction(async (tx) => {
+    /** Líneas nuevas cuya reserva debe recrearse si la orden ya está generada. */
+    const nuevasLineas: { id: string; item: SalidaItemInput }[] = [];
+
     if (input.items) {
       await tx.delete(salidaItems).where(eq(salidaItems.salidaId, salidaId));
 
@@ -933,7 +936,7 @@ export async function updateSalidaDraft(
           })
           .returning({ id: salidaItems.id });
 
-        void inserted;
+        nuevasLineas.push({ id: inserted.id, item });
 
         totalQuantity = round3(totalQuantity + item.quantity);
         if (totalWeightKg !== null) {
@@ -954,6 +957,27 @@ export async function updateSalidaDraft(
           updatedAt: new Date(),
         })
         .where(eq(salidas.id, salidaId));
+
+      // Una orden ya generada mantiene sus reservas: al cambiar las líneas
+      // se recrean para que la disponibilidad siga siendo correcta.
+      if (salida.status === "GENERATED") {
+        for (const linea of nuevasLineas) {
+          const groupKey = await groupKeyForProduct(
+            linea.item.productId,
+            linea.item.siigoBodegaCode,
+            tx
+          );
+          await createReservation(tx, {
+            salidaId,
+            salidaItemId: linea.id,
+            productId: linea.item.productId,
+            siigoBodegaCode: linea.item.siigoBodegaCode,
+            locationCode: linea.item.locationCode ?? 0,
+            quantity: linea.item.quantity,
+            groupKey,
+          });
+        }
+      }
     }
 
     await tx
