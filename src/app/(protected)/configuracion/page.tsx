@@ -14,6 +14,7 @@ import QueryError from "@/components/ui/QueryError";
 import { useToast } from "@/components/ui/Toast";
 import ModulosPanel from "@/components/config/ModulosPanel";
 import AuditoriaOrdenesPanel from "@/components/config/AuditoriaOrdenesPanel";
+import VideotutorialesPanel from "@/components/config/VideotutorialesPanel";
 import { passwordRuleFailures, checkPasswordConfirmation } from "@/lib/auth/password-policy";
 
 /**
@@ -462,6 +463,9 @@ export default function ConfiguracionPage() {
                 </button>
               </div>
             </form>
+
+            {/* Videotutoriales */}
+            <VideotutorialesPanel />
 
             {/* Auditoría de órdenes, antes de los módulos */}
             <AuditoriaOrdenesPanel />

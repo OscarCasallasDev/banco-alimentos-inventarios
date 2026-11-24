@@ -144,21 +144,21 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden">
-          <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-200">
+        <div className="fixed left-4 right-4 top-[4.25rem] z-50 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[22rem] sm:max-w-[calc(100vw-2rem)]">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-gray-200">
             <p className="text-sm font-semibold text-gray-900">Notificaciones</p>
             <button
               type="button"
               onClick={() => void marcarTodas()}
               disabled={unreadCount === 0}
-              className="inline-flex items-center gap-1 text-xs text-primary-700 hover:underline disabled:opacity-40"
+              className="inline-flex items-center gap-1 text-xs text-primary-700 hover:underline disabled:opacity-40 whitespace-nowrap"
             >
               <CheckCheck className="w-3.5 h-3.5" />
               Marcar todas
             </button>
           </div>
 
-          <div className="max-h-96 overflow-y-auto divide-y divide-gray-100">
+          <div className="max-h-[calc(100dvh-11rem)] sm:max-h-96 overflow-y-auto overflow-x-hidden divide-y divide-gray-100">
             {loading && items.length === 0 ? (
               <div className="p-6 text-center text-sm text-gray-500">
                 <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
@@ -180,21 +180,21 @@ export default function NotificationBell() {
                       !item.read && "bg-primary-50/70"
                     )}
                   >
-                    <div className="flex items-start gap-2">
+                    <div className="flex items-start gap-2 min-w-0">
                       <span
                         className={cn(
                           "mt-1.5 w-2 h-2 rounded-full shrink-0",
                           item.read ? "bg-gray-300" : "bg-primary-600"
                         )}
                       />
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium text-gray-900">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-gray-900 break-words">
                           {item.actorName}
                         </p>
-                        <p className="text-sm text-gray-700 leading-snug">
+                        <p className="text-sm text-gray-700 leading-snug break-words">
                           {item.message}
                         </p>
-                        <p className="text-[11px] text-gray-500 mt-1">
+                        <p className="text-[11px] text-gray-500 mt-1 break-words">
                           {formatDateTime(item.createdAt)}
                           {item.read ? " · Leída" : " · No leída"}
                         </p>

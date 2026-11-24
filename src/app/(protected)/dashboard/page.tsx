@@ -227,16 +227,16 @@ export default async function DashboardPage() {
             : "bg-emerald-50 border-emerald-200"
         )}
       >
-        <div className="flex items-start gap-3">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
           {stale ? (
             <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
           ) : (
             <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
           )}
-          <div>
+          <div className="min-w-0 flex-1">
             <p
               className={cn(
-                "font-semibold",
+                "font-semibold break-words",
                 stale ? "text-amber-800" : "text-emerald-800"
               )}
             >
@@ -245,12 +245,17 @@ export default async function DashboardPage() {
             {lastRun ? (
               <div
                 className={cn(
-                  "text-sm mt-0.5 space-y-0.5",
+                  "text-sm mt-0.5 space-y-0.5 min-w-0",
                   stale ? "text-amber-700" : "text-emerald-700"
                 )}
               >
-                <p>Última importación: {formatDateTime(lastRun.finishedAt)}</p>
-                <p className="truncate">
+                <p className="break-words">
+                  Última importación: {formatDateTime(lastRun.finishedAt)}
+                </p>
+                <p
+                  className="truncate max-w-full"
+                  title={lastRun.fileName ?? "Sin archivo"}
+                >
                   Archivo: {lastRun.fileName ?? "—"}
                 </p>
                 <p>{formatElapsed(minutesSince)}</p>
@@ -431,7 +436,7 @@ export default async function DashboardPage() {
                       {STATUS_LABELS[salida.status] ?? salida.status}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-500 mt-0.5">
+                  <p className="text-xs text-gray-500 mt-0.5 break-words">
                     {salida.destinationName ?? salida.programName} ·{" "}
                     {salida.userName} · {salida.itemCount} referencias
                   </p>

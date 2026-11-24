@@ -54,9 +54,54 @@ html {
   color-scheme: light;
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 /* Estilos base */
 body {
   @apply bg-gray-50 text-gray-900 antialiased;
+  overflow-wrap: break-word;
+}
+
+img,
+svg,
+video {
+  max-width: 100%;
+}
+
+input,
+select,
+textarea,
+button {
+  max-width: 100%;
+}
+
+.app-shell,
+.app-content,
+.app-main {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.app-main section,
+.app-main article,
+.app-main form,
+.app-main .overflow-x-auto {
+  min-width: 0;
+  max-width: 100%;
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+dt,
+dd {
+  overflow-wrap: break-word;
 }
 
 /* Scrollbar personalizado */
