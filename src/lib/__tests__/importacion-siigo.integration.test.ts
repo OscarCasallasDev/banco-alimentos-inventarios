@@ -27,6 +27,12 @@ import {
   listConsolidatedStock,
   getConsolidatedStock,
 } from "@/lib/services/stock.service";
+import {
+  createSalida,
+  deleteSalida,
+  getSalida,
+  updateSalidaDraft,
+} from "@/lib/services/exit.service";
 import * as XLSX from "xlsx";
 import { createHash } from "node:crypto";
 
@@ -224,6 +230,28 @@ describeDb("Importación manual del reporte resumen de Siigo", () => {
             .where(eq(warehouses.siigoCode, row.siigoCode));
         }
       },
+      // Órdenes de prueba de la identificación automática.
+      () =>
+        db.execute(sql`
+          DELETE FROM siigo_reservations
+          WHERE salida_id IN (
+            SELECT id FROM salidas
+            WHERE custom_program_name = 'PRUEBA IDENTIFICACION ALMACENISTA'
+          )
+        `),
+      () =>
+        db.execute(sql`
+          DELETE FROM salida_items
+          WHERE salida_id IN (
+            SELECT id FROM salidas
+            WHERE custom_program_name = 'PRUEBA IDENTIFICACION ALMACENISTA'
+          )
+        `),
+      () =>
+        db.execute(sql`
+          DELETE FROM salidas
+          WHERE custom_program_name = 'PRUEBA IDENTIFICACION ALMACENISTA'
+        `),
       () => db.execute(sql`DELETE FROM siigo_import_runs WHERE file_sha256 = ${sha256}`),
       () => db.execute(sql`REFRESH MATERIALIZED VIEW mv_stock_consolidated`),
     ];
@@ -334,6 +362,60 @@ describeDb("Importación manual del reporte resumen de Siigo", () => {
     expect((bodegasDespues as unknown as { n: number }[])[0].n).toBe(
       (bodegasAntes as unknown as { n: number }[])[0].n
     );
+  });
+
+  it("la orden guarda nombre y cédula del usuario y no los sobrescribe al editar", async () => {
+    const db = getDb();
+    const [producto] = (await db.execute(sql`
+      SELECT id FROM products WHERE code = ${COD_B} LIMIT 1
+    `)) as unknown as { id: string }[];
+    expect(producto).toBeDefined();
+
+    const [usuario] = (await db.execute(sql`
+      SELECT id FROM users WHERE status = 'ACTIVE' LIMIT 1
+    `)) as unknown as { id: string }[];
+    expect(usuario).toBeDefined();
+
+    const actor = {
+      id: usuario.id,
+      firstName: "Óscar",
+      lastName: "Casallas",
+      cedula: "123456789",
+    };
+
+    const salida = await createSalida(
+      {
+        customProgramName: "PRUEBA IDENTIFICACION ALMACENISTA",
+        notes: "Prueba",
+        items: [
+          {
+            productId: producto.id,
+            siigoBodegaCode: BODEGA,
+            locationCode: 0,
+            quantity: 1,
+          },
+        ],
+      },
+      actor
+    );
+
+    expect(salida.delivererName).toBe("Óscar Casallas");
+    expect(salida.delivererDocument).toBe("123456789");
+    expect(salida.userId).toBe(actor.id);
+
+    // Un intento de cambiar el nombre desde el cuerpo se ignora: el dato
+    // histórico de la orden se conserva.
+    await updateSalidaDraft(salida.id, {
+      notes: "Prueba editada",
+      delivererName: "OTRO NOMBRE",
+      delivererDocument: "999",
+    });
+    const editada = await getSalida(db, salida.id);
+    expect(editada.delivererName).toBe("Óscar Casallas");
+    expect(editada.delivererDocument).toBe("123456789");
+    expect(editada.notes).toBe("Prueba editada");
+
+    await deleteSalida(salida.id, actor.id);
   });
 
   it("reimportar el mismo archivo actualiza la última importación exitosa", async () => {

@@ -5,11 +5,16 @@
 import { NextRequest } from "next/server";
 import { jsonOk, handleRouteError } from "@/lib/api/response";
 import { requireModulePermission } from "@/lib/auth/guard";
+import { getDb } from "@/lib/db/client";
 import {
   createSalida,
   getSalidasSummary,
   listSalidas,
 } from "@/lib/services/exit.service";
+import {
+  orderSnapshot,
+  recordOrderAudit,
+} from "@/lib/services/order-audit.service";
 import { createSalidaSchema, salidaQuerySchema } from "@/lib/validations/schemas";
 
 export const runtime = "nodejs";
@@ -53,7 +58,19 @@ export async function POST(request: NextRequest) {
   try {
     const user = await requireModulePermission("salidas_almacen", "salidas.create");
     const input = createSalidaSchema.parse(await request.json());
-    const salida = await createSalida(input, user.id);
+    const salida = await createSalida(input, user);
+
+    const actorName = `${user.firstName} ${user.lastName}`.trim();
+    await recordOrderAudit(getDb(), {
+      userId: user.id,
+      action: "CREO",
+      orderId: salida.id,
+      orderNumber: salida.number,
+      actorName,
+      summary: `${actorName} creó la orden ${salida.number}`,
+      snapshot: orderSnapshot(salida),
+    });
+
     return jsonOk(salida, 201);
   } catch (error) {
     return handleRouteError(error, "salidas:create");

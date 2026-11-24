@@ -31,6 +31,7 @@ export async function POST(request: Request) {
     const user = await createUser(db, {
       firstName: input.firstName.trim(),
       lastName: input.lastName.trim(),
+      cedula: input.cedula,
       password: input.password,
       role: normalizeRole("recepcion") ?? "RECEPCION",
       modules: null,

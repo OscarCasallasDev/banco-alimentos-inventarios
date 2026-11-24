@@ -22,6 +22,7 @@ import {
   createUser,
   setUserModules,
   updateOwnProfile,
+  updateUser,
 } from "@/lib/services/user.service";
 import { getUserByUsername } from "@/lib/services/user.service";
 import { verifyPassword } from "@/lib/auth/password";
@@ -336,6 +337,72 @@ describeDb("Persistencia de permisos e inicio de sesión", () => {
       await expect(
         updateOwnProfile(tx, creado.id, { username: "admin" })
       ).rejects.toThrow(/ya está en uso/i);
+    });
+  });
+
+  it("guarda la cédula del usuario nuevo y rechaza una cédula duplicada", async () => {
+    await enTransaccion(async (tx) => {
+      const creado = await createUser(tx, {
+        firstName: "Óscar",
+        lastName: "Casallas",
+        cedula: "123456789",
+        password: "Banco2026!",
+        role: "ALMACENISTA",
+        modules: [],
+      });
+      expect(creado.cedula).toBe("123456789");
+
+      await expect(
+        createUser(tx, {
+          firstName: "Ricardo",
+          lastName: "Pérez",
+          cedula: "123456789",
+          password: "Banco2026!",
+          role: "ALMACENISTA",
+          modules: [],
+        })
+      ).rejects.toThrow(/cédula ya está registrada/i);
+    });
+  });
+
+  it("el usuario puede modificar su propia cédula", async () => {
+    await enTransaccion(async (tx) => {
+      const creado = await createUser(tx, {
+        firstName: "Marta",
+        lastName: "Rojas",
+        cedula: "111111111",
+        password: "Banco2026!",
+        role: "ALMACENISTA",
+        modules: [],
+      });
+
+      const actualizado = await updateOwnProfile(tx, creado.id, {
+        cedula: "222222222",
+      });
+      expect(actualizado.cedula).toBe("222222222");
+    });
+  });
+
+  it("el superadmin completa nombre y cédula de un usuario existente", async () => {
+    await enTransaccion(async (tx) => {
+      const creado = await createUser(tx, {
+        firstName: "Ricardo",
+        lastName: "Antiguo",
+        password: "Banco2026!",
+        role: "ALMACENISTA",
+        modules: [],
+      });
+
+      const actualizado = await updateUser(tx, creado.id, {
+        firstName: "Ricardo",
+        lastName: "Actualizado",
+        cedula: "333333333",
+      });
+
+      expect(actualizado.firstName).toBe("Ricardo");
+      expect(actualizado.lastName).toBe("Actualizado");
+      expect(actualizado.cedula).toBe("333333333");
+      expect(actualizado.username).toBe(creado.username);
     });
   });
 });

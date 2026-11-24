@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Loader2,
   CalendarClock,
@@ -13,6 +13,7 @@ import { useApiQuery } from "@/hooks/useApiQuery";
 import QueryError from "@/components/ui/QueryError";
 import { useToast } from "@/components/ui/Toast";
 import ModulosPanel from "@/components/config/ModulosPanel";
+import AuditoriaOrdenesPanel from "@/components/config/AuditoriaOrdenesPanel";
 import { passwordRuleFailures, checkPasswordConfirmation } from "@/lib/auth/password-policy";
 
 /**
@@ -47,6 +48,7 @@ interface MiCuenta {
   username: string;
   firstName: string;
   lastName: string;
+  cedula: string | null;
   role: string;
   modules: string[];
 }
@@ -54,9 +56,11 @@ interface MiCuenta {
 export default function ConfiguracionPage() {
   const { showToast } = useToast();
 
-  const { data: me, isLoading: loadingMe } = useApiQuery<MiCuenta>(
-    "/api/usuarios/me"
-  );
+  const {
+    data: me,
+    isLoading: loadingMe,
+    refetch: refetchMe,
+  } = useApiQuery<MiCuenta>("/api/usuarios/me");
 
   const isSuperAdmin = me?.role === "SUPERADMIN";
 
@@ -77,6 +81,7 @@ export default function ConfiguracionPage() {
 
   // Cuenta propia.
   const [username, setUsername] = useState("");
+  const [cedula, setCedula] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
@@ -89,6 +94,10 @@ export default function ConfiguracionPage() {
     edit?.alertDays ?? status?.inventory.expiryAlertDays ?? 30;
   const criticalDays =
     edit?.criticalDays ?? status?.inventory.expiryCriticalDays ?? 7;
+
+  useEffect(() => {
+    if (me?.cedula) setCedula(me.cedula);
+  }, [me?.cedula]);
 
   async function handleSaveSettings(e: React.FormEvent) {
     e.preventDefault();
@@ -130,9 +139,12 @@ export default function ConfiguracionPage() {
     setSavingAccount(true);
     setAccountError("");
 
-    const body: { username?: string; password?: string } = {};
+    const body: { username?: string; cedula?: string; password?: string } = {};
     if (username.trim() && username.trim() !== me?.username) {
       body.username = username.trim();
+    }
+    if (cedula.trim() && cedula.trim() !== (me?.cedula ?? "")) {
+      body.cedula = cedula.trim();
     }
 
     if (password || confirmPassword) {
@@ -170,12 +182,15 @@ export default function ConfiguracionPage() {
       setPassword("");
       setConfirmPassword("");
       setChangingPassword(false);
+      void refetchMe();
       showToast(
         "success",
         "Cuenta actualizada",
         body.password
           ? "Su contraseña fue cambiada."
-          : `Su nombre de usuario ahora es ${data.data?.username}.`
+          : body.cedula
+            ? "Su cédula fue actualizada."
+            : `Su nombre de usuario ahora es ${data.data?.username}.`
       );
     } catch {
       setAccountError("Error de conexión");
@@ -209,7 +224,7 @@ export default function ConfiguracionPage() {
           <div>
             <h2 className="font-semibold text-gray-900">Mi cuenta</h2>
             <p className="text-sm text-gray-500">
-              Su nombre de usuario y su contraseña
+              Sus datos personales, su nombre de usuario y su contraseña
             </p>
           </div>
         </div>
@@ -220,6 +235,39 @@ export default function ConfiguracionPage() {
             {accountError}
           </div>
         )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Nombre completo
+            </label>
+            <input
+              type="text"
+              readOnly
+              value={me ? `${me.firstName} ${me.lastName}` : ""}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-700"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Cédula
+            </label>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={cedula}
+              onChange={(e) => setCedula(e.target.value.replace(/\D/g, ""))}
+              placeholder="Número de cédula, sin puntos"
+              maxLength={20}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            />
+            {!loadingMe && !me?.cedula && (
+              <p className="mt-1 text-xs text-amber-700">
+                Complete su cédula para poder crear órdenes de pedido.
+              </p>
+            )}
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -418,6 +466,8 @@ export default function ConfiguracionPage() {
             {/* Módulos */}
             <ModulosPanel />
           </div>
+
+          <AuditoriaOrdenesPanel />
         </>
       )}
     </div>

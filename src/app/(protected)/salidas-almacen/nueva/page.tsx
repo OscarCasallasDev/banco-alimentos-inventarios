@@ -38,6 +38,13 @@ interface Program {
   status: string;
 }
 
+interface MiCuenta {
+  id: string;
+  firstName: string;
+  lastName: string;
+  cedula: string | null;
+}
+
 /** Una existencia: un producto (código de Siigo) en una bodega. */
 /**
  * Una existencia consolidada: una descripción exacta en una bodega.
@@ -142,6 +149,17 @@ export default function NuevaOrdenPedidoPage() {
     "/api/programas"
   );
   const programs = useMemo(() => programsData?.items ?? [], [programsData]);
+
+  const { data: me, isLoading: loadingMe } = useApiQuery<MiCuenta>(
+    "/api/usuarios/me"
+  );
+
+  // La identificación del almacenista se toma del perfil autenticado.
+  useEffect(() => {
+    if (!me) return;
+    setDelivererName(`${me.firstName} ${me.lastName}`.replace(/\s+/g, " ").trim());
+    setDelivererDocument(me.cedula ?? "");
+  }, [me]);
 
   // Programa elegido: el del catálogo o la opción «Otro programa».
   const esProgramaPropio = programId === PROGRAMA_OTRO;
@@ -347,6 +365,7 @@ export default function NuevaOrdenPedidoPage() {
   );
 
   const nombreValido = delivererName.trim().length > 0;
+  const cedulaValida = delivererDocument.trim().length > 0;
   const programaValido = esProgramaPropio
     ? customProgramName.trim().length > 0
     : effectiveProgramId.length > 0;
@@ -367,8 +386,10 @@ export default function NuevaOrdenPedidoPage() {
       );
       return;
     }
-    if (!nombreValido) {
-      setError("Escribe el nombre del almacenista que entrega la orden.");
+    if (!nombreValido || !cedulaValida) {
+      setError(
+        "Debe completar su nombre y su cédula en Configuración antes de crear la orden."
+      );
       return;
     }
     if (lineas.length === 0) {
@@ -404,8 +425,6 @@ export default function NuevaOrdenPedidoPage() {
           ? customProgramName.trim()
           : null,
         destinationId: destination.id,
-        delivererName: delivererName.trim(),
-        delivererDocument: delivererDocument.trim() || null,
         notes: notes.trim() || null,
         items,
       });
@@ -519,35 +538,43 @@ export default function NuevaOrdenPedidoPage() {
               <label className="block">
                 <span className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
                   <User className="w-3.5 h-3.5" /> Nombre del almacenista (quien
-                  entrega) *
+                  entrega)
                 </span>
                 <input
                   type="text"
-                  value={delivererName}
-                  onChange={(event) => setDelivererName(event.target.value)}
-                  placeholder="Escriba el nombre de quien entrega"
-                  className={cn(
-                    "mt-1 w-full px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none",
-                    submitAttempted && !nombreValido
-                      ? "border-amber-400"
-                      : "border-gray-300"
-                  )}
+                  value={loadingMe ? "Cargando…" : delivererName}
+                  readOnly
+                  tabIndex={-1}
+                  className="mt-1 w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-700 outline-none"
                 />
               </label>
 
               <label className="block">
                 <span className="text-xs font-medium text-gray-700">
-                  Cédula del almacenista (opcional)
+                  Cédula del almacenista
                 </span>
                 <input
                   type="text"
-                  value={delivererDocument}
-                  onChange={(event) => setDelivererDocument(event.target.value)}
-                  placeholder="Documento de identificación"
-                  className="mt-1 w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                  value={loadingMe ? "Cargando…" : delivererDocument}
+                  readOnly
+                  tabIndex={-1}
+                  className="mt-1 w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-700 outline-none"
                 />
               </label>
             </div>
+
+            {!loadingMe && !cedulaValida && (
+              <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>
+                  Complete su cédula en{" "}
+                  <Link href="/configuracion" className="font-semibold underline">
+                    Configuración
+                  </Link>{" "}
+                  antes de crear una orden de pedido.
+                </span>
+              </div>
+            )}
             <p className="mt-2 text-[11px] text-gray-500">
               La fecha y la hora de la orden se registran automáticamente. La
               bodega de salida se elige en cada producto.

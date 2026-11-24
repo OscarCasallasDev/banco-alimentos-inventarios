@@ -34,6 +34,7 @@ export interface SessionUser {
   username: string;
   firstName: string;
   lastName: string;
+  cedula: string | null;
   role: UserRole;
   status: UserStatus;
   /**
@@ -149,6 +150,7 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
       username: users.username,
       firstName: users.firstName,
       lastName: users.lastName,
+      cedula: users.cedula,
       role: users.role,
       status: users.status,
       // Módulos autorizados: subconsulta para no añadir un segundo round-trip.

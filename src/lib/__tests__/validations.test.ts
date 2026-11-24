@@ -48,51 +48,43 @@ describe("Login Schema", () => {
 describe("Create User Schema", () => {
   it("debe validar un usuario correcto", () => {
     const result = createUserSchema.safeParse({
-      username: "testuser",
-      email: "testuser@bancoalimentos.org",
       firstName: "Juan",
       lastName: "Pérez",
-      password: "password123",
+      cedula: "123456789",
+      password: "Banco2026!",
       role: "ADMIN",
-      status: "ACTIVE",
     });
     expect(result.success).toBe(true);
   });
 
-  it("debe exigir el correo electrónico", () => {
+  it("debe exigir la cédula", () => {
     const result = createUserSchema.safeParse({
-      username: "testuser",
       firstName: "Juan",
       lastName: "Pérez",
-      password: "password123",
+      password: "Banco2026!",
       role: "ADMIN",
-      status: "ACTIVE",
     });
     expect(result.success).toBe(false);
   });
 
-  it("debe rechazar un usuario con caracteres inválidos", () => {
+  it("debe rechazar una cédula con caracteres inválidos", () => {
     const result = createUserSchema.safeParse({
-      username: "test@user!",
-      email: "testuser@bancoalimentos.org",
       firstName: "Juan",
       lastName: "Pérez",
-      password: "password123",
+      cedula: "123-ABC",
+      password: "Banco2026!",
       role: "ADMIN",
-      status: "ACTIVE",
     });
     expect(result.success).toBe(false);
   });
 
   it("debe rechazar una contraseña muy corta", () => {
     const result = createUserSchema.safeParse({
-      username: "testuser",
-      email: "testuser@bancoalimentos.org",
       firstName: "Juan",
       lastName: "Pérez",
+      cedula: "123456789",
       password: "123",
       role: "ADMIN",
-      status: "ACTIVE",
     });
     expect(result.success).toBe(false);
   });

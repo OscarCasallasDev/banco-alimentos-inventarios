@@ -61,6 +61,7 @@ export async function POST(request: Request) {
       const newUser = await createUser(tx, {
         firstName: input.firstName.trim(),
         lastName: input.lastName.trim(),
+        cedula: input.cedula,
         password: input.password,
         role,
         modules,

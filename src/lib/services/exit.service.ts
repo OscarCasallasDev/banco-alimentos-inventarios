@@ -350,12 +350,34 @@ export async function listAvailability(options: {
  */
 export async function createSalida(
   input: CreateSalidaInput,
-  userId: string
+  actor: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    cedula: string | null;
+  }
 ): Promise<SalidaDetail> {
   const db = getDb();
 
   if (input.items.length === 0) {
     throw businessRuleError("La salida debe tener al menos un producto.");
+  }
+
+  // La identificación del almacenista sale SIEMPRE de la sesión autenticada.
+  const delivererName = `${actor.firstName} ${actor.lastName}`
+    .replace(/\s+/g, " ")
+    .trim();
+  const delivererDocument = (actor.cedula ?? "").trim();
+
+  if (!delivererName) {
+    throw businessRuleError(
+      "El perfil del usuario no tiene nombre completo. Actualícelo antes de crear la orden."
+    );
+  }
+  if (!delivererDocument) {
+    throw businessRuleError(
+      "Debe completar su cédula en Configuración antes de crear una orden de pedido."
+    );
   }
 
   // Programa del catálogo o programa propio ("Otro programa").
@@ -408,9 +430,11 @@ export async function createSalida(
         warehouseId: null,
         siigoBodegaCode: null,
         locationCode: null,
-        userId,
-        delivererName: input.delivererName ?? null,
-        delivererDocument: input.delivererDocument ?? null,
+        userId: actor.id,
+        // Copia histórica: si el perfil cambia después, la orden conserva
+        // estos valores.
+        delivererName,
+        delivererDocument,
         status: "DRAFT",
         notes: input.notes ?? null,
       })
@@ -948,14 +972,8 @@ export async function updateSalidaDraft(
             : input.siigoBodegaCode,
         locationCode:
           input.locationCode === undefined ? salida.locationCode : input.locationCode,
-        delivererName:
-          input.delivererName === undefined
-            ? salida.delivererName
-            : input.delivererName,
-        delivererDocument:
-          input.delivererDocument === undefined
-            ? salida.delivererDocument
-            : input.delivererDocument,
+        // La identificación del creador es histórica: la edición de la orden
+        // nunca la sobrescribe.
         notes: input.notes === undefined ? salida.notes : input.notes,
         updatedAt: new Date(),
       })

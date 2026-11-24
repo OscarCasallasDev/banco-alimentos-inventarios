@@ -78,6 +78,7 @@ export default function LoginPage() {
   // Register form
   const [regFirstName, setRegFirstName] = useState("");
   const [regLastName, setRegLastName] = useState("");
+  const [regCedula, setRegCedula] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [regConfirmPassword, setRegConfirmPassword] = useState("");
   const [regUsername, setRegUsername] = useState("");
@@ -164,6 +165,7 @@ export default function LoginPage() {
         body: JSON.stringify({
           firstName: regFirstName,
           lastName: regLastName,
+          cedula: regCedula,
           password: regPassword,
         }),
       });
@@ -180,6 +182,7 @@ export default function LoginPage() {
       );
       setRegFirstName("");
       setRegLastName("");
+      setRegCedula("");
       setRegUsername("");
       setRegPassword("");
       setRegConfirmPassword("");
@@ -424,6 +427,28 @@ export default function LoginPage() {
                     onChange={(e) => setRegLastName(e.target.value)}
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-white"
                     placeholder="Apellido"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="reg-cedula" className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Cédula
+                </label>
+                <div className="relative">
+                  <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    id="reg-cedula"
+                    type="text"
+                    inputMode="numeric"
+                    value={regCedula}
+                    onChange={(e) =>
+                      setRegCedula(e.target.value.replace(/\D/g, ""))
+                    }
+                    className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-white"
+                    placeholder="Número de cédula, sin puntos"
+                    maxLength={20}
                     required
                   />
                 </div>

@@ -19,6 +19,8 @@ import {
   deliverSalida,
   generateSalida,
 } from "@/lib/services/exit.service";
+import { getDb } from "@/lib/db/client";
+import { updateOrderAuditNumber } from "@/lib/services/order-audit.service";
 import { salidaEstadoSchema } from "@/lib/validations/schemas";
 
 export const runtime = "nodejs";
@@ -39,7 +41,11 @@ export async function POST(request: NextRequest, context: Context) {
           "salidas_almacen",
           "salidas.generate"
         );
-        return jsonOk(await generateSalida(id, user.id));
+        const generada = await generateSalida(id, user.id);
+        // La orden pasa de BORRADOR-… a OP-…: se completa el número en el
+        // registro de creación sin duplicar la auditoría.
+        await updateOrderAuditNumber(getDb(), generada.id, generada.number);
+        return jsonOk(generada);
       }
       case "entregar": {
         await requireModulePermission("salidas_almacen", "salidas.receive");

@@ -62,6 +62,7 @@ export async function POST(request: Request) {
       username: user.username,
       firstName: user.firstName,
       lastName: user.lastName,
+      cedula: user.cedula,
       role: user.role,
       status: user.status,
       modules,

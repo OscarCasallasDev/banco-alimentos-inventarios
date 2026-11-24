@@ -229,14 +229,25 @@ async function main() {
   }
 
   // Usuario de la prueba (el administrador del sistema).
-  const usuarios = await db.execute<{ id: string }>(
-    `SELECT id FROM users WHERE status = 'ACTIVE' ORDER BY role LIMIT 1`
+  const usuarios = await db.execute<{
+    id: string;
+    first_name: string;
+    last_name: string;
+    cedula: string | null;
+  }>(
+    `SELECT id, first_name, last_name, cedula FROM users WHERE status = 'ACTIVE' ORDER BY role LIMIT 1`
   );
-  const usuarioId = (usuarios as unknown as { id: string }[])[0]?.id;
-  if (!usuarioId) {
+  const usuario = (usuarios as unknown as {
+    id: string;
+    first_name: string;
+    last_name: string;
+    cedula: string | null;
+  }[])[0];
+  if (!usuario) {
     console.error("No hay usuarios activos.");
     process.exit(1);
   }
+  const usuarioId = usuario.id;
 
   // ---------- 1. Primera importación: Siigo informa 100 ----------
   const primera = await importar("A", false);
@@ -274,7 +285,12 @@ async function main() {
         },
       ],
     },
-    usuarioId
+    {
+      id: usuario.id,
+      firstName: usuario.first_name,
+      lastName: usuario.last_name,
+      cedula: usuario.cedula,
+    }
   );
 
   const generada = await generateSalida(salida.id, usuarioId);

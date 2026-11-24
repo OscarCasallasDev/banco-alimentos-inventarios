@@ -63,12 +63,14 @@ export interface CreateUserDTO {
   password: string;
   firstName: string;
   lastName: string;
+  cedula?: string;
   role: User["role"];
 }
 
 export interface UpdateUserDTO {
   firstName?: string;
   lastName?: string;
+  cedula?: string;
   role?: User["role"];
   status?: User["status"];
 }
@@ -78,6 +80,7 @@ export interface UserResponseDTO {
   email: string;
   firstName: string;
   lastName: string;
+  cedula?: string | null;
   role: User["role"];
   status: User["status"];
   lastLoginAt: string | null;

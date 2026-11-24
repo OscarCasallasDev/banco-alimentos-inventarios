@@ -62,6 +62,7 @@ describe("Registro de usuarios", () => {
     const parsed = registerSchema.parse({
       firstName: "Carlos",
       lastName: "Ramírez",
+      cedula: "123456789",
       password: "Banco2026!",
     });
 
@@ -69,6 +70,7 @@ describe("Registro de usuarios", () => {
     expect(parsed).not.toHaveProperty("username");
     expect(parsed.firstName).toBe("Carlos");
     expect(parsed.lastName).toBe("Ramírez");
+    expect(parsed.cedula).toBe("123456789");
   });
 
   it("rechaza una contraseña que no cumple la política", () => {
@@ -76,6 +78,7 @@ describe("Registro de usuarios", () => {
       registerSchema.safeParse({
         firstName: "A",
         lastName: "B",
+        cedula: "123456789",
         password: "corta1!",
       }).success
     ).toBe(false);
@@ -84,6 +87,7 @@ describe("Registro de usuarios", () => {
       registerSchema.safeParse({
         firstName: "A",
         lastName: "B",
+        cedula: "123456789",
         password: "SoloLetras",
       }).success
     ).toBe(false);
@@ -92,6 +96,7 @@ describe("Registro de usuarios", () => {
       registerSchema.safeParse({
         firstName: "A",
         lastName: "B",
+        cedula: "123456789",
         password: "12345678!",
       }).success
     ).toBe(false);
@@ -100,6 +105,7 @@ describe("Registro de usuarios", () => {
       registerSchema.safeParse({
         firstName: "A",
         lastName: "B",
+        cedula: "123456789",
         password: "Banco2026",
       }).success
     ).toBe(false);
@@ -110,6 +116,7 @@ describe("Registro de usuarios", () => {
       registerSchema.safeParse({
         firstName: "Ana",
         lastName: "Pérez",
+        cedula: "987654321",
         password: "Banco2026!",
       }).success
     ).toBe(true);

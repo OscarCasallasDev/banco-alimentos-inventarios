@@ -177,6 +177,8 @@ export const auditLogActionEnum = pgEnum("audit_log_action", [
   "USER_CREATE",
   "USER_UPDATE",
   "USER_DEACTIVATE",
+  "ORDER_UPDATE",
+  "ORDER_DELETE",
   "LOT_CREATE",
   "LOT_UPDATE",
   "LOT_BLOCK",
@@ -247,6 +249,8 @@ export const users = pgTable(
     /** Opcional: el formulario de alta solo pide nombre, apellido, clave y rol. */
     email: varchar("email", { length: 255 }),
     passwordHash: text("password_hash").notNull(),
+    /** Cédula de ciudadanía. Opcional solo para usuarios históricos. */
+    cedula: varchar("cedula", { length: 20 }),
     firstName: varchar("first_name", { length: 100 }).notNull(),
     lastName: varchar("last_name", { length: 100 }).notNull(),
     role: userRoleEnum("role").notNull().default("RECEPCION"),
@@ -258,6 +262,7 @@ export const users = pgTable(
   (table) => [
     index("idx_users_username").on(table.username),
     uniqueIndex("idx_users_email").on(table.email),
+    uniqueIndex("idx_users_cedula_unique").on(table.cedula),
     index("idx_users_role").on(table.role),
     index("idx_users_status").on(table.status),
   ]

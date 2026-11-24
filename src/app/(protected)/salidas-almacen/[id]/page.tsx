@@ -463,6 +463,12 @@ export default function SalidaDetallePage() {
                 </dd>
               </div>
               <div className="flex justify-between gap-2">
+                <dt className="text-gray-600">Cédula del almacenista</dt>
+                <dd className="font-medium text-gray-900 text-right">
+                  {data.delivererDocument ?? "—"}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-2">
                 <dt className="text-gray-600">Recibe (despacho)</dt>
                 <dd className="font-medium text-gray-900 text-right">
                   {data.receiverName ?? "—"}

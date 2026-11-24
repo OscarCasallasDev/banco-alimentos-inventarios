@@ -60,6 +60,9 @@ export async function PUT(
 
     const updated = await withTransaction(async (tx) => {
       const user = await updateUser(tx, id, {
+        firstName: input.firstName,
+        lastName: input.lastName,
+        cedula: input.cedula,
         role: role ?? undefined,
         status: input.status,
         modules: input.modules,

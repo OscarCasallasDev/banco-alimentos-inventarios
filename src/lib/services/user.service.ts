@@ -21,6 +21,7 @@ const PUBLIC_USER_COLUMNS = {
   email: users.email,
   firstName: users.firstName,
   lastName: users.lastName,
+  cedula: users.cedula,
   role: users.role,
   status: users.status,
   lastLoginAt: users.lastLoginAt,
@@ -32,6 +33,8 @@ const PUBLIC_USER_COLUMNS = {
 export interface CreateUserInput {
   firstName: string;
   lastName: string;
+  /** Obligatoria para usuarios nuevos; los históricos pueden completarla. */
+  cedula?: string | null;
   password: string;
   role: RoleName;
   /**
@@ -45,6 +48,9 @@ export interface CreateUserInput {
 
 /** Datos que puede cambiar el superadmin sobre un usuario. */
 export interface UpdateUserInput {
+  firstName?: string;
+  lastName?: string;
+  cedula?: string;
   role?: RoleName;
   status?: "ACTIVE" | "INACTIVE" | "SUSPENDED";
   modules?: string[];
@@ -53,7 +59,25 @@ export interface UpdateUserInput {
 /** Datos que puede cambiar un usuario sobre su propia cuenta. */
 export interface UpdateProfileInput {
   username?: string;
+  cedula?: string;
   password?: string;
+}
+
+/** Verifica que la cédula no esté asignada a otro usuario. */
+async function ensureCedulaAvailable(
+  executor: DbExecutor,
+  cedula: string,
+  exceptUserId?: string
+): Promise<void> {
+  const [duplicate] = await executor
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.cedula, cedula))
+    .limit(1);
+
+  if (duplicate && duplicate.id !== exceptUserId) {
+    throw conflictError("La cédula ya está registrada en otro usuario.");
+  }
 }
 
 /**
@@ -173,6 +197,9 @@ export async function createUser(
   );
 
   const modules = input.modules ?? modulesForRole(input.role);
+  const cedula = input.cedula?.trim() || null;
+
+  if (cedula) await ensureCedulaAvailable(executor, cedula);
 
   const [user] = await executor
     .insert(users)
@@ -182,6 +209,7 @@ export async function createUser(
       passwordHash: hashPassword(input.password),
       firstName: input.firstName,
       lastName: input.lastName,
+      cedula,
       role: input.role,
       status: "ACTIVE",
     })
@@ -206,9 +234,19 @@ export async function updateUser(
 ) {
   await getUser(executor, id);
 
+  const cedula = input.cedula?.trim();
+  if (cedula !== undefined) await ensureCedulaAvailable(executor, cedula, id);
+
   const [user] = await executor
     .update(users)
     .set({
+      ...(input.firstName !== undefined && {
+        firstName: input.firstName.trim(),
+      }),
+      ...(input.lastName !== undefined && {
+        lastName: input.lastName.trim(),
+      }),
+      ...(cedula !== undefined && { cedula }),
       ...(input.role !== undefined && { role: input.role }),
       ...(input.status !== undefined && { status: input.status }),
       updatedAt: new Date(),
@@ -247,10 +285,14 @@ export async function updateOwnProfile(
     }
   }
 
+  const cedula = input.cedula?.trim();
+  if (cedula !== undefined) await ensureCedulaAvailable(executor, cedula, userId);
+
   const [user] = await executor
     .update(users)
     .set({
       ...(input.username !== undefined && { username: input.username.trim() }),
+      ...(cedula !== undefined && { cedula }),
       ...(input.password !== undefined && {
         passwordHash: hashPassword(input.password),
       }),

@@ -23,6 +23,7 @@ interface User {
   email: string | null;
   firstName: string;
   lastName: string;
+  cedula: string | null;
   role: string;
   status: "ACTIVE" | "INACTIVE" | "SUSPENDED";
   lastLoginAt: string | null;
@@ -52,6 +53,7 @@ const roleLabels: Record<string, string> = {
 const emptyForm = {
   firstName: "",
   lastName: "",
+  cedula: "",
   password: "",
   role: "",
   status: "ACTIVE" as "ACTIVE" | "INACTIVE" | "SUSPENDED",
@@ -97,6 +99,7 @@ export default function UsuariosPage() {
     setForm({
       firstName: user.firstName,
       lastName: user.lastName,
+      cedula: user.cedula ?? "",
       password: "",
       role: user.role,
       status: user.status,
@@ -168,10 +171,18 @@ export default function UsuariosPage() {
       const method = editingId ? "PUT" : "POST";
 
       const body = editingId
-        ? { role: form.role, status: form.status, modules: form.modules }
+        ? {
+            firstName: form.firstName,
+            lastName: form.lastName,
+            ...(form.cedula.trim() ? { cedula: form.cedula.trim() } : {}),
+            role: form.role,
+            status: form.status,
+            modules: form.modules,
+          }
         : {
             firstName: form.firstName,
             lastName: form.lastName,
+            cedula: form.cedula.trim(),
             password: form.password,
             role: form.role,
             modules: form.modules,
@@ -248,7 +259,8 @@ export default function UsuariosPage() {
     (u) =>
       u.username.toLowerCase().includes(search.toLowerCase()) ||
       u.firstName.toLowerCase().includes(search.toLowerCase()) ||
-      u.lastName.toLowerCase().includes(search.toLowerCase())
+      u.lastName.toLowerCase().includes(search.toLowerCase()) ||
+      (u.cedula ?? "").includes(search)
   );
 
   const statusColors: Record<string, string> = {
@@ -303,6 +315,7 @@ export default function UsuariosPage() {
               <tr className="bg-gray-50 border-b border-gray-200">
                 <th className="text-left py-3 px-4 font-medium text-gray-600">Usuario</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">Nombre</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">Cédula</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">Rol</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">Módulos</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">Estado</th>
@@ -312,7 +325,7 @@ export default function UsuariosPage() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-gray-500">
+                  <td colSpan={7} className="py-12 text-center text-gray-500">
                     <div className="flex items-center justify-center gap-2">
                       <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600" />
                       Cargando...
@@ -321,7 +334,7 @@ export default function UsuariosPage() {
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-gray-500">
+                  <td colSpan={7} className="py-12 text-center text-gray-500">
                     <Users className="w-10 h-10 mx-auto mb-2 text-gray-300" />
                     No hay usuarios registrados
                   </td>
@@ -337,6 +350,9 @@ export default function UsuariosPage() {
                     </td>
                     <td className="py-3 px-4 text-gray-900">
                       {user.firstName} {user.lastName}
+                    </td>
+                    <td className="py-3 px-4 font-mono text-xs text-gray-700">
+                      {user.cedula ?? "Sin cédula"}
                     </td>
                     <td className="py-3 px-4">
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
@@ -439,7 +455,6 @@ export default function UsuariosPage() {
                     }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                     required
-                    disabled={Boolean(editingId)}
                   />
                 </div>
                 <div>
@@ -454,9 +469,31 @@ export default function UsuariosPage() {
                     }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                     required
-                    disabled={Boolean(editingId)}
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Cédula {editingId ? "" : "*"}
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={form.cedula}
+                  onChange={(e) =>
+                    setForm({ ...form, cedula: e.target.value.replace(/\D/g, "") })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  placeholder="Número de cédula, sin puntos"
+                  maxLength={20}
+                  required={!editingId}
+                />
+                {editingId && !form.cedula && (
+                  <p className="mt-1 text-xs text-amber-700">
+                    Complete la cédula para que el usuario pueda crear órdenes.
+                  </p>
+                )}
               </div>
 
               {/* El nombre de usuario se arma solo con nombre y apellido. */}

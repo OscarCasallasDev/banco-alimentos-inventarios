@@ -42,12 +42,20 @@ export const loginSchema = z.object({
     .max(100, "La contraseña no puede exceder 100 caracteres"),
 });
 
+/** Cédula: solo dígitos, sin puntos ni espacios. */
+export const cedulaSchema = z
+  .string()
+  .trim()
+  .min(5, "La cédula es requerida")
+  .max(20, "La cédula no puede exceder 20 caracteres")
+  .regex(/^\d+$/, "La cédula solo puede contener números");
+
 /**
  * Registro público de usuarios.
  *
- * El correo electrónico ya no se pide: el formulario solo solicita nombre,
- * apellido y contraseña. El nombre de usuario lo genera el backend a partir
- * del nombre y el apellido (ver `lib/auth/username`).
+ * El correo electrónico ya no se pide: el formulario solicita nombre,
+ * apellido, cédula y contraseña. El nombre de usuario lo genera el backend a
+ * partir del nombre y el apellido (ver `lib/auth/username`).
  */
 export const registerSchema = z.object({
   firstName: z
@@ -58,6 +66,7 @@ export const registerSchema = z.object({
     .string()
     .min(1, "El apellido es requerido")
     .max(100, "El apellido no puede exceder 100 caracteres"),
+  cedula: cedulaSchema,
   password: strongPassword,
 });
 
@@ -68,8 +77,8 @@ export const registerSchema = z.object({
 /**
  * Creación de usuario desde el superadmin.
  *
- * Solo cuatro campos: nombre, apellido, contraseña y rol. El nombre de
- * usuario se genera solo y los módulos se marcan por separado.
+ * Campos: nombre, apellido, cédula, contraseña y rol. El nombre de usuario
+ * se genera solo y los módulos se marcan por separado.
  */
 export const createUserSchema = z.object({
   firstName: z
@@ -80,6 +89,7 @@ export const createUserSchema = z.object({
     .string()
     .min(1, "El apellido es requerido")
     .max(100, "El apellido no puede exceder 100 caracteres"),
+  cedula: cedulaSchema,
   password: strongPassword,
   /** Rol escrito a mano: se normaliza en el backend. */
   role: z
@@ -90,14 +100,17 @@ export const createUserSchema = z.object({
   modules: z.array(z.string().max(64)).default([]),
 });
 
-/** Cambio de rol, estado y permisos de un usuario (superadmin). */
+/** Cambio de datos personales, rol, estado y permisos (superadmin). */
 export const updateUserSchema = z.object({
+  firstName: z.string().min(1).max(100).optional(),
+  lastName: z.string().min(1).max(100).optional(),
+  cedula: cedulaSchema.optional(),
   role: z.string().min(1).max(40).optional(),
   status: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]).optional(),
   modules: z.array(z.string().max(64)).optional(),
 });
 
-/** Cambio de nombre de usuario y contraseña de la cuenta propia. */
+/** Cambio de nombre de usuario, cédula y contraseña de la cuenta propia. */
 export const updateProfileSchema = z.object({
   username: z
     .string()
@@ -108,6 +121,7 @@ export const updateProfileSchema = z.object({
       "El usuario solo puede contener letras, números y guiones bajos"
     )
     .optional(),
+  cedula: cedulaSchema.optional(),
   password: strongPassword.optional(),
 });
 
@@ -712,11 +726,11 @@ export const createSalidaSchema = z.object({
     .string()
     .regex(/^\d{2}:\d{2}$/, "La hora debe tener el formato HH:MM")
     .optional(),
-  /** Almacenista que ENTREGA (obligatorio al crear la orden). */
-  delivererName: z
-    .string()
-    .min(1, "El nombre del almacenista es obligatorio")
-    .max(150),
+  /**
+   * Datos históricos del almacenista. El backend los toma de la sesión
+   * autenticada y estos campos se aceptan solo por compatibilidad.
+   */
+  delivererName: z.string().max(150).nullish(),
   delivererDocument: z.string().max(60).nullish(),
   notes: z.string().max(2000).nullish(),
   items: z.array(salidaItemSchema).min(1, "Agregue al menos un producto"),
@@ -751,6 +765,15 @@ export const salidaQuerySchema = z.object({
   userId: z.string().uuid().optional(),
   page: z.coerce.number().int().min(1).max(10_000).optional().default(1),
   pageSize: z.coerce.number().int().min(1).max(200).optional().default(25),
+});
+
+export const orderAuditQuerySchema = z.object({
+  userId: z.string().uuid().optional(),
+  action: z.enum(["CREO", "EDITO", "ELIMINO"]).optional(),
+  dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  page: z.coerce.number().int().min(1).max(10_000).optional().default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).optional().default(100),
 });
 
 // ============================================================

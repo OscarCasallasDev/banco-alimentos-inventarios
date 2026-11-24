@@ -458,8 +458,6 @@ export default function EditarOrdenPedidoPage() {
           ? customProgramName.trim()
           : null,
         destinationId: destination?.id ?? null,
-        delivererName: delivererName.trim(),
-        delivererDocument: delivererDocument.trim() || null,
         notes: notes.trim() || null,
         items,
       });
@@ -585,32 +583,27 @@ export default function EditarOrdenPedidoPage() {
               <label className="block">
                 <span className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
                   <User className="w-3.5 h-3.5" /> Nombre del almacenista (quien
-                  entrega) *
+                  entrega)
                 </span>
                 <input
                   type="text"
                   value={delivererName}
-                  onChange={(event) => setDelivererName(event.target.value)}
-                  placeholder="Escriba el nombre de quien entrega"
-                  className={cn(
-                    "mt-1 w-full px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none",
-                    submitAttempted && !nombreValido
-                      ? "border-amber-400"
-                      : "border-gray-300"
-                  )}
+                  readOnly
+                  tabIndex={-1}
+                  className="mt-1 w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-700 outline-none"
                 />
               </label>
 
               <label className="block">
                 <span className="text-xs font-medium text-gray-700">
-                  Cédula del almacenista (opcional)
+                  Cédula del almacenista
                 </span>
                 <input
                   type="text"
                   value={delivererDocument}
-                  onChange={(event) => setDelivererDocument(event.target.value)}
-                  placeholder="Documento de identificación"
-                  className="mt-1 w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                  readOnly
+                  tabIndex={-1}
+                  className="mt-1 w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-700 outline-none"
                 />
               </label>
             </div>

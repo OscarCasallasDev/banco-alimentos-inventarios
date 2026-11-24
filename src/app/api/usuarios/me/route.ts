@@ -22,6 +22,7 @@ export async function GET() {
       username: user.username,
       firstName: user.firstName,
       lastName: user.lastName,
+      cedula: user.cedula,
       role: user.role,
       modules: user.modules,
     });
@@ -44,9 +45,13 @@ export async function PATCH(request: Request) {
       }
     }
 
-    if (input.username === undefined && input.password === undefined) {
+    if (
+      input.username === undefined &&
+      input.password === undefined &&
+      input.cedula === undefined
+    ) {
       throw validationError({
-        username: ["Indique el nombre de usuario o la contraseña a cambiar."],
+        username: ["Indique la cédula, el nombre de usuario o la contraseña."],
       });
     }
 
@@ -54,17 +59,22 @@ export async function PATCH(request: Request) {
 
     const updated = await updateOwnProfile(db, sessionUser.id, {
       username: input.username,
+      cedula: input.cedula,
       password: input.password,
     });
+
+    const changes = [
+      input.cedula !== undefined ? "cédula" : null,
+      input.password !== undefined ? "contraseña" : null,
+      input.username !== undefined ? "nombre de usuario" : null,
+    ].filter(Boolean);
 
     await recordAuditLog(db, {
       userId: sessionUser.id,
       action: "USER_UPDATE",
       entity: "users",
       entityId: sessionUser.id,
-      details: input.password
-        ? "El usuario cambió su contraseña"
-        : `El usuario cambió su nombre de usuario a ${updated.username}`,
+      details: `El usuario actualizó su ${changes.join(", ")}`,
     });
 
     return jsonOk({
@@ -72,6 +82,7 @@ export async function PATCH(request: Request) {
       username: updated.username,
       firstName: updated.firstName,
       lastName: updated.lastName,
+      cedula: updated.cedula,
       role: updated.role,
     });
   } catch (error) {
