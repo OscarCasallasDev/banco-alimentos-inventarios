@@ -111,6 +111,19 @@ function formatDateTime(value: string | null): string {
   return new Intl.DateTimeFormat("es-CO", {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: "America/Bogota",
+  }).format(date);
+}
+
+function formatBankTime(value: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("es-CO", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "America/Bogota",
   }).format(date);
 }
 
@@ -276,7 +289,8 @@ export default function SalidaDetallePage() {
             </span>
           </div>
           <p className="text-sm text-gray-600 mt-0.5">
-            {formatDate(data.date)} · {data.time} · {data.programName} ·{" "}
+            {formatDate(data.date)} ·{" "}
+            {formatBankTime(data.createdAt) ?? data.time} · {data.programName} ·{" "}
             {data.userName}
           </p>
         </div>

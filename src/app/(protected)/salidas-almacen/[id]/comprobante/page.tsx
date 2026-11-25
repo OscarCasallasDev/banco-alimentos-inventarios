@@ -55,10 +55,13 @@ export default async function OrdenPedidoPage({
         />
       </div>
 
-      <div className="print:shadow-none">
+      <div className="print-document print:shadow-none">
         <OrdenPedidoDocumento
           orden={{
             number: salida.number,
+            createdAt: salida.createdAt
+              ? new Date(salida.createdAt).toISOString()
+              : null,
             date: salida.date,
             time: salida.time,
             status: salida.status,
@@ -73,6 +76,12 @@ export default async function OrdenPedidoPage({
               ? new Date(salida.deliveredAt).toISOString().slice(0, 10)
               : null,
             receivedTime: salida.receiverTime,
+            receivedAt:
+              salida.receiverSignedAt || salida.deliveredAt
+                ? new Date(
+                    salida.receiverSignedAt ?? salida.deliveredAt!
+                  ).toISOString()
+                : null,
             receiverSignedAt: salida.receiverSignedAt
               ? new Date(salida.receiverSignedAt).toISOString()
               : null,
@@ -86,6 +95,7 @@ export default async function OrdenPedidoPage({
               presentation: item.presentation,
               unitCode: item.unitCode,
               // La bodega de salida es de cada línea.
+              siigoBodegaCode: item.siigoBodegaCode,
               warehouseName: item.warehouseName,
               quantity: item.quantity,
               weight: item.weight,

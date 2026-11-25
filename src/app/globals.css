@@ -229,16 +229,40 @@ dd {
     color: #000 !important;
   }
 
-  /* Independiente del modo oscuro del dispositivo: el documento impreso
-     siempre es blanco con texto negro y bordes visibles. */
-  body * {
-    background-color: #fff !important;
-    color: #000 !important;
-    border-color: #444 !important;
+  /* El documento imprimible es independiente del modo oscuro del
+     dispositivo. Se conserva el rojo institucional de encabezados y marcas. */
+  .print-document,
+  .print-document * {
     box-shadow: none !important;
     text-shadow: none !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+  }
+
+  .print-document,
+  .print-document * {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+  }
+
+  .print-document .print-brand {
+    color: #48151c !important;
+  }
+
+  .print-document .print-table th {
+    background-color: #48151c !important;
+    color: #ffffff !important;
+    border-color: #48151c !important;
+  }
+
+  .print-document .print-table td {
+    background-color: #ffffff;
+    color: #111827 !important;
+    border-color: #9ca3af !important;
+  }
+
+  .print-document .print-table tbody tr:nth-child(even) td {
+    background-color: #f9fafb !important;
   }
 
   img {
@@ -261,7 +285,16 @@ dd {
     padding: 0 !important;
   }
 
-  .app-shell {
+  .app-shell,
+  .app-content,
+  .app-main {
     background: #fff !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+
+  /* Evita una página final vacía por el contenedor de pantalla completa. */
+  .app-shell {
+    min-height: auto !important;
   }
 }

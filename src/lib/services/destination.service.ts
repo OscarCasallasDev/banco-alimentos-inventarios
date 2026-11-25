@@ -7,7 +7,7 @@
  */
 
 import { and, asc, eq, ilike, isNotNull, or, sql } from "drizzle-orm";
-import { getDb } from "@/lib/db/client";
+import { getDb, type DbExecutor } from "@/lib/db/client";
 import { destinations } from "@/lib/db/schema";
 import { notFoundError } from "@/lib/utils/errors";
 
@@ -127,6 +127,44 @@ export async function createDestination(input: {
     sortOrder: row.sortOrder,
     orderCount: 0,
   };
+}
+
+/**
+ * Busca un destino por nombre o lo crea si no existe.
+ *
+ * Se usa al escribir «Otro destino» en una orden. La comparación ignora
+ * mayúsculas y espacios repetidos para no duplicar el catálogo.
+ */
+export async function findOrCreateDestinationByName(
+  rawName: string,
+  executor: DbExecutor = getDb()
+): Promise<{ id: string; name: string; type: string }> {
+  const name = rawName.trim().replace(/\s+/g, " ");
+  const rows = await executor.execute<{
+    id: string;
+    name: string;
+    type: string;
+  }>(sql`
+    SELECT id, name, type
+    FROM destinations
+    WHERE lower(btrim(name)) = lower(${name})
+    ORDER BY created_at
+    LIMIT 1
+  `);
+  const existing = (rows as unknown as {
+    id: string;
+    name: string;
+    type: string;
+  }[])[0];
+  if (existing) return existing;
+
+  const type = /^parroquia\b/i.test(name) ? "PARROQUIA" : "OTRO";
+  const [created] = await executor
+    .insert(destinations)
+    .values({ name, type, status: "ACTIVE" })
+    .returning({ id: destinations.id, name: destinations.name, type: destinations.type });
+
+  return created;
 }
 
 export async function updateDestination(

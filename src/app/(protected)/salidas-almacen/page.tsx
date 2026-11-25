@@ -99,6 +99,17 @@ function formatDate(value: string): string {
   return new Intl.DateTimeFormat("es-CO", { dateStyle: "medium" }).format(date);
 }
 
+function formatBankTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("es-CO", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "America/Bogota",
+  }).format(date);
+}
+
 export default function SalidasAlmacenPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -273,7 +284,8 @@ export default function SalidasAlmacenPage() {
                       )}
                     </p>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {formatDate(salida.date)} {salida.time} · {salida.userName}
+                      {formatDate(salida.date)} {formatBankTime(salida.createdAt)} ·{" "}
+                      {salida.userName}
                       {salida.receiverName ? ` · Recibe: ${salida.receiverName}` : ""}
                     </p>
                   </div>

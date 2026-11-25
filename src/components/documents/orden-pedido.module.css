@@ -247,32 +247,33 @@
 }
 
 /* Anchos de columna (suma 100 %).
-   La columna CÓDIGO es más ancha para que los códigos de Siigo
-   (15 caracteres) quepan en una sola línea, y la de BODEGA DE SALIDA
-   también, para que los nombres de bodega no se partan. */
+   La bodega se muestra en dos columnas: número y nombre. */
 .colNumero {
-  width: 3.5%;
+  width: 3%;
 }
 .colCodigo {
-  width: 15%;
+  width: 14%;
 }
 .colProducto {
-  width: 22%;
+  width: 23%;
 }
-.colBodega {
-  width: 16%;
+.colBodegaNumero {
+  width: 5%;
+}
+.colBodegaNombre {
+  width: 15%;
 }
 .colCantidad {
-  width: 9%;
+  width: 8%;
 }
 .colUnidad {
-  width: 8%;
+  width: 7%;
 }
 .colPeso {
-  width: 8%;
+  width: 7%;
 }
 .colUnidadPeso {
-  width: 7.5%;
+  width: 7%;
 }
 .colVencimiento {
   width: 11%;
@@ -426,9 +427,15 @@
     width: 100%;
     max-width: 100%;
     padding: 0;
+    background: #ffffff !important;
+    break-after: avoid;
+    page-break-after: avoid;
   }
 
   .tabla th {
+    background: #48151c !important;
+    color: #ffffff !important;
+    border-color: #48151c !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
@@ -438,7 +445,12 @@
     print-color-adjust: exact;
   }
 
+  .tabla tbody tr:nth-child(even) td {
+    background: #f9fafb !important;
+  }
+
   .bloqueGeneral {
+    background: #f9fafb !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }

@@ -14,6 +14,7 @@
 
 import Image from "next/image";
 import { INSTITUTION } from "@/lib/config/institution";
+import { BANK_TIME_ZONE } from "@/lib/utils/dates";
 import styles from "./orden-pedido.module.css";
 
 export interface OrdenPedidoItem {
@@ -23,6 +24,7 @@ export interface OrdenPedidoItem {
   presentation: string | null;
   unitCode: string | null;
   /** Bodega de salida de ESTA línea. */
+  siigoBodegaCode: number;
   warehouseName: string | null;
   quantity: number;
   weight: number | null;
@@ -33,6 +35,8 @@ export interface OrdenPedidoItem {
 
 export interface OrdenPedido {
   number: string;
+  /** Instante real de creación (UTC), para mostrar la hora del Banco. */
+  createdAt: string | null;
   date: string;
   time: string;
   status: string;
@@ -48,6 +52,8 @@ export interface OrdenPedido {
   /** Fecha y hora de la recepción (null si aún no se ha recibido). */
   receivedDate: string | null;
   receivedTime: string | null;
+  /** Instante real de la recepción (UTC). */
+  receivedAt: string | null;
   /** Momento en que se confirmó la recepción (null si no se ha recibido). */
   receiverSignedAt: string | null;
   notes: string | null;
@@ -85,6 +91,29 @@ function formatShortDate(value: string | null): string {
   return new Intl.DateTimeFormat("es-CO", { dateStyle: "short" }).format(date);
 }
 
+/** Fecha y hora del Banco a partir de un instante UTC. */
+function formatBankDateTime(value: string | null): {
+  date: string;
+  time: string;
+} | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return {
+    date: new Intl.DateTimeFormat("es-CO", {
+      dateStyle: "long",
+      timeZone: BANK_TIME_ZONE,
+    }).format(date),
+    time: new Intl.DateTimeFormat("es-CO", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: BANK_TIME_ZONE,
+    }).format(date),
+  };
+}
+
 export default function OrdenPedidoDocumento({
   orden,
 }: {
@@ -97,12 +126,18 @@ export default function OrdenPedidoDocumento({
     return acc + item.weight * factor;
   }, 0);
 
+  const creada = formatBankDateTime(orden.createdAt);
+  const recibida = formatBankDateTime(orden.receivedAt);
+  const fechaCreacion = creada?.date ?? formatDate(orden.date);
+  const horaCreacion = creada?.time ?? orden.time;
+
   return (
     <div className={styles.documento}>
       {/* Encabezado superior: título del sistema */}
       <div className={styles.encabezadoSuperior}>
-        <p className={styles.tituloSistema}>
-          Sistema de Gestión de Inventarios | Banco de Alimentos Ibagué
+        <p className={`${styles.tituloSistema} print-brand`}>
+          Sistema de Gestión de Inventarios | Banco Arquidiocesano de Alimentos
+          de Ibagué
         </p>
       </div>
 
@@ -122,8 +157,8 @@ export default function OrdenPedidoDocumento({
             className={styles.logo}
           />
           <div className={styles.textoInstitucion}>
-            <p className={styles.banco}>{INSTITUTION.nameLines[0]}</p>
-            <p className={styles.banco}>{INSTITUTION.nameLines[1]}</p>
+            <p className={`${styles.banco} print-brand`}>{INSTITUTION.nameLines[0]}</p>
+            <p className={`${styles.banco} print-brand`}>{INSTITUTION.nameLines[1]}</p>
             <p className={styles.datosInstitucion}>
               NIT {INSTITUTION.nit} · {INSTITUTION.address}
             </p>
@@ -134,12 +169,12 @@ export default function OrdenPedidoDocumento({
         </div>
 
         <div className={styles.encabezadoDocumento}>
-          <p className={styles.tituloDocumento}>ORDEN DE PEDIDO</p>
+          <p className={`${styles.tituloDocumento} print-brand`}>ORDEN DE PEDIDO</p>
           <p className={styles.numeroDocumento}>{orden.number}</p>
           <p className={styles.fechaDocumento}>
-            Fecha: {formatDate(orden.date)} &nbsp;·&nbsp; Hora: {orden.time}
+            Fecha: {fechaCreacion} &nbsp;·&nbsp; Hora: {horaCreacion}
           </p>
-          <p className={styles.estadoDocumento}>
+          <p className={`${styles.estadoDocumento} print-brand`}>
             Estado: {STATUS_LABELS[orden.status] ?? orden.status}
           </p>
         </div>
@@ -191,13 +226,14 @@ export default function OrdenPedidoDocumento({
       </section>
 
       {/* Detalle */}
-      <table className={styles.tabla}>
+      <table className={`${styles.tabla} print-table`}>
         <thead>
           <tr>
             <th className={styles.colNumero}>#</th>
             <th className={styles.colCodigo}>CÓDIGO</th>
             <th className={styles.colProducto}>PRODUCTO</th>
-            <th className={styles.colBodega}>BODEGA DE SALIDA</th>
+            <th className={styles.colBodegaNumero}>N.º BODEGA</th>
+            <th className={styles.colBodegaNombre}>NOMBRE DE BODEGA</th>
             <th className={styles.colCantidad}>CANTIDAD</th>
             <th className={styles.colUnidad}>UNIDAD</th>
             <th className={styles.colPeso}>PESO</th>
@@ -216,6 +252,7 @@ export default function OrdenPedidoDocumento({
                   <span className={styles.notaProducto}> · {item.notes}</span>
                 )}
               </td>
+              <td className={styles.numero}>{item.siigoBodegaCode}</td>
               <td className={styles.bodega}>
                 {item.warehouseName ?? "—"}
               </td>
@@ -260,7 +297,9 @@ export default function OrdenPedidoDocumento({
       {/* Firmas */}
       <section className={styles.firmas}>
         <div className={styles.bloqueFirma}>
-          <p className={styles.tituloFirma}>ENTREGA — ALMACENISTA</p>
+          <p className={`${styles.tituloFirma} print-brand`}>
+            ENTREGA — ALMACENISTA
+          </p>
           <div className={styles.lineaFirma} />
           <p className={styles.campoFirma}>
             <span className={styles.campoEtiqueta}>Nombre:</span>{" "}
@@ -278,7 +317,7 @@ export default function OrdenPedidoDocumento({
         </div>
 
         <div className={styles.bloqueFirma}>
-          <p className={styles.tituloFirma}>
+          <p className={`${styles.tituloFirma} print-brand`}>
             RECIBE — ENCARGADO(A) DE DESPACHO
           </p>
           <div className={styles.lineaFirma} />
@@ -292,12 +331,13 @@ export default function OrdenPedidoDocumento({
           </p>
           <p className={styles.campoFirma}>
             <span className={styles.campoEtiqueta}>Fecha:</span>{" "}
-            {orden.receivedDate
-              ? formatShortDate(orden.receivedDate)
-              : "____ / ____ / ______"}
+            {recibida?.date ??
+              (orden.receivedDate
+                ? formatShortDate(orden.receivedDate)
+                : "____ / ____ / ______")}
             &nbsp;&nbsp;
             <span className={styles.campoEtiqueta}>Hora:</span>{" "}
-            {orden.receivedTime ?? "____ : ____"}
+            {recibida?.time ?? orden.receivedTime ?? "____ : ____"}
           </p>
         </div>
       </section>

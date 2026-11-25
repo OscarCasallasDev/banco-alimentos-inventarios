@@ -130,6 +130,8 @@ export default function NuevaOrdenPedidoPage() {
   const [programId, setProgramId] = useState("");
   const [customProgramName, setCustomProgramName] = useState("");
   const [destination, setDestination] = useState<AutocompleteOption | null>(null);
+  const [otroDestino, setOtroDestino] = useState(false);
+  const [customDestinationName, setCustomDestinationName] = useState("");
   const [delivererName, setDelivererName] = useState("");
   const [delivererDocument, setDelivererDocument] = useState("");
   const [notes, setNotes] = useState("");
@@ -374,8 +376,12 @@ export default function NuevaOrdenPedidoPage() {
     setError(null);
     setSubmitAttempted(true);
 
-    if (!destination) {
+    if (!otroDestino && !destination) {
       setError("Seleccione el destino de la orden.");
+      return;
+    }
+    if (otroDestino && !customDestinationName.trim()) {
+      setError("Escriba el nombre del nuevo destino.");
       return;
     }
     if (!programaValido) {
@@ -424,7 +430,10 @@ export default function NuevaOrdenPedidoPage() {
         customProgramName: esProgramaPropio
           ? customProgramName.trim()
           : null,
-        destinationId: destination.id,
+        destinationId: otroDestino ? null : destination!.id,
+        customDestinationName: otroDestino
+          ? customDestinationName.trim()
+          : null,
         notes: notes.trim() || null,
         items,
       });
@@ -485,11 +494,41 @@ export default function NuevaOrdenPedidoPage() {
                 label="Destino *"
                 required
                 endpoint="/api/destinos"
-                value={destination}
-                onChange={setDestination}
+                value={otroDestino ? null : destination}
+                onChange={(option) => {
+                  setOtroDestino(false);
+                  setDestination(option);
+                }}
                 placeholder="Escriba para buscar (ej. San Juan)…"
                 emptyMessage="No hay destinos que coincidan."
+                footerAction={{
+                  label: "Otro destino",
+                  onClick: () => {
+                    setOtroDestino(true);
+                    setDestination(null);
+                  },
+                }}
               />
+
+              {otroDestino && (
+                <label className="block sm:col-span-2">
+                  <span className="text-xs font-medium text-gray-700">
+                    Nombre del nuevo destino *
+                  </span>
+                  <input
+                    type="text"
+                    value={customDestinationName}
+                    onChange={(event) =>
+                      setCustomDestinationName(event.target.value)
+                    }
+                    placeholder="Ej.: Parroquia Milagro de Dios"
+                    className="mt-1 w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                  />
+                  <span className="mt-1 block text-[11px] text-gray-500">
+                    Se guardará en el catálogo para usarlo en órdenes futuras.
+                  </span>
+                </label>
+              )}
 
               <label className="block">
                 <span className="text-xs font-medium text-gray-700">Programa</span>
@@ -967,7 +1006,9 @@ export default function NuevaOrdenPedidoPage() {
               <div className="flex justify-between gap-2">
                 <dt className="text-gray-600">Destino</dt>
                 <dd className="font-medium text-gray-900 text-right">
-                  {destination?.label ?? "—"}
+                  {otroDestino
+                    ? customDestinationName.trim() || "—"
+                    : destination?.label ?? "—"}
                 </dd>
               </div>
               <div className="flex justify-between gap-2">

@@ -31,6 +31,8 @@ interface AutocompleteProps {
   emptyMessage?: string;
   className?: string;
   disabled?: boolean;
+  /** Opción adicional al final del selector (por ejemplo, «Otro destino»). */
+  footerAction?: { label: string; onClick: () => void };
 }
 
 export default function Autocomplete({
@@ -43,6 +45,7 @@ export default function Autocomplete({
   emptyMessage = "Sin coincidencias.",
   className,
   disabled,
+  footerAction,
 }: AutocompleteProps) {
   const [term, setTerm] = useState("");
   const [results, setResults] = useState<{
@@ -158,33 +161,50 @@ export default function Autocomplete({
         </div>
       </div>
 
-      {open && term.trim().length >= 2 && (
+      {open && (term.trim().length >= 2 || footerAction) && (
         <ul className="absolute z-30 mt-1 w-full max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
-          {options.length === 0 ? (
+          {options.map((option) => (
+            <li key={option.id}>
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(option);
+                  setOpen(false);
+                  setTerm("");
+                }}
+                className="w-full text-left px-3 py-2.5 hover:bg-primary-50 flex items-center justify-between gap-2"
+              >
+                <span className="text-sm text-gray-900">{option.label}</span>
+                {option.badge && (
+                  <span className="text-[10px] font-mono text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">
+                    {option.badge}
+                  </span>
+                )}
+              </button>
+            </li>
+          ))}
+
+          {term.trim().length >= 2 && options.length === 0 && (
             <li className="px-3 py-2.5 text-sm text-gray-500">
               {loading ? "Buscando…" : emptyMessage}
             </li>
-          ) : (
-            options.map((option) => (
-              <li key={option.id}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onChange(option);
-                    setOpen(false);
-                    setTerm("");
-                  }}
-                  className="w-full text-left px-3 py-2.5 hover:bg-primary-50 flex items-center justify-between gap-2"
-                >
-                  <span className="text-sm text-gray-900">{option.label}</span>
-                  {option.badge && (
-                    <span className="text-[10px] font-mono text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">
-                      {option.badge}
-                    </span>
-                  )}
-                </button>
-              </li>
-            ))
+          )}
+
+          {footerAction && (
+            <li className="border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(null);
+                  setOpen(false);
+                  setTerm("");
+                  footerAction.onClick();
+                }}
+                className="w-full text-left px-3 py-2.5 text-sm font-medium text-primary-700 hover:bg-primary-50"
+              >
+                {footerAction.label}
+              </button>
+            </li>
           )}
         </ul>
       )}

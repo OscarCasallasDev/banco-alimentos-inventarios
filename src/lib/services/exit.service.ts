@@ -36,6 +36,8 @@ import { calculateTotalWeightKg } from "@/lib/siigo/import/weight";
 import { round3 } from "@/lib/siigo/import/parser";
 import { createReservation, releaseReservations } from "@/lib/services/reservation.service";
 import { groupKeyForProduct } from "@/lib/services/stock.service";
+import { BANK_TIME_ZONE } from "@/lib/utils/dates";
+import { findOrCreateDestinationByName } from "@/lib/services/destination.service";
 
 // ============================================================
 // TIPOS
@@ -66,6 +68,8 @@ export interface CreateSalidaInput {
   customProgramName?: string | null;
   /** Destino (parroquia / grupo de familia) del cat?logo configurable. */
   destinationId?: string | null;
+  /** Nombre de un destino nuevo escrito por el usuario («Otro destino»). */
+  customDestinationName?: string | null;
   warehouseId?: string | null;
   siigoBodegaCode?: number | null;
   locationCode?: number | null;
@@ -170,18 +174,27 @@ export interface SalidaItemDetail {
 // UTILIDADES
 // ============================================================
 
-/** Fecha local en formato 'YYYY-MM-DD'. */
+/** Fecha del Banco (America/Bogota) en formato 'YYYY-MM-DD'. */
 export function todayIso(): string {
-  const now = new Date();
-  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 10);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: BANK_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
-/** Hora local en formato 'HH:MM'. */
+/** Hora del Banco (America/Bogota) en formato 'HH:MM'. */
 export function nowTime(): string {
-  const now = new Date();
-  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(11, 16);
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: BANK_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date());
 }
 
 // ============================================================
@@ -390,6 +403,10 @@ export async function createSalida(
     );
   }
 
+  if (!input.destinationId && !input.customDestinationName?.trim()) {
+    throw businessRuleError("Seleccione un destino o escriba uno nuevo.");
+  }
+
   if (programId) {
     const [program] = await db
       .select()
@@ -403,6 +420,14 @@ export async function createSalida(
   }
 
   return withTransaction(async (tx) => {
+    // Destino existente o nuevo («Otro destino»): se incorpora al catálogo
+    // para que pueda reutilizarse en órdenes posteriores.
+    const destinationId = input.destinationId
+      ? input.destinationId
+      : input.customDestinationName?.trim()
+        ? (await findOrCreateDestinationByName(input.customDestinationName, tx)).id
+        : null;
+
     // Bloqueo por producto/bodega para serializar salidas concurrentes.
     const keys = [
       ...new Set(
@@ -425,7 +450,7 @@ export async function createSalida(
         time: input.time ?? nowTime(),
         programId,
         customProgramName,
-        destinationId: input.destinationId ?? null,
+        destinationId,
         // La bodega general qued? vac?a: cada producto define la suya.
         warehouseId: null,
         siigoBodegaCode: null,
@@ -875,6 +900,11 @@ export async function updateSalidaDraft(
     /** Líneas nuevas cuya reserva debe recrearse si la orden ya está generada. */
     const nuevasLineas: { id: string; item: SalidaItemInput }[] = [];
 
+    const destinationId =
+      input.destinationId === null && input.customDestinationName?.trim()
+        ? (await findOrCreateDestinationByName(input.customDestinationName, tx)).id
+        : input.destinationId;
+
     if (input.items) {
       await tx.delete(salidaItems).where(eq(salidaItems.salidaId, salidaId));
 
@@ -985,9 +1015,7 @@ export async function updateSalidaDraft(
       .set({
         programId: input.programId ?? salida.programId,
         destinationId:
-          input.destinationId === undefined
-            ? salida.destinationId
-            : input.destinationId,
+          destinationId === undefined ? salida.destinationId : destinationId,
         warehouseId:
           input.warehouseId === undefined ? salida.warehouseId : input.warehouseId,
         siigoBodegaCode:

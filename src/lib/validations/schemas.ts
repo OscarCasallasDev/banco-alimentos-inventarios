@@ -715,6 +715,11 @@ export const createSalidaSchema = z.object({
     .nullish(),
   /** Destino (parroquia / grupo de familia) del cat?logo configurable. */
   destinationId: z.string().uuid("El destino es requerido").nullish(),
+  /** Destino nuevo escrito en la orden («Otro destino»). */
+  customDestinationName: z
+    .string()
+    .max(150, "El nombre del destino es muy largo")
+    .nullish(),
   warehouseId: z.string().uuid().nullish(),
   siigoBodegaCode: z.number().int().min(0).nullish(),
   locationCode: z.number().int().min(0).nullish(),

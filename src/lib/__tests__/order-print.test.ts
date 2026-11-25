@@ -149,8 +149,9 @@ describe("Geometría de impresión de la orden de pedido", () => {
     expect(codigo).toMatch(/text-overflow:\s*ellipsis/);
   });
 
-  it("la tabla tiene columna de bodega de salida", () => {
-    expect(css).toMatch(/\.colBodega\s*\{/);
+  it("la bodega se muestra en columnas de número y nombre", () => {
+    expect(css).toMatch(/\.colBodegaNumero\s*\{/);
+    expect(css).toMatch(/\.colBodegaNombre\s*\{/);
     expect(css).toMatch(/\.bodega\s*\{/);
   });
 
@@ -241,6 +242,35 @@ describe("Bloques de firmas del documento", () => {
   it("los estados visibles ya no mencionan conciliación con Siigo", () => {
     expect(tsx).not.toContain("CONFIRMADA EN SIIGO");
     expect(tsx).not.toContain("ANULADA");
+  });
+
+  it("usa America/Bogota para las horas de creación y recepción", () => {
+    expect(tsx).toContain("BANK_TIME_ZONE");
+    expect(tsx).toContain("formatBankDateTime(orden.createdAt)");
+    expect(tsx).toContain("formatBankDateTime(orden.receivedAt)");
+  });
+
+  it("muestra el número y el nombre reales de cada bodega", () => {
+    expect(tsx).toContain("item.siigoBodegaCode");
+    expect(tsx).toContain("item.warehouseName");
+    expect(tsx).toContain("N.º BODEGA");
+    expect(tsx).toContain("NOMBRE DE BODEGA");
+  });
+
+  it("conserva el rojo institucional y el texto blanco al imprimir", () => {
+    const css = readFileSync(CSS_PATH, "utf8");
+    const impresion = /@media print[\s\S]*$/.exec(css)?.[0] ?? "";
+    expect(impresion).toContain("background: #48151c !important");
+    expect(impresion).toContain("color: #ffffff !important");
+    expect(impresion).toContain("print-color-adjust: exact");
+    expect(impresion).toContain("break-after: avoid");
+  });
+
+  it("incluye el nombre institucional completo", () => {
+    expect(tsx).toContain(
+      "Banco Arquidiocesano de Alimentos"
+    );
+    expect(tsx).toContain("de Ibagué");
   });
 });
 
