@@ -1,7 +1,7 @@
 /** Pruebas específicas de videotutoriales y contención responsive. */
 
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { VIDEO_TUTORIALS } from "@/lib/config/video-tutorials";
 
@@ -13,18 +13,38 @@ describe("Catálogo de videotutoriales", () => {
     expect(new Set(VIDEO_TUTORIALS.map((item) => item.id)).size).toBe(19);
   });
 
-  it("deja todos los videos pendientes y sin URLs ficticias", () => {
+  it("activa los cinco videos existentes y deja el resto pendiente", () => {
+    const disponibles = VIDEO_TUTORIALS.filter(
+      (item) => item.status === "DISPONIBLE"
+    );
+
+    expect(disponibles).toHaveLength(5);
+    expect(disponibles.map((item) => item.url)).toEqual([
+      "/Videotutoriales/IngresarSistemaVideotutorial.mp4",
+      "/Videotutoriales/RegistrarNuevoUsuario.mp4",
+      "/Videotutoriales/ConsultaryAdministrarUsuario.mp4",
+      "/Videotutoriales/ActualizarInformaciónPersonal.mp4",
+      "/Videotutoriales/CambiarContraseña.mp4",
+    ]);
+
     expect(
-      VIDEO_TUTORIALS.every(
-        (item) => item.status === "PROXIMAMENTE" && item.url === null
+      VIDEO_TUTORIALS.filter((item) => item.status === "PROXIMAMENTE").every(
+        (item) => item.url === null
       )
     ).toBe(true);
     expect(VIDEO_TUTORIALS.every((item) => item.title && item.description)).toBe(
       true
     );
+
+    // Las rutas configuradas deben existir con el nombre y las mayúsculas
+    // exactas del archivo real en public/Videotutoriales.
+    for (const url of disponibles.map((item) => item.url!)) {
+      const file = path.join(root, "public", url.replace(/^\//, ""));
+      expect(existsSync(file)).toBe(true);
+    }
   });
 
-  it("los botones se deshabilitan mientras no exista URL", () => {
+  it("abre un reproductor modal con controles y sin cambiar velocidad", () => {
     const component = readFileSync(
       path.join(root, "src", "components", "config", "VideotutorialesPanel.tsx"),
       "utf8"
@@ -32,6 +52,10 @@ describe("Catálogo de videotutoriales", () => {
     expect(component).toContain("disabled={!disponible}");
     expect(component).toContain("Próximamente");
     expect(component).toContain("Ver video");
+    expect(component).toContain("<video");
+    expect(component).toContain("controls");
+    expect(component).toContain("autoPlay");
+    expect(component).toContain("playbackRate");
   });
 
   it("la sección está entre vencimientos y auditoría", () => {

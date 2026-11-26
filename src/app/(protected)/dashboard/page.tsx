@@ -181,13 +181,11 @@ export default async function DashboardPage() {
     : null;
   const stale = minutesSince === null || minutesSince > staleMinutes;
 
-  // Solo quien tiene el módulo de Integración Siigo puede importar el
-  // reporte. El botón no aparece para los demás y la API lo rechaza igual.
+  // Solo el superadministrador (y Ricardo Montenegro, que tiene ese rol)
+  // puede importar el reporte. El botón no aparece para los demás y la API
+  // lo rechaza igual.
   const sessionUser = await getCurrentUser();
-  const puedeImportar =
-    sessionUser !== null &&
-    (sessionUser.role === "SUPERADMIN" ||
-      sessionUser.modules.includes("integracion_siigo"));
+  const puedeImportar = sessionUser?.role === "SUPERADMIN";
 
   return (
     <div className="space-y-5">

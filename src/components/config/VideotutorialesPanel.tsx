@@ -1,21 +1,41 @@
 "use client";
 
-import { GraduationCap, PlayCircle, Clock3 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { GraduationCap, PlayCircle, Clock3, X } from "lucide-react";
 import {
   VIDEO_TUTORIALS,
   type VideoTutorial,
 } from "@/lib/config/video-tutorials";
 import { cn } from "@/lib/utils";
 
-function abrirVideo(tutorial: VideoTutorial) {
-  if (tutorial.status !== "DISPONIBLE" || !tutorial.url) return;
-  window.open(tutorial.url, "_blank", "noopener,noreferrer");
-}
-
 export default function VideotutorialesPanel() {
+  const [active, setActive] = useState<VideoTutorial | null>(null);
+
   const categories = Array.from(
     new Set(VIDEO_TUTORIALS.map((tutorial) => tutorial.category))
   );
+
+  useEffect(() => {
+    if (!active) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setActive(null);
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [active]);
+
+  function abrirVideo(tutorial: VideoTutorial) {
+    if (tutorial.status !== "DISPONIBLE" || !tutorial.url) return;
+    setActive(tutorial);
+  }
 
   return (
     <section className="bg-white rounded-xl border border-gray-200 p-6 min-w-0">
@@ -96,6 +116,58 @@ export default function VideotutorialesPanel() {
           </div>
         ))}
       </div>
+
+      {active?.url && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
+          role="dialog"
+          aria-modal="true"
+          aria-label={active.title}
+          onClick={() => setActive(null)}
+        >
+          <div
+            className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl overflow-hidden"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-[11px] uppercase tracking-wider text-gray-500">
+                  {active.category}
+                </p>
+                <h3 className="text-sm font-semibold text-gray-900 break-words">
+                  {active.title}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActive(null)}
+                className="shrink-0 p-2 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100"
+                aria-label="Cerrar videotutorial"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <video
+              key={active.id}
+              src={active.url}
+              controls
+              autoPlay
+              playsInline
+              preload="metadata"
+              onRateChange={(event) => {
+                // La velocidad de reproducción no se modifica.
+                if (event.currentTarget.playbackRate !== 1) {
+                  event.currentTarget.playbackRate = 1;
+                }
+              }}
+              className="w-full aspect-video bg-black"
+            >
+              Tu navegador no admite la reproducción de video.
+            </video>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

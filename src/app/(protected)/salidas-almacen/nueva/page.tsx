@@ -26,10 +26,14 @@ import Autocomplete, {
 import { cn } from "@/lib/utils";
 import {
   MESSAGES,
+  parseNumericInput,
   validateExpiration,
   validateQuantity,
-  validateWeight,
 } from "@/lib/orders/validation";
+import {
+  computeLineWeightKg,
+  formatWeightKg,
+} from "@/lib/orders/presentation";
 
 interface Program {
   id: string;
@@ -72,6 +76,8 @@ interface StockRow {
   canAdd: boolean;
   isNegative: boolean;
   reviewRequired: boolean;
+  /** Contenido neto por unidad, si el catálogo lo tiene verificado. */
+  netWeightGrams: number | null;
 }
 
 /** Bodega donde un producto existe con disponibilidad positiva. */
@@ -92,6 +98,8 @@ interface Linea {
   productCode: string;
   description: string;
   unit: string;
+  /** Contenido neto por unidad, si el catálogo lo tiene verificado. */
+  netWeightGrams: number | null;
   /** Bodega elegida para esta línea. */
   siigoBodegaCode: number;
   warehouseId: string | null;
@@ -111,8 +119,6 @@ interface Linea {
     expirationDate?: boolean;
   };
 }
-
-const UNIDADES_PESO = ["kg", "g", "ml", "l"];
 
 /** Valor sentinela para la opción «Otro programa». */
 const PROGRAMA_OTRO = "__OTRO__";
@@ -242,7 +248,8 @@ export default function NuevaOrdenPedidoPage() {
         productId: stock.representativeProductId,
         productCode: stock.representativeCode,
         description: stock.description,
-        unit: stock.unit || "UND",
+        unit: "UND",
+        netWeightGrams: stock.netWeightGrams ?? null,
         siigoBodegaCode: stock.siigoBodegaCode,
         warehouseId: stock.warehouseId,
         warehouseName: stock.warehouseName,
@@ -293,7 +300,7 @@ export default function NuevaOrdenPedidoPage() {
           // Si la cantidad supera la nueva disponibilidad, se limpia para
           // que el almacenista la vuelva a escribir.
           quantity:
-            Number(line.quantity.replace(",", ".")) > (opcion?.available ?? 0)
+            (parseNumericInput(line.quantity) ?? 0) > (opcion?.available ?? 0)
               ? ""
               : line.quantity,
         };
@@ -319,21 +326,31 @@ export default function NuevaOrdenPedidoPage() {
     () =>
       lineas.map((line) => {
         const quantityError = validateQuantity(line.quantity, line.available);
-        const weightError = validateWeight(line.weight);
         const expirationError = validateExpiration(line.expirationDate);
-        const quantity = Number(line.quantity.replace(",", ".")) || 0;
-        const weight = Number(line.weight.replace(",", ".")) || 0;
+        const quantity = parseNumericInput(line.quantity) ?? 0;
+        const weightCalc = computeLineWeightKg(
+          quantity,
+          line.description,
+          null,
+          line.netWeightGrams
+        );
+        const weight = weightCalc.kg ?? 0;
         return {
           ...line,
           quantity,
           weight,
+          weightValue: weightCalc.kg,
+          weightDisplay:
+            weightCalc.kg === null ? "" : formatWeightKg(weightCalc.kg),
+          weightPending: weightCalc.pending && quantity > 0,
+          unit: "UND",
+          weightUnit: "kg",
           quantityError,
-          weightError,
+          weightError: null,
           expirationError,
           showQuantityError:
             (line.touched.quantity || submitAttempted) && quantityError !== null,
-          showWeightError:
-            (line.touched.weight || submitAttempted) && weightError !== null,
+          showWeightError: false,
           showExpirationError:
             (line.touched.expirationDate || submitAttempted) &&
             expirationError !== null,
@@ -351,19 +368,17 @@ export default function NuevaOrdenPedidoPage() {
   );
 
   const totalWeight = useMemo(() => {
-    const sum = lineasCalculadas.reduce((acc, line) => {
-      const factor =
-        line.weightUnit === "g" ? 0.001 : line.weightUnit === "kg" ? 1 : 0;
-      return acc + line.weight * factor;
-    }, 0);
-    return Math.round(sum * 1000) / 1000;
+    const sum = lineasCalculadas.reduce(
+      (acc, line) => acc + (line.weightValue ?? 0),
+      0
+    );
+    return Math.round((sum + Number.EPSILON) * 1000) / 1000;
   }, [lineasCalculadas]);
 
+  const hayPesoPendiente = lineasCalculadas.some((line) => line.weightPending);
+
   const hayErrores = lineasCalculadas.some(
-    (line) =>
-      line.quantityError !== null ||
-      line.weightError !== null ||
-      line.expirationError !== null
+    (line) => line.quantityError !== null || line.expirationError !== null
   );
 
   const nombreValido = delivererName.trim().length > 0;
@@ -404,7 +419,7 @@ export default function NuevaOrdenPedidoPage() {
     }
     if (hayErrores) {
       setError(
-        "Revisa los campos marcados: la cantidad y el peso deben ser mayores que 0, y la fecha de vencimiento es obligatoria."
+        "Revisa los campos marcados: la cantidad debe ser mayor que 0 y la fecha de vencimiento es obligatoria."
       );
       return;
     }
@@ -418,9 +433,9 @@ export default function NuevaOrdenPedidoPage() {
         siigoBodegaCode: line.siigoBodegaCode,
         locationCode: 0,
         quantity: line.quantity,
-        unit: line.unit,
-        weight: line.weight,
-        weightUnit: line.weightUnit,
+        unit: "UND",
+        weight: line.weightValue ?? undefined,
+        weightUnit: "kg",
         expirationDate: line.expirationDate,
         notes: line.notes.trim() || undefined,
       }));
@@ -689,8 +704,7 @@ export default function NuevaOrdenPedidoPage() {
                                       : "text-gray-500"
                                 )}
                               >
-                                disponible: {formatNumber(stock.available)}{" "}
-                                {stock.unit}
+                                disponible: {formatNumber(stock.available)} UND
                               </span>
                               {stock.locationCount > 1 &&
                                 ` · ${stock.locationCount} ubicaciones`}
@@ -803,7 +817,7 @@ export default function NuevaOrdenPedidoPage() {
                           ))}
                         </select>
                         <span className="mt-1 block text-[11px] text-gray-500">
-                          Disponible: {formatNumber(line.available)} {line.unit}
+                          Disponible: {formatNumber(line.available)} UND
                         </span>
                       </label>
 
@@ -835,45 +849,28 @@ export default function NuevaOrdenPedidoPage() {
                         <span className="text-[11px] font-medium text-gray-600">
                           Unidad
                         </span>
-                        <select
-                          value={line.unit}
-                          onChange={(event) =>
-                            actualizar(line.key, { unit: event.target.value })
-                          }
-                          className="mt-1 w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary-500 outline-none"
+                        <input
+                          type="text"
+                          value="UND"
+                          readOnly
+                          tabIndex={-1}
+                          className="mt-1 w-full px-2.5 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-700"
                           aria-label="Unidad"
-                        >
-                          {[...new Set([line.unit || "UND", "UND", "KG", "GR", "ML", "L", "CAJA", "PAQUETE"])]
-                            .filter(Boolean)
-                            .map((unidad) => (
-                              <option key={unidad} value={unidad}>
-                                {unidad}
-                              </option>
-                            ))}
-                        </select>
+                        />
                       </label>
 
                       <label className="block">
                         <span className="text-[11px] font-medium text-gray-600">
-                          Peso *
+                          Peso
                         </span>
                         <input
                           type="text"
-                          inputMode="decimal"
-                          value={line.weight}
-                          onChange={(event) =>
-                            actualizar(line.key, { weight: event.target.value })
-                          }
-                          onBlur={() => tocar(line.key, "weight")}
-                          placeholder="0"
-                          aria-invalid={line.showWeightError}
-                          className={cn(
-                            "mt-1 w-full px-2.5 py-2 border rounded-lg text-sm tabular-nums focus:ring-2 focus:ring-primary-500 outline-none",
-                            line.showWeightError
-                              ? "border-red-400 bg-red-50"
-                              : "border-gray-300"
-                          )}
-                          aria-label="Peso"
+                          value={line.weightDisplay}
+                          readOnly
+                          tabIndex={-1}
+                          placeholder="Pendiente"
+                          className="mt-1 w-full px-2.5 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-700 tabular-nums"
+                          aria-label="Peso calculado"
                         />
                       </label>
 
@@ -881,22 +878,14 @@ export default function NuevaOrdenPedidoPage() {
                         <span className="text-[11px] font-medium text-gray-600">
                           Unidad de peso
                         </span>
-                        <select
-                          value={line.weightUnit}
-                          onChange={(event) =>
-                            actualizar(line.key, {
-                              weightUnit: event.target.value,
-                            })
-                          }
-                          className="mt-1 w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary-500 outline-none"
+                        <input
+                          type="text"
+                          value="kg"
+                          readOnly
+                          tabIndex={-1}
+                          className="mt-1 w-full px-2.5 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-700"
                           aria-label="Unidad de peso"
-                        >
-                          {UNIDADES_PESO.map((unidad) => (
-                            <option key={unidad} value={unidad}>
-                              {unidad}
-                            </option>
-                          ))}
-                        </select>
+                        />
                       </label>
 
                       <label className="block">
@@ -933,10 +922,12 @@ export default function NuevaOrdenPedidoPage() {
                         {line.quantityError}
                       </p>
                     )}
-                    {line.showWeightError && (
-                      <p className="mt-2 flex items-start gap-1.5 text-xs text-red-700">
-                        <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        {line.weightError}
+                    {line.weightPending && (
+                      <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-700">
+                        <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        Peso pendiente de configuración: no se pudo identificar
+                        una presentación en gramos o una densidad aprobada para
+                        este producto.
                       </p>
                     )}
                     {line.showExpirationError && (
@@ -1041,16 +1032,23 @@ export default function NuevaOrdenPedidoPage() {
               <div className="flex justify-between gap-2">
                 <dt className="text-gray-600">Total unidades</dt>
                 <dd className="font-semibold text-gray-900 tabular-nums">
-                  {formatNumber(totalQuantity)}
+                  {formatNumber(totalQuantity)} UND
                 </dd>
               </div>
               <div className="flex justify-between gap-2">
                 <dt className="text-gray-600">Peso total</dt>
                 <dd className="font-semibold text-gray-900 tabular-nums">
-                  {totalWeight > 0 ? `${formatNumber(totalWeight)} kg` : "—"}
+                  {totalWeight > 0 ? `${formatWeightKg(totalWeight)} kg` : "—"}
                 </dd>
               </div>
             </dl>
+
+            {hayPesoPendiente && (
+              <p className="mt-2 text-[11px] text-amber-700 leading-relaxed">
+                Hay productos con peso pendiente de configuración; el total
+                mostrado solo suma los pesos calculables.
+              </p>
+            )}
 
             <p className="mt-3 text-[11px] text-gray-500 leading-relaxed">
               La orden no descuenta existencias: las cantidades quedan

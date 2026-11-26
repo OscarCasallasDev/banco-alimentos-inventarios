@@ -9,7 +9,7 @@
 
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Link2,
   Upload,
@@ -157,6 +157,26 @@ export default function IntegracionSiigoPage() {
   const [tab, setTab] = useState<"importar" | "historial" | "bodegas">(
     "importar"
   );
+  const { data: me } = useApiQuery<{ role: string }>("/api/usuarios/me");
+
+  // Importar el reporte es exclusivo del superadministrador. Los demás
+  // perfiles conservan el historial y la consulta de bodegas, pero no ven
+  // la pestaña de importación.
+  const puedeImportar = me?.role === "SUPERADMIN";
+
+  useEffect(() => {
+    if (me && !puedeImportar && tab === "importar") {
+      setTab("historial");
+    }
+  }, [me, puedeImportar, tab]);
+
+  const tabs: { key: "importar" | "historial" | "bodegas"; label: string }[] = [
+    ...(puedeImportar
+      ? [{ key: "importar" as const, label: "Importar reporte" }]
+      : []),
+    { key: "historial", label: "Historial de sincronizaciones" },
+    { key: "bodegas", label: "Bodegas de Siigo" },
+  ];
 
   return (
     <div className="space-y-4">
@@ -172,13 +192,7 @@ export default function IntegracionSiigoPage() {
 
       {/* Pestañas */}
       <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
-        {(
-          [
-            ["importar", "Importar reporte"],
-            ["historial", "Historial de sincronizaciones"],
-            ["bodegas", "Bodegas de Siigo"],
-          ] as const
-        ).map(([key, label]) => (
+        {tabs.map(({ key, label }) => (
           <button
             key={key}
             type="button"
@@ -195,7 +209,7 @@ export default function IntegracionSiigoPage() {
         ))}
       </div>
 
-      {tab === "importar" && <ImportarPanel />}
+      {tab === "importar" && puedeImportar && <ImportarPanel />}
       {tab === "historial" && <HistorialPanel />}
       {tab === "bodegas" && <BodegasPanel />}
     </div>

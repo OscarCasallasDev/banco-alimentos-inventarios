@@ -167,7 +167,9 @@ function toStockItem(row: Record<string, unknown>): ConsolidatedStockItem {
   const available = Number(row.available ?? quantity - reserved);
   return {
     description: String(row.description ?? ""),
-    unit: String(row.unit ?? ""),
+    // El saldo importado se interpreta operativamente como unidades: la
+    // unidad original de Siigo (GR, ML, KG…) no se muestra en las órdenes.
+    unit: "UND",
     siigoBodegaCode: Number(row.siigo_bodega_code),
     warehouseId: (row.warehouse_id as string | null) ?? null,
     warehouseName: (row.warehouse_name as string | null) ?? null,

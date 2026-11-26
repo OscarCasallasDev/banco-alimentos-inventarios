@@ -376,10 +376,12 @@ export default function InventarioPage() {
                           item.isNegative ? "text-red-600" : "text-gray-900"
                         )}
                       >
-                        {formatNumber(item.quantity)}
+                        {formatNumber(item.quantity)} UND
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums text-gray-600">
-                        {item.reserved > 0 ? formatNumber(item.reserved) : "—"}
+                        {item.reserved > 0
+                          ? `${formatNumber(item.reserved)} UND`
+                          : "—"}
                       </td>
                       <td
                         className={cn(
@@ -391,7 +393,7 @@ export default function InventarioPage() {
                               : "text-emerald-700"
                         )}
                       >
-                        {formatNumber(item.available)}
+                        {formatNumber(item.available)} UND
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums text-gray-700">
                         {item.netWeightGrams
@@ -440,19 +442,19 @@ export default function InventarioPage() {
                           item.isNegative ? "text-red-600" : "text-gray-900"
                         )}
                       >
-                        {formatNumber(item.quantity)}
+                        {formatNumber(item.quantity)} UND
                       </p>
                     </div>
                     <div className="bg-gray-50 rounded-lg py-2">
                       <p className="text-[10px] text-gray-500">Comprometido</p>
                       <p className="font-semibold tabular-nums text-gray-700">
-                        {formatNumber(item.reserved)}
+                        {formatNumber(item.reserved)} UND
                       </p>
                     </div>
                     <div className="bg-emerald-50 rounded-lg py-2">
                       <p className="text-[10px] text-emerald-700">Disponible</p>
                       <p className="font-semibold tabular-nums text-emerald-800">
-                        {formatNumber(item.available)}
+                        {formatNumber(item.available)} UND
                       </p>
                     </div>
                   </div>

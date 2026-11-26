@@ -226,11 +226,13 @@ export async function isValidAgentRequest(
  * Autorización para las rutas de importación.
  *
  * Acepta DOS orígenes:
- *   1. Un usuario con sesión y el permiso `siigo.import.run` (carga manual
- *      desde el navegador).
+ *   1. Un usuario con sesión de SUPERADMIN (carga manual desde el navegador).
+ *      Ricardo Montenegro tiene ese rol; ningún otro perfil puede importar.
  *   2. El agente local, con su clave de API.
+ *
+ * Ocultar el botón no es seguridad: toda petición directa pasa por aquí.
  */
 export async function requireImportAccess(request: Request): Promise<void> {
   if (await isValidAgentRequest(request)) return;
-  await requireModulePermission("integracion_siigo", "siigo.import.run");
+  await requireSuperAdmin();
 }

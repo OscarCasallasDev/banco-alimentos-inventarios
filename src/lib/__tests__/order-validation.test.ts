@@ -25,28 +25,30 @@ describe("Campo cantidad", () => {
     expect(parseNumericInput("   ")).toBeNull();
   });
 
-  it("acepta coma o punto decimal", () => {
+  it("acepta coma decimal y rechaza el punto", () => {
     expect(parseNumericInput("12,5")).toBe(12.5);
-    expect(parseNumericInput("12.5")).toBe(12.5);
+    expect(parseNumericInput("12.5")).toBeNull();
+    expect(validateQuantity("2.5", 100)).toBe(MESSAGES.decimal);
   });
 
   it("rechaza vacío, cero, negativo y texto", () => {
-    for (const raw of ["", "   ", "0", "-1", "-0.5", "abc", "1e", "--2"]) {
+    for (const raw of ["", "   ", "0", "-1", "-0,5", "abc", "1e", "--2"]) {
       expect(validateQuantity(raw, 100)).toBe(MESSAGES.quantity);
     }
   });
 
-  it("acepta una cantidad válida", () => {
+  it("acepta una cantidad válida con enteros y decimales", () => {
     expect(validateQuantity("1", 100)).toBeNull();
-    expect(validateQuantity("0.001", 100)).toBeNull();
+    expect(validateQuantity("0,001", 100)).toBeNull();
     expect(validateQuantity("12,5", 100)).toBeNull();
+    expect(validateQuantity("0,5", 100)).toBeNull();
   });
 
   it("rechaza una cantidad mayor que la disponibilidad", () => {
     expect(validateQuantity("51", 50)).toBe(MESSAGES.exceedsStock);
     expect(validateQuantity("50", 50)).toBeNull();
     // Tolerancia de 0,0005 para no fallar por decimales.
-    expect(validateQuantity("50.0004", 50)).toBeNull();
+    expect(validateQuantity("50,0004", 50)).toBeNull();
   });
 
   it("rechaza cualquier cantidad si no hay disponibilidad", () => {
@@ -62,8 +64,8 @@ describe("Campo peso", () => {
     }
   });
 
-  it("acepta un peso mayor que cero", () => {
-    expect(validateWeight("0.5")).toBeNull();
+  it("acepta un peso mayor que cero con coma decimal", () => {
+    expect(validateWeight("0,5")).toBeNull();
     expect(validateWeight("2,25")).toBeNull();
     expect(validateWeight("1000")).toBeNull();
   });
@@ -96,7 +98,7 @@ describe("Validación de una línea completa", () => {
     expect(
       validateLine({
         quantity: "2",
-        weight: "1.5",
+        weight: "1,5",
         expirationDate: "2027-03-15",
         available: 10,
       }).valid

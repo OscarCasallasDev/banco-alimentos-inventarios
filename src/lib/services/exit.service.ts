@@ -33,6 +33,7 @@ import {
 import { nextSalidaDocumentCode } from "@/lib/services/sequence.service";
 import { createDocument } from "@/lib/services/document.service";
 import { calculateTotalWeightKg } from "@/lib/siigo/import/weight";
+import { resolveUnitWeightKg } from "@/lib/orders/presentation";
 import { round3 } from "@/lib/siigo/import/parser";
 import { createReservation, releaseReservations } from "@/lib/services/reservation.service";
 import { groupKeyForProduct } from "@/lib/services/stock.service";
@@ -519,7 +520,8 @@ export async function createSalida(
         siigoBodegaCode: item.siigoBodegaCode,
         locationCode: item.locationCode ?? 0,
         quantity: item.quantity,
-        unitCode: availability.unit,
+        // Unidad operativa única: el Banco maneja todos los productos en UND.
+        unitCode: "UND",
         presentation: availability.presentation,
         productName: availability.productName,
         productReference: availability.productCode,
@@ -529,7 +531,7 @@ export async function createSalida(
         totalWeightKg,
         weightKnown: totalWeightKg !== null,
         weight: item.weight ?? null,
-        weightUnit: item.weightUnit ?? null,
+        weightUnit: item.weightUnit ?? "kg",
         expirationDate: item.expirationDate ?? null,
         availableAtCreation: availability.availableQuantity,
         notes: item.notes ?? null,
@@ -615,10 +617,19 @@ async function resolveAvailability(
   const quantity = Number(row.quantity ?? 0);
   const reserved = Number(row.reserved ?? 0);
   const available = Number(row.available ?? quantity - reserved);
-  const unitGrams =
+  const netWeightGrams =
     row.net_weight_grams === null || row.net_weight_grams === undefined
       ? null
       : Number(row.net_weight_grams);
+
+  // El peso se deriva del contenido neto del catálogo o, si no existe, de la
+  // presentación de la descripción («X 250 GR», «X 1000 ML»). Los líquidos
+  // sin densidad aprobada quedan pendientes (peso nulo), nunca se inventan.
+  const unitWeight = resolveUnitWeightKg(
+    String(row.product_name ?? ""),
+    (row.presentation as string | null) ?? null,
+    netWeightGrams
+  );
 
   return {
     productId: String(row.product_id ?? ""),
@@ -631,7 +642,7 @@ async function resolveAvailability(
     siigoQuantity: quantity,
     reservedQuantity: reserved,
     availableQuantity: round3(available),
-    unitWeightKg: unitGrams === null ? null : round3(unitGrams / 1000),
+    unitWeightKg: unitWeight.kg,
   };
 }
 
@@ -949,7 +960,8 @@ export async function updateSalidaDraft(
             siigoBodegaCode: item.siigoBodegaCode,
             locationCode: item.locationCode ?? 0,
             quantity: item.quantity,
-            unitCode: availability.unit,
+            // Unidad operativa única: el Banco maneja todos los productos en UND.
+            unitCode: "UND",
             presentation: availability.presentation,
             productName: availability.productName,
             productReference: availability.productCode,
@@ -959,7 +971,7 @@ export async function updateSalidaDraft(
             totalWeightKg,
             weightKnown: totalWeightKg !== null,
             weight: item.weight ?? null,
-            weightUnit: item.weightUnit ?? null,
+            weightUnit: item.weightUnit ?? "kg",
             expirationDate: item.expirationDate ?? null,
             availableAtCreation: availability.availableQuantity,
             notes: item.notes ?? null,

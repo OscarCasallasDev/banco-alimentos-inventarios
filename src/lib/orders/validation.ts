@@ -14,16 +14,24 @@
 export const MESSAGES = {
   quantity: "Debes ingresar una cantidad mayor que 0",
   weight: "Debes ingresar un peso mayor que 0",
+  decimal: "Usa coma como separador decimal (por ejemplo, 2,5)",
   expiration: "Debes seleccionar la fecha de vencimiento del producto",
   noStock:
     "Este producto no tiene unidades disponibles para agregar a la orden de pedido",
   exceedsStock: "La cantidad solicitada supera las unidades disponibles",
 } as const;
 
-/** Convierte un texto a número aceptando coma o punto decimal. */
+/**
+ * Convierte un texto a número con formato colombiano.
+ *
+ * Acepta SOLO coma como separador decimal («2,5»). El punto («2.5») se
+ * rechaza para evitar que se confunda con el separador de miles.
+ */
 export function parseNumericInput(raw: string): number | null {
   const trimmed = raw.trim();
   if (trimmed === "") return null;
+  if (trimmed.includes(".")) return null;
+  if (!/^\d+(,\d+)?$/.test(trimmed)) return null;
   const value = Number(trimmed.replace(",", "."));
   return Number.isFinite(value) ? value : null;
 }
@@ -36,6 +44,7 @@ export function validateQuantity(
   raw: string,
   available: number
 ): string | null {
+  if (raw.includes(".")) return MESSAGES.decimal;
   const value = parseNumericInput(raw);
   if (value === null || value <= 0) return MESSAGES.quantity;
   if (value > available + 0.0005) return MESSAGES.exceedsStock;
