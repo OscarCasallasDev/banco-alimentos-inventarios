@@ -87,17 +87,22 @@ describe("Peso calculado en kilogramos", () => {
     );
   });
 
-  it("no inventa el peso de un líquido sin densidad aprobada", () => {
-    const result = computeLineWeightKg(5, "ACEITE DE OLIVA X 1000 ML");
-    expect(result.kg).toBeNull();
-    expect(result.pending).toBe(true);
-    expect(result.reason).toBe("DENSITY");
+  it("convierte mililitros con la equivalencia operativa 1000 ml = 1 kg", () => {
+    expect(computeLineWeightKg(4, "LECHE DE ALMENDRAS X 1000 ML").kg).toBe(4);
+    expect(computeLineWeightKg(2, "ACEITE X 1000 ML").kg).toBe(2);
+    expect(computeLineWeightKg(3, "PRODUCTO X 500 ML").kg).toBe(1.5);
+    expect(computeLineWeightKg(4, "PRODUCTO X 250 ML").kg).toBe(1);
   });
 
-  it("calcula un líquido cuando el producto tiene densidad configurada", () => {
-    expect(
-      computeLineWeightKg(4, "ACEITE X 1000 ML", null, null, 0.915).kg
-    ).toBe(3.66);
+  it("convierte litros con la equivalencia operativa 1 L = 1 kg", () => {
+    expect(computeLineWeightKg(3, "PRODUCTO X 1 L").kg).toBe(3);
+    expect(computeLineWeightKg(2, "PRODUCTO X 2 L").kg).toBe(4);
+  });
+
+  it("convierte 2500 gramos por unidad", () => {
+    expect(computeLineWeightKg(3, "ABONO ORGANICO X 2500 GR - PROPIA").kg).toBe(
+      7.5
+    );
   });
 });
 

@@ -186,7 +186,12 @@ describeDb("Importación manual del reporte resumen de Siigo", () => {
           DELETE FROM siigo_resumen_movements
           WHERE product_id IN (SELECT id FROM products WHERE code IN (${COD_A}, ${COD_B}))
         `),
-      // Existencias del producto de prueba.
+      // Existencias y comparaciones del producto de prueba.
+      () =>
+        db.execute(sql`
+          DELETE FROM siigo_balance_diffs
+          WHERE product_id IN (SELECT id FROM products WHERE code IN (${COD_A}, ${COD_B}))
+        `),
       () =>
         db.execute(sql`
           DELETE FROM siigo_balances

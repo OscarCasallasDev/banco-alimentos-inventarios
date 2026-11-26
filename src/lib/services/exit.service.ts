@@ -624,18 +624,12 @@ async function resolveAvailability(
       : Number(row.net_weight_grams);
 
   // El peso se deriva del contenido neto del catálogo o, si no existe, de la
-  // presentación de la descripción («X 250 GR», «X 1000 ML»). Los líquidos
-  // sin densidad aprobada quedan pendientes (peso nulo), nunca se inventan.
-  const densityKgPerLiter =
-    row.density_kg_per_liter === null || row.density_kg_per_liter === undefined
-      ? null
-      : Number(row.density_kg_per_liter);
-
+  // presentación de la descripción («X 250 GR», «X 1000 ML»). Para volumen se
+  // aplica la equivalencia operativa del Banco: 1 litro = 1 kg.
   const unitWeight = resolveUnitWeightKg(
     String(row.product_name ?? ""),
     (row.presentation as string | null) ?? null,
-    netWeightGrams,
-    densityKgPerLiter
+    netWeightGrams
   );
 
   return {

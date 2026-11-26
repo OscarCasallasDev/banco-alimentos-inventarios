@@ -341,8 +341,7 @@ export default function NuevaOrdenPedidoPage() {
           quantity,
           line.description,
           null,
-          line.netWeightGrams,
-          line.densityKgPerLiter
+          line.netWeightGrams
         );
         const weight = weightCalc.kg ?? 0;
         return {
@@ -936,9 +935,9 @@ export default function NuevaOrdenPedidoPage() {
                     {line.weightPending && (
                       <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-700">
                         <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        {line.weightPendingReason === "DENSITY"
-                          ? "Peso pendiente de configuración: falta la densidad aprobada (kg/L) del producto líquido."
-                          : "Peso pendiente de configuración: no se pudo identificar la presentación del producto (gramos, kilos, mililitros o litros)."}
+                        Peso pendiente: no se pudo identificar el contenido neto
+                        del producto (gramos, kilos, mililitros, litros,
+                        miligramos o toneladas).
                       </p>
                     )}
                     {line.showExpirationError && (

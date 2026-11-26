@@ -719,7 +719,7 @@ export async function finalizeRun(
       // Este reporte trae movimientos agregados (entradas y salidas del
       // periodo) pero NO saldos: actualiza el catálogo de bodegas,
       // ubicaciones y productos, y guarda los movimientos en
-      // siigo_resumen_movements. Las EXISTENCIAS no se tocan.
+      // siigo_resumen_movements y actualiza existencias por producto + bodega.
       if (reportFormat === "RESUMEN") {
         const resumenRows = (run.payload as unknown as ResumenRow[]) ?? [];
         const resumenReport: NormalizedReport = reportParam ?? {
@@ -741,8 +741,30 @@ export async function finalizeRun(
           },
         };
 
+        // El reporte resumen también actualiza existencias: se compara contra
+        // la importación anterior para que el dashboard no muestre un resumen
+        // viejo de un reporte detallado.
+        const repeated = await isRepeatedFile(tx, runId, run.fileSha256);
+        const previousRun = repeated
+          ? null
+          : await getPreviousCompletedRun(tx, runId, run.fileSha256);
+        const previousBalances = previousRun
+          ? await timed("snapshot de saldos", () =>
+              snapshotActiveBalances(tx)
+            )
+          : new Map<string, { productId: string; quantity: number }>();
+
         const resumenResult = await timed("resumen por bodega", () =>
           importResumen(tx, runId, resumenReport)
+        );
+
+        const diffs = previousRun
+          ? await timed("diferencias", () =>
+              computeAndStoreDiffs(tx, runId, previousBalances, previousRun)
+            )
+          : [];
+        const reconciliation = await timed("conciliación", () =>
+          reconcileReservations(tx, runId, diffs)
         );
 
         await refreshConsolidatedView(tx);
@@ -761,12 +783,16 @@ export async function finalizeRun(
             warehousesCount: resumenResult.warehouses,
             locationsCount: resumenResult.locations,
             newRecords: resumenResult.warehouses,
+            diffsFound: diffs.filter(
+              (diff) => diff.movementType === "DECREASE_DISCREPANCY"
+            ).length,
             errorSummary: {
               note:
                 "Reporte resumen: se actualizaron bodegas, ubicaciones, productos y " +
                 `existencias (${resumenResult.existencias} registros). ` +
                 "Cada existencia es la suma de entradas menos la suma de salidas " +
                 "del producto en su bodega.",
+              reconciliation,
             },
           })
           .where(eq(siigoImportRuns.id, runId))

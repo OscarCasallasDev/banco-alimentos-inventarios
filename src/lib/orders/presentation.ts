@@ -9,9 +9,8 @@
  *
  * Masa: gramos, miligramos, kilogramos, toneladas y libras se convierten a
  * kilogramos con equivalencias exactas.
- * Volumen: mililitros/litros SOLO se convierten si el producto tiene una
- * densidad aprobada configurada en `products.density_kg_per_liter`. Nunca se
- * asume densidad 1 kg/L.
+ * Volumen: se aplica la equivalencia operativa del Banco: 1 litro = 1 kg
+ * (1000 ml = 1 kg, 500 ml = 0,5 kg). No se solicitan densidades.
  */
 
 import {
@@ -29,7 +28,7 @@ export interface PresentationContent {
 }
 
 /** Motivo por el que un peso queda pendiente. */
-export type WeightPendingReason = "DENSITY" | "PRESENTATION" | null;
+export type WeightPendingReason = "PRESENTATION" | null;
 
 export interface LineWeight {
   /** Peso en kilogramos, o `null` si falta configuración. */
@@ -175,14 +174,13 @@ export function parsePresentationContent(
  * Peso unitario en kilogramos.
  *
  * Prioriza el contenido neto verificado del catálogo (`netWeightGrams`).
- * Si no existe, usa la presentación de la descripción. Para volumen exige
- * una densidad aprobada (`densityKgPerLiter`) asociada al producto.
+ * Si no existe, usa la presentación de la descripción. Para volumen aplica
+ * la equivalencia operativa 1 litro = 1 kg.
  */
 export function resolveUnitWeightKg(
   name: string | null | undefined,
   presentation?: string | null,
-  netWeightGrams?: number | null,
-  densityKgPerLiter?: number | null
+  netWeightGrams?: number | null
 ): LineWeight {
   if (
     netWeightGrams !== null &&
@@ -208,19 +206,12 @@ export function resolveUnitWeightKg(
   }
 
   if (content.mlPerUnit !== null) {
-    if (
-      densityKgPerLiter !== null &&
-      densityKgPerLiter !== undefined &&
-      Number.isFinite(densityKgPerLiter) &&
-      densityKgPerLiter > 0
-    ) {
-      return {
-        kg: roundQuantity((content.mlPerUnit * densityKgPerLiter) / 1000),
-        pending: false,
-        reason: null,
-      };
-    }
-    return { kg: null, pending: true, reason: "DENSITY" };
+    // Equivalencia operativa solicitada por el Banco: 1 L = 1 kg.
+    return {
+      kg: roundQuantity(content.mlPerUnit / 1000),
+      pending: false,
+      reason: null,
+    };
   }
 
   return { kg: null, pending: true, reason: "PRESENTATION" };
@@ -231,19 +222,13 @@ export function computeLineWeightKg(
   quantity: number,
   name: string | null | undefined,
   presentation?: string | null,
-  netWeightGrams?: number | null,
-  densityKgPerLiter?: number | null
+  netWeightGrams?: number | null
 ): LineWeight {
   if (!Number.isFinite(quantity) || quantity <= 0) {
     return { kg: 0, pending: false, reason: null };
   }
 
-  const unit = resolveUnitWeightKg(
-    name,
-    presentation,
-    netWeightGrams,
-    densityKgPerLiter
-  );
+  const unit = resolveUnitWeightKg(name, presentation, netWeightGrams);
   if (unit.kg === null) return unit;
 
   return {

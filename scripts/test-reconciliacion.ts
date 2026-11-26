@@ -156,6 +156,9 @@ function construirFilas(incluirVenta: boolean) {
   return filas;
 }
 
+/** Corridas creadas por esta prueba, para eliminarlas al final. */
+const importRunIds: string[] = [];
+
 /** Importa un reporte de prueba completo. */
 async function importar(etiqueta: string, incluirVenta: boolean) {
   const filas = construirFilas(incluirVenta);
@@ -173,6 +176,7 @@ async function importar(etiqueta: string, incluirVenta: boolean) {
 
   await saveBatch(run.id, 0, filas as never);
   const summary = await finalizeRun(run.id);
+  importRunIds.push(run.id);
   return { runId: run.id, summary };
 }
 
@@ -369,6 +373,17 @@ async function main() {
   await db.execute(`DELETE FROM siigo_balances WHERE product_id = '${productoId}'`);
   await db.execute(`DELETE FROM siigo_movements WHERE product_id = '${productoId}'`);
   await db.execute(`DELETE FROM products WHERE id = '${productoId}'`);
+  // Las corridas de esta prueba no deben quedar en el historial ni convertirse
+  // en la "última importación" del dashboard.
+  for (const runId of importRunIds) {
+    await db.execute(
+      `UPDATE siigo_locations SET import_run_id = NULL WHERE import_run_id = '${runId}'`
+    );
+    await db.execute(
+      `UPDATE salidas SET reconciled_run_id = NULL WHERE reconciled_run_id = '${runId}'`
+    );
+    await db.execute(`DELETE FROM siigo_import_runs WHERE id = '${runId}'`);
+  }
   // La vista materializada de existencias es un cálculo derivado: hay que
   // refrescarla para que no conserve el producto de prueba.
   await db.execute(`REFRESH MATERIALIZED VIEW mv_stock_consolidated`);
