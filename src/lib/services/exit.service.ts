@@ -599,7 +599,8 @@ async function resolveAvailability(
       v.reserved,
       (v.quantity - v.reserved) AS available,
       p.presentation,
-      p.net_weight_grams
+      p.net_weight_grams,
+      p.density_kg_per_liter
     FROM v_stock_consolidated v
     LEFT JOIN products p ON p.id = v.representative_product_id
     WHERE v.siigo_bodega_code = ${item.siigoBodegaCode}
@@ -625,10 +626,16 @@ async function resolveAvailability(
   // El peso se deriva del contenido neto del catálogo o, si no existe, de la
   // presentación de la descripción («X 250 GR», «X 1000 ML»). Los líquidos
   // sin densidad aprobada quedan pendientes (peso nulo), nunca se inventan.
+  const densityKgPerLiter =
+    row.density_kg_per_liter === null || row.density_kg_per_liter === undefined
+      ? null
+      : Number(row.density_kg_per_liter);
+
   const unitWeight = resolveUnitWeightKg(
     String(row.product_name ?? ""),
     (row.presentation as string | null) ?? null,
-    netWeightGrams
+    netWeightGrams,
+    densityKgPerLiter
   );
 
   return {

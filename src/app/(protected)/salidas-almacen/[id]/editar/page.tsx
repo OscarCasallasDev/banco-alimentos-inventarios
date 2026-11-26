@@ -62,6 +62,7 @@ interface StockRow {
   locationCount: number;
   canAdd: boolean;
   netWeightGrams: number | null;
+  densityKgPerLiter: number | null;
 }
 
 interface BodegaOpcion {
@@ -69,6 +70,7 @@ interface BodegaOpcion {
   warehouseId: string | null;
   warehouseName: string | null;
   available: number;
+  densityKgPerLiter: number | null;
 }
 
 interface Linea {
@@ -78,6 +80,7 @@ interface Linea {
   description: string;
   unit: string;
   netWeightGrams: number | null;
+  densityKgPerLiter: number | null;
   siigoBodegaCode: number;
   warehouseId: string | null;
   warehouseName: string | null;
@@ -217,6 +220,7 @@ export default function EditarOrdenPedidoPage() {
                 item.unitWeightKg !== null && item.unitWeightKg !== undefined
                   ? item.unitWeightKg * 1000
                   : null,
+              densityKgPerLiter: opcion?.densityKgPerLiter ?? null,
               siigoBodegaCode: item.siigoBodegaCode,
               warehouseId: opcion?.warehouseId ?? null,
               warehouseName: opcion?.warehouseName ?? null,
@@ -260,6 +264,7 @@ export default function EditarOrdenPedidoPage() {
         warehouseId: item.warehouseId,
         warehouseName: item.warehouseName,
         available: item.available,
+        densityKgPerLiter: item.densityKgPerLiter ?? null,
       }));
     } catch {
       return [];
@@ -321,6 +326,7 @@ export default function EditarOrdenPedidoPage() {
         description: stock.description,
         unit: "UND",
         netWeightGrams: stock.netWeightGrams ?? null,
+        densityKgPerLiter: stock.densityKgPerLiter ?? null,
         siigoBodegaCode: stock.siigoBodegaCode,
         warehouseId: stock.warehouseId,
         warehouseName: stock.warehouseName,
@@ -362,6 +368,8 @@ export default function EditarOrdenPedidoPage() {
           warehouseId: opcion?.warehouseId ?? null,
           warehouseName: opcion?.warehouseName ?? null,
           available: opcion?.available ?? 0,
+          densityKgPerLiter:
+            opcion?.densityKgPerLiter ?? line.densityKgPerLiter,
           quantity:
             (parseNumericInput(line.quantity) ?? 0) > (opcion?.available ?? 0)
               ? ""
@@ -394,7 +402,8 @@ export default function EditarOrdenPedidoPage() {
           quantity,
           line.description,
           null,
-          line.netWeightGrams
+          line.netWeightGrams,
+          line.densityKgPerLiter
         );
         const weight = weightCalc.kg ?? 0;
         return {
@@ -405,6 +414,7 @@ export default function EditarOrdenPedidoPage() {
           weightDisplay:
             weightCalc.kg === null ? "" : formatWeightKg(weightCalc.kg),
           weightPending: weightCalc.pending && quantity > 0,
+          weightPendingReason: weightCalc.reason,
           unit: "UND",
           weightUnit: "kg",
           quantityError,
@@ -912,9 +922,9 @@ export default function EditarOrdenPedidoPage() {
                     {line.weightPending && (
                       <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-700">
                         <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        Peso pendiente de configuración: no se pudo identificar
-                        una presentación en gramos o una densidad aprobada para
-                        este producto.
+                        {line.weightPendingReason === "DENSITY"
+                          ? "Peso pendiente de configuración: falta la densidad aprobada (kg/L) del producto líquido."
+                          : "Peso pendiente de configuración: no se pudo identificar la presentación del producto (gramos, kilos, mililitros o litros)."}
                       </p>
                     )}
                     {line.showExpirationError && (

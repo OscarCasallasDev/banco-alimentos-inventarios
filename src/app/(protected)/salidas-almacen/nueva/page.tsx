@@ -78,6 +78,8 @@ interface StockRow {
   reviewRequired: boolean;
   /** Contenido neto por unidad, si el catálogo lo tiene verificado. */
   netWeightGrams: number | null;
+  /** Densidad aprobada (kg/L) para presentaciones líquidas. */
+  densityKgPerLiter: number | null;
 }
 
 /** Bodega donde un producto existe con disponibilidad positiva. */
@@ -89,6 +91,7 @@ interface BodegaOpcion {
   /** Producto que representa al grupo en esa bodega. */
   representativeProductId: string;
   representativeCode: string;
+  densityKgPerLiter: number | null;
 }
 
 interface Linea {
@@ -100,6 +103,8 @@ interface Linea {
   unit: string;
   /** Contenido neto por unidad, si el catálogo lo tiene verificado. */
   netWeightGrams: number | null;
+  /** Densidad aprobada (kg/L) del producto. */
+  densityKgPerLiter: number | null;
   /** Bodega elegida para esta línea. */
   siigoBodegaCode: number;
   warehouseId: string | null;
@@ -224,6 +229,7 @@ export default function NuevaOrdenPedidoPage() {
         available: item.available,
         representativeProductId: item.representativeProductId,
         representativeCode: item.representativeCode,
+        densityKgPerLiter: item.densityKgPerLiter ?? null,
       }));
     } catch {
       return [];
@@ -250,6 +256,7 @@ export default function NuevaOrdenPedidoPage() {
         description: stock.description,
         unit: "UND",
         netWeightGrams: stock.netWeightGrams ?? null,
+        densityKgPerLiter: stock.densityKgPerLiter ?? null,
         siigoBodegaCode: stock.siigoBodegaCode,
         warehouseId: stock.warehouseId,
         warehouseName: stock.warehouseName,
@@ -297,6 +304,8 @@ export default function NuevaOrdenPedidoPage() {
           // que realmente se despacha.
           productId: opcion?.representativeProductId ?? line.productId,
           productCode: opcion?.representativeCode ?? line.productCode,
+          densityKgPerLiter:
+            opcion?.densityKgPerLiter ?? line.densityKgPerLiter,
           // Si la cantidad supera la nueva disponibilidad, se limpia para
           // que el almacenista la vuelva a escribir.
           quantity:
@@ -332,7 +341,8 @@ export default function NuevaOrdenPedidoPage() {
           quantity,
           line.description,
           null,
-          line.netWeightGrams
+          line.netWeightGrams,
+          line.densityKgPerLiter
         );
         const weight = weightCalc.kg ?? 0;
         return {
@@ -343,6 +353,7 @@ export default function NuevaOrdenPedidoPage() {
           weightDisplay:
             weightCalc.kg === null ? "" : formatWeightKg(weightCalc.kg),
           weightPending: weightCalc.pending && quantity > 0,
+          weightPendingReason: weightCalc.reason,
           unit: "UND",
           weightUnit: "kg",
           quantityError,
@@ -925,9 +936,9 @@ export default function NuevaOrdenPedidoPage() {
                     {line.weightPending && (
                       <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-700">
                         <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        Peso pendiente de configuración: no se pudo identificar
-                        una presentación en gramos o una densidad aprobada para
-                        este producto.
+                        {line.weightPendingReason === "DENSITY"
+                          ? "Peso pendiente de configuración: falta la densidad aprobada (kg/L) del producto líquido."
+                          : "Peso pendiente de configuración: no se pudo identificar la presentación del producto (gramos, kilos, mililitros o litros)."}
                       </p>
                     )}
                     {line.showExpirationError && (

@@ -346,6 +346,15 @@ export const products = pgTable(
       scale: 3,
       mode: "number",
     }),
+    /**
+     * Densidad aprobada del producto líquido (kg/L).
+     * Se configura por producto (id/código); nunca por descripción genérica.
+     */
+    densityKgPerLiter: numeric("density_kg_per_liter", {
+      precision: 10,
+      scale: 4,
+      mode: "number",
+    }),
     /** El contenido es una estimación, no un dato verificado del empaque. */
     weightIsEstimate: boolean("weight_is_estimate").notNull().default(false),
     /** El producto requiere control de vencimiento por lote. */
@@ -1442,13 +1451,43 @@ export const siigoBalanceDiffs = pgTable(
     matchedSalidaId: uuid("matched_salida_id").references(() => salidas.id),
     status: diffStatusEnum("status").notNull().default("NO_CHANGE"),
     note: text("note"),
-    /** Clave del grupo consolidado (descripci?n|unidad|bodega). */
+    /** Clave del grupo consolidado (c?digo de producto|bodega). */
     groupKey: text("group_key"),
+    /** Importación inmediatamente anterior con la que se comparó. */
+    previousRunId: uuid("previous_run_id").references(() => siigoImportRuns.id),
+    /** Saldo que debía quedar después de las salidas comprometidas. */
+    expectedQuantity: numeric("expected_quantity", {
+      precision: 14,
+      scale: 3,
+      mode: "number",
+    })
+      .notNull()
+      .default(0),
+    /** newQuantity - expectedQuantity. */
+    difference: numeric("difference", { precision: 14, scale: 3, mode: "number" })
+      .notNull()
+      .default(0),
+    /** Unidades comprometidas en órdenes del intervalo. */
+    committedQuantity: numeric("committed_quantity", {
+      precision: 14,
+      scale: 3,
+      mode: "number",
+    })
+      .notNull()
+      .default(0),
+    /** NOT_REQUIRED | PENDING | DEFERRED | VALIDATED. */
+    reviewStatus: varchar("review_status", { length: 20 })
+      .notNull()
+      .default("NOT_REQUIRED"),
+    reviewedBy: uuid("reviewed_by").references(() => users.id),
+    reviewedAt: timestamp("reviewed_at"),
+    reviewNote: text("review_note"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => [
     index("idx_siigo_diffs_run").on(table.importRunId, table.status),
     index("idx_siigo_diffs_prod").on(table.productId),
+    index("idx_siigo_diffs_review").on(table.reviewStatus, table.createdAt),
   ]
 );
 

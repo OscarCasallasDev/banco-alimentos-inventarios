@@ -37,18 +37,24 @@ describe("Campo cantidad", () => {
     }
   });
 
-  it("acepta una cantidad válida con enteros y decimales", () => {
+  it("acepta una cantidad válida con enteros y hasta dos decimales", () => {
     expect(validateQuantity("1", 100)).toBeNull();
-    expect(validateQuantity("0,001", 100)).toBeNull();
     expect(validateQuantity("12,5", 100)).toBeNull();
     expect(validateQuantity("0,5", 100)).toBeNull();
+    expect(validateQuantity("3,15", 100)).toBeNull();
+    expect(validateQuantity("0,75", 100)).toBeNull();
+  });
+
+  it("rechaza más de dos decimales sin redondear la cantidad", () => {
+    expect(parseNumericInput("0,001")).toBeNull();
+    expect(validateQuantity("0,001", 100)).toBe(MESSAGES.decimals);
+    expect(validateQuantity("2,555", 100)).toBe(MESSAGES.decimals);
   });
 
   it("rechaza una cantidad mayor que la disponibilidad", () => {
     expect(validateQuantity("51", 50)).toBe(MESSAGES.exceedsStock);
     expect(validateQuantity("50", 50)).toBeNull();
-    // Tolerancia de 0,0005 para no fallar por decimales.
-    expect(validateQuantity("50,0004", 50)).toBeNull();
+    expect(validateQuantity("50,004", 50)).toBe(MESSAGES.decimals);
   });
 
   it("rechaza cualquier cantidad si no hay disponibilidad", () => {

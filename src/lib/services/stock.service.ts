@@ -73,6 +73,8 @@ export interface ConsolidatedStockItem {
   reviewRequired: boolean;
   /** Peso unitario de referencia (gramos), si el producto lo tiene. */
   netWeightGrams: number | null;
+  /** Densidad aprobada del producto líquido (kg/L), si está configurada. */
+  densityKgPerLiter: number | null;
   /** ¿Se puede agregar a una orden? (disponibilidad > 0). */
   canAdd: boolean;
   syncedAt: Date | null;
@@ -187,6 +189,11 @@ function toStockItem(row: Record<string, unknown>): ConsolidatedStockItem {
       row.net_weight_grams === null || row.net_weight_grams === undefined
         ? null
         : Number(row.net_weight_grams),
+    densityKgPerLiter:
+      row.density_kg_per_liter === null ||
+      row.density_kg_per_liter === undefined
+        ? null
+        : Number(row.density_kg_per_liter),
     canAdd: available > 0.0005,
     syncedAt: (row.synced_at as Date | null) ?? null,
   };
@@ -232,6 +239,7 @@ export async function listConsolidatedStock(
       f.is_negative,
       f.review_required,
       f.net_weight_grams,
+      dp.density_kg_per_liter,
       f.synced_at,
       (SELECT COUNT(DISTINCT f2.representative_product_id)::int FROM filtrado f2) AS total_productos,
       COUNT(*) OVER ()::int AS total_registros,
@@ -241,6 +249,7 @@ export async function listConsolidatedStock(
       COALESCE(SUM(f.quantity) OVER (), 0) AS total_cantidad,
       COALESCE(SUM(f.quantity - f.reserved) OVER (), 0) AS total_disponible
     FROM filtrado f
+    LEFT JOIN products dp ON dp.id = f.representative_product_id
     ORDER BY f.description, f.siigo_bodega_code
     LIMIT ${pageSize} OFFSET ${page * pageSize}
   `);
@@ -281,8 +290,10 @@ export async function listWarehouseOptionsForProduct(
       f.representative_product_id, f.representative_code, f.product_codes,
       f.product_count, f.location_count, f.quantity, f.reserved,
       (f.quantity - f.reserved) AS available,
-      f.is_negative, f.review_required, f.net_weight_grams, f.synced_at
+      f.is_negative, f.review_required, f.net_weight_grams,
+      dp.density_kg_per_liter, f.synced_at
     FROM v_stock_consolidated f
+    LEFT JOIN products dp ON dp.id = f.representative_product_id
     WHERE ${sql`EXISTS (
       SELECT 1 FROM unnest(f.product_codes) AS c(code) WHERE c.code = ${productCode}
     )`}
@@ -310,8 +321,10 @@ export async function getConsolidatedStock(
       f.representative_product_id, f.representative_code, f.product_codes,
       f.product_count, f.location_count, f.quantity, f.reserved,
       (f.quantity - f.reserved) AS available,
-      f.is_negative, f.review_required, f.net_weight_grams, f.synced_at
+      f.is_negative, f.review_required, f.net_weight_grams,
+      dp.density_kg_per_liter, f.synced_at
     FROM v_stock_consolidated f
+    LEFT JOIN products dp ON dp.id = f.representative_product_id
     WHERE f.siigo_bodega_code = ${siigoBodegaCode}
       AND ${sql`EXISTS (
         SELECT 1 FROM unnest(f.product_codes) AS c(code) WHERE c.code = ${productCode}

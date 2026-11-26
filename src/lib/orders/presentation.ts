@@ -1,17 +1,17 @@
 /**
  * Presentación comercial de un producto y peso operativo de una línea.
  *
- * El Banco decidió manejar TODOS los productos en unidades (UND). El saldo
- * importado de Siigo se interpreta como unidades disponibles; el peso de la
- * orden se deriva de la presentación que aparece en la descripción
- * (por ejemplo «LENTEJA X 250 GR» o «ACEITE X 1000 ML»).
+ * El Banco maneja todos los productos en unidades (UND). El saldo importado
+ * de Siigo se interpreta como unidades disponibles y el peso se deriva de la
+ * presentación de la descripción:
+ *   «X 250 GR», «X 1 KG», «X 1000 ML», «X 2 L», «X 5000 MG», «X 1 TON»,
+ *   «Caja x 12 unidades de 250 GR», etc.
  *
- * Conversiones:
- *   - Masa: gramos, kilogramos y libras se convierten a kilogramos con
- *     equivalencias exactas (1 kg = 1000 g, 1 lb = 453,59237 g).
- *   - Volumen: mililitros NO se convierten a kilogramos sin una densidad
- *     conocida. Si el producto no tiene una equivalencia configurada, el
- *     peso queda PENDIENTE y no se inventa un valor.
+ * Masa: gramos, miligramos, kilogramos, toneladas y libras se convierten a
+ * kilogramos con equivalencias exactas.
+ * Volumen: mililitros/litros SOLO se convierten si el producto tiene una
+ * densidad aprobada configurada en `products.density_kg_per_liter`. Nunca se
+ * asume densidad 1 kg/L.
  */
 
 import {
@@ -21,7 +21,6 @@ import {
   roundQuantity,
 } from "@/lib/lots/weight";
 
-/** Contenido neto identificado en la presentación. */
 export interface PresentationContent {
   /** Gramos por unidad. */
   gramsPerUnit: number | null;
@@ -29,94 +28,161 @@ export interface PresentationContent {
   mlPerUnit: number | null;
 }
 
-/** Resultado del peso de una línea. */
+/** Motivo por el que un peso queda pendiente. */
+export type WeightPendingReason = "DENSITY" | "PRESENTATION" | null;
+
 export interface LineWeight {
   /** Peso en kilogramos, o `null` si falta configuración. */
   kg: number | null;
-  /** El producto requiere una equivalencia de peso (volumen sin densidad). */
+  /** El producto requiere un dato adicional para calcular el peso. */
   pending: boolean;
+  reason: WeightPendingReason;
 }
 
 /**
- * Equivalencias operativas aprobadas por el Banco.
- *
- * Se dejan VACÍAS a propósito: el Banco todavía no ha entregado densidades
- * verificadas para sus productos líquidos. Para habilitar un producto basta
- * agregar aquí su patrón y la densidad en kg/L; el cálculo se aplica de
- * inmediato en la interfaz y en el backend.
+ * Unidades reconocidas. El orden importa: las expresiones largas van antes
+ * que sus abreviaturas para que «ML» no se lea como «L» ni «MG» como «G».
  */
-const PRODUCT_DENSITIES: { pattern: RegExp; kgPerLiter: number }[] = [
-  // Ejemplo de la estructura (no activar sin validación del Banco):
-  // { pattern: /aceite de oliva/i, kgPerLiter: 0.915 },
-];
+const UNIT =
+  "toneladas?|tons?|tn|t|kilogramos?|kilos?|kgm|kg|miligramos?|mgs?|mg|gramos?|gms?|grs?|gr|g|mililitros?|ml|cc|litros?|lts?|lt|l|libras?|lb";
 
-/** Patrón de presentación: «X 250 GR», «X 1,5 KG», «1000 ML», «Bolsa 500g». */
-const PRESENTATION_PATTERN =
-  /(\d+(?:[.,]\d+)?)\s*(kilogramos?|kilos?|kgm|kg|gramos?|grs?|gr|g|mililitros?|ml|cc|litros?|lts?|lt|l|libras?|lb)\b/i;
+/** «12 unidades de 250 GR», «6 UND x 500 ML», «12 x 250 GR». */
+const MULTI_PATTERN = new RegExp(
+  `(\\d+)\\s*(?:unidades?|unds?|unids?|piezas?|bolsas?|paquetes?|latas?|frascos?|docenas?)\\s*(?:de\\s+|x\\s+|de\\s*x\\s*)?(\\d+(?:[.,]\\d+)?)\\s*(${UNIT})\\b`,
+  "i"
+);
+
+/** «Caja x 6 x 500 ML», «Paquete de 12 de 250 GR». */
+const CONTAINER_PATTERN = new RegExp(
+  `(?:caja|paquete|bolsa|saco|fardo|display|estuche)\\s*(?:x|de)?\\s*(\\d+)\\s*(?:x|de)\\s*(\\d+(?:[.,]\\d+)?)\\s*(${UNIT})\\b`,
+  "i"
+);
+
+/** Presentación simple: «X 250 GR», «1000 ML», «2,5 KG». */
+const SIMPLE_PATTERN = new RegExp(
+  `(\\d+(?:[.,]\\d+)?)\\s*(${UNIT})\\b`,
+  "i"
+);
 
 function toNumber(raw: string): number {
   return Number(raw.replace(",", "."));
 }
 
+type UnitKind = "mass" | "volume";
+
+/** Convierte una cantidad y su unidad a gramos o mililitros. */
+function convertUnit(
+  value: number,
+  rawUnit: string
+): { kind: UnitKind; amount: number } | null {
+  const unit = rawUnit.toLowerCase();
+
+  if (/^(toneladas?|tons?|tn|t)$/.test(unit)) {
+    return { kind: "mass", amount: value * 1_000_000 };
+  }
+  if (/^(kilogramos?|kilos?|kgm|kg)$/.test(unit)) {
+    return { kind: "mass", amount: value * GRAMS_PER_KILOGRAM };
+  }
+  if (/^(miligramos?|mgs?|mg)$/.test(unit)) {
+    return { kind: "mass", amount: value / 1000 };
+  }
+  if (/^(gramos?|gms?|grs?|gr|g)$/.test(unit)) {
+    return { kind: "mass", amount: value };
+  }
+  if (/^(libras?|lb)$/.test(unit)) {
+    return { kind: "mass", amount: value * GRAMS_PER_POUND };
+  }
+  if (/^(mililitros?|ml|cc)$/.test(unit)) {
+    return { kind: "volume", amount: value };
+  }
+  if (/^(litros?|lts?|lt|l)$/.test(unit)) {
+    return { kind: "volume", amount: value * 1000 };
+  }
+
+  return null;
+}
+
+function contentFromMatch(
+  amount: number,
+  unit: string
+): PresentationContent | null {
+  const converted = convertUnit(amount, unit);
+  if (!converted || !Number.isFinite(converted.amount) || converted.amount <= 0) {
+    return null;
+  }
+
+  return converted.kind === "mass"
+    ? {
+        gramsPerUnit: roundQuantity(converted.amount),
+        mlPerUnit: null,
+      }
+    : {
+        gramsPerUnit: null,
+        mlPerUnit: roundQuantity(converted.amount),
+      };
+}
+
 /**
  * Extrae el contenido neto de los textos del producto (nombre, presentación
- * o descripción). Devuelve el primer dato reconocible.
+ * o descripción). Primero reconoce presentaciones con multiplicador
+ * («12 unidades de 250 GR») y después la presentación simple.
  */
 export function parsePresentationContent(
   ...texts: (string | null | undefined)[]
 ): PresentationContent {
   for (const text of texts) {
     if (!text) continue;
-    const match = PRESENTATION_PATTERN.exec(text);
-    if (!match) continue;
 
-    const value = toNumber(match[1]);
-    if (!Number.isFinite(value) || value <= 0) continue;
+    const multi = MULTI_PATTERN.exec(text);
+    if (multi) {
+      const count = Number(multi[1]);
+      const content = contentFromMatch(Number(multi[2].replace(",", ".")), multi[3]);
+      if (content && Number.isFinite(count) && count > 0) {
+        return content.gramsPerUnit !== null
+          ? { gramsPerUnit: roundQuantity(count * content.gramsPerUnit), mlPerUnit: null }
+          : { gramsPerUnit: null, mlPerUnit: roundQuantity(count * content.mlPerUnit!) };
+      }
+    }
 
-    const unit = match[2].toLowerCase();
+    const container = CONTAINER_PATTERN.exec(text);
+    if (container) {
+      const count = Number(container[1]);
+      const content = contentFromMatch(
+        Number(container[2].replace(",", ".")),
+        container[3]
+      );
+      if (content && Number.isFinite(count) && count > 0) {
+        return content.gramsPerUnit !== null
+          ? { gramsPerUnit: roundQuantity(count * content.gramsPerUnit), mlPerUnit: null }
+          : { gramsPerUnit: null, mlPerUnit: roundQuantity(count * content.mlPerUnit!) };
+      }
+    }
 
-    if (/^(kilogramos?|kilos?|kgm|kg)$/.test(unit)) {
-      return { gramsPerUnit: roundQuantity(value * GRAMS_PER_KILOGRAM), mlPerUnit: null };
-    }
-    if (/^(gramos?|grs?|gr|g)$/.test(unit)) {
-      return { gramsPerUnit: roundQuantity(value), mlPerUnit: null };
-    }
-    if (/^(libras?|lb)$/.test(unit)) {
-      return { gramsPerUnit: roundQuantity(value * GRAMS_PER_POUND), mlPerUnit: null };
-    }
-    if (/^(mililitros?|ml|cc)$/.test(unit)) {
-      return { gramsPerUnit: null, mlPerUnit: roundQuantity(value) };
-    }
-    if (/^(litros?|lts?|lt|l)$/.test(unit)) {
-      return { gramsPerUnit: null, mlPerUnit: roundQuantity(value * 1000) };
+    const simple = SIMPLE_PATTERN.exec(text);
+    if (simple) {
+      const content = contentFromMatch(
+        Number(simple[1].replace(",", ".")),
+        simple[2]
+      );
+      if (content) return content;
     }
   }
 
   return { gramsPerUnit: null, mlPerUnit: null };
 }
 
-/** Densidad configurada para un producto (kg/L), o `null` si no existe. */
-export function densityKgPerLiter(
-  ...texts: (string | null | undefined)[]
-): number | null {
-  const haystack = texts.filter(Boolean).join(" ");
-  for (const entry of PRODUCT_DENSITIES) {
-    if (entry.pattern.test(haystack)) return entry.kgPerLiter;
-  }
-  return null;
-}
-
 /**
- * Peso unitario en kilogramos de un producto.
+ * Peso unitario en kilogramos.
  *
- * Prioriza el contenido neto verificado del catálogo (`netWeightGrams`); si
- * no existe, lo deriva de la descripción. Los líquidos sin densidad
- * configurada quedan pendientes.
+ * Prioriza el contenido neto verificado del catálogo (`netWeightGrams`).
+ * Si no existe, usa la presentación de la descripción. Para volumen exige
+ * una densidad aprobada (`densityKgPerLiter`) asociada al producto.
  */
 export function resolveUnitWeightKg(
   name: string | null | undefined,
   presentation?: string | null,
-  netWeightGrams?: number | null
+  netWeightGrams?: number | null,
+  densityKgPerLiter?: number | null
 ): LineWeight {
   if (
     netWeightGrams !== null &&
@@ -124,7 +190,11 @@ export function resolveUnitWeightKg(
     Number.isFinite(netWeightGrams) &&
     netWeightGrams > 0
   ) {
-    return { kg: roundQuantity(netWeightGrams / GRAMS_PER_KILOGRAM), pending: false };
+    return {
+      kg: roundQuantity(netWeightGrams / GRAMS_PER_KILOGRAM),
+      pending: false,
+      reason: null,
+    };
   }
 
   const content = parsePresentationContent(name, presentation);
@@ -133,21 +203,27 @@ export function resolveUnitWeightKg(
     return {
       kg: roundQuantity(content.gramsPerUnit / GRAMS_PER_KILOGRAM),
       pending: false,
+      reason: null,
     };
   }
 
   if (content.mlPerUnit !== null) {
-    const density = densityKgPerLiter(name, presentation);
-    if (density !== null) {
+    if (
+      densityKgPerLiter !== null &&
+      densityKgPerLiter !== undefined &&
+      Number.isFinite(densityKgPerLiter) &&
+      densityKgPerLiter > 0
+    ) {
       return {
-        kg: roundQuantity((content.mlPerUnit * density) / 1000),
+        kg: roundQuantity((content.mlPerUnit * densityKgPerLiter) / 1000),
         pending: false,
+        reason: null,
       };
     }
-    return { kg: null, pending: true };
+    return { kg: null, pending: true, reason: "DENSITY" };
   }
 
-  return { kg: null, pending: true };
+  return { kg: null, pending: true, reason: "PRESENTATION" };
 }
 
 /** Peso de una línea: cantidad de unidades x contenido de una unidad. */
@@ -155,18 +231,25 @@ export function computeLineWeightKg(
   quantity: number,
   name: string | null | undefined,
   presentation?: string | null,
-  netWeightGrams?: number | null
+  netWeightGrams?: number | null,
+  densityKgPerLiter?: number | null
 ): LineWeight {
   if (!Number.isFinite(quantity) || quantity <= 0) {
-    return { kg: 0, pending: false };
+    return { kg: 0, pending: false, reason: null };
   }
 
-  const unit = resolveUnitWeightKg(name, presentation, netWeightGrams);
-  if (unit.kg === null) return { kg: null, pending: unit.pending };
+  const unit = resolveUnitWeightKg(
+    name,
+    presentation,
+    netWeightGrams,
+    densityKgPerLiter
+  );
+  if (unit.kg === null) return unit;
 
   return {
     kg: computeWeightKg(quantity, unit.kg * GRAMS_PER_KILOGRAM),
     pending: false,
+    reason: null,
   };
 }
 

@@ -111,7 +111,7 @@ export async function reconcileReservations(
   const releases: Release[] = [];
   const salidaUpdates = new Map<
     string,
-    { status: "MATCHED" | "PARTIAL"; note: string }
+    { status: "MATCHED" | "PARTIAL" | "REVIEW"; note: string }
   >();
 
   for (const diff of descending) {
@@ -142,13 +142,15 @@ export async function reconcileReservations(
           note:
             "Confirmada en Siigo Pyme: la siguiente importación reflejó el descuento.",
         });
+        const diferencia = Math.abs(diff.difference) > EPSILON;
         salidaUpdates.set(reservation.salidaId, {
-          status: "MATCHED",
-          note:
-            "Confirmada en Siigo Pyme: la siguiente importación reflejó el descuento.",
+          status: diferencia ? "REVIEW" : "MATCHED",
+          note: diferencia
+            ? `El descuento de Siigo Pyme no coincide con lo comprometido (diferencia ${diff.difference}). Revisar la alerta de conciliación.`
+            : "Confirmada en Siigo Pyme: la siguiente importación reflejó el descuento.",
         });
         result.released++;
-        result.matchedSalidas.push(reservation.salidaId);
+        if (!diferencia) result.matchedSalidas.push(reservation.salidaId);
         remaining = round3(remaining - reserved);
         reservation.reservedQuantity = 0;
       } else {

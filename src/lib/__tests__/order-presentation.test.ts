@@ -33,6 +33,28 @@ describe("Presentación del producto", () => {
       gramsPerUnit: null,
       mlPerUnit: 1000,
     });
+    expect(parsePresentationContent("LECHE X 2 L")).toEqual({
+      gramsPerUnit: null,
+      mlPerUnit: 2000,
+    });
+  });
+
+  it("lee miligramos, toneladas y presentaciones múltiples", () => {
+    expect(parsePresentationContent("PRODUCTO X 5000 MG")).toEqual({
+      gramsPerUnit: 5,
+      mlPerUnit: null,
+    });
+    expect(parsePresentationContent("PRODUCTO X 1 TON")).toEqual({
+      gramsPerUnit: 1_000_000,
+      mlPerUnit: null,
+    });
+    expect(
+      parsePresentationContent("CAJA X 12 UNIDADES DE 250 GR")
+    ).toEqual({ gramsPerUnit: 3000, mlPerUnit: null });
+    expect(parsePresentationContent("PAQUETE X 500 GR")).toEqual({
+      gramsPerUnit: 500,
+      mlPerUnit: null,
+    });
   });
 });
 
@@ -49,6 +71,16 @@ describe("Peso calculado en kilogramos", () => {
     expect(computeLineWeightKg(5, "ARROZ X 1 KG").kg).toBe(5);
   });
 
+  it("2,5 unidades de 250 g son 0,625 kg y se muestran como 0,63", () => {
+    const result = computeLineWeightKg(2.5, "LENTEJA X 250 GR");
+    expect(result.kg).toBe(0.625);
+    expect(formatWeightKg(result.kg)).toBe("0,63");
+  });
+
+  it("1,5 unidades de 2 kg son 3 kg", () => {
+    expect(computeLineWeightKg(1.5, "PRODUCTO X 2 KG").kg).toBe(3);
+  });
+
   it("prioriza el contenido neto verificado del catálogo", () => {
     expect(resolveUnitWeightKg("Producto sin presentación", null, 200).kg).toBe(
       0.2
@@ -59,6 +91,13 @@ describe("Peso calculado en kilogramos", () => {
     const result = computeLineWeightKg(5, "ACEITE DE OLIVA X 1000 ML");
     expect(result.kg).toBeNull();
     expect(result.pending).toBe(true);
+    expect(result.reason).toBe("DENSITY");
+  });
+
+  it("calcula un líquido cuando el producto tiene densidad configurada", () => {
+    expect(
+      computeLineWeightKg(4, "ACEITE X 1000 ML", null, null, 0.915).kg
+    ).toBe(3.66);
   });
 });
 

@@ -48,6 +48,7 @@ import {
   type ResumenRow,
 } from "@/lib/siigo/import/resumen-parser";
 import { reconcileReservations } from "@/lib/services/reservation.service";
+import { calculateReconciliation } from "@/lib/reconciliation/calculation";
 
 // ============================================================
 // TIPOS
@@ -826,12 +827,19 @@ export async function finalizeRun(
       // `CANT. ANTERIOR` del grupo; sin ella el saldo quedaría mal.
       const computation = computeGroupBalances(allRows);
 
+      // La conciliación solo compara importaciones consecutivas. Un reintento
+      // del mismo archivo no genera alertas nuevas.
+      const repeated = await isRepeatedFile(tx, runId, run.fileSha256);
+      const previousRun = repeated
+        ? null
+        : await getPreviousCompletedRun(tx, runId, run.fileSha256);
+
       // Se capturan los saldos ANTERIORES antes de sobrescribirlos: la
       // diferencia entre el saldo viejo y el nuevo es lo que explica qué
       // salidas de almacén quedaron reflejadas en Siigo.
-      const previousBalances = await timed("snapshot de saldos", () =>
-        snapshotActiveBalances(tx)
-      );
+      const previousBalances = previousRun
+        ? await timed("snapshot de saldos", () => snapshotActiveBalances(tx))
+        : new Map<string, { productId: string; quantity: number }>();
 
       const balancesCount = await timed("saldos", () =>
         upsertBalances(tx, runId, computation.balances)
@@ -843,9 +851,11 @@ export async function finalizeRun(
       );
 
       // ---------- 5. Diferencias y conciliación de reservas ----------
-      const diffs = await timed("diferencias", () =>
-        computeAndStoreDiffs(tx, runId, previousBalances)
-      );
+      const diffs = previousRun
+        ? await timed("diferencias", () =>
+            computeAndStoreDiffs(tx, runId, previousBalances, previousRun)
+          )
+        : [];
       const reconciliation = await timed("conciliación", () =>
         reconcileReservations(tx, runId, diffs)
       );
@@ -1667,9 +1677,25 @@ export interface BalanceDiff {
   newQuantity: number;
   delta: number;
   reservedQuantity: number;
+  /** Saldo que debía quedar: anterior - unidades comprometidas del intervalo. */
+  expectedQuantity: number;
+  /** newQuantity - expectedQuantity. */
+  difference: number;
+  /** Unidades de órdenes creadas en el intervalo que debían reflejarse. */
+  committedQuantity: number;
+  /** Importación anterior con la que se comparó. */
+  previousRunId: string | null;
+  /** NOT_REQUIRED | PENDING | DEFERRED | VALIDATED. */
+  reviewStatus: "NOT_REQUIRED" | "PENDING" | "DEFERRED" | "VALIDATED";
   status: "MATCHED" | "PARTIAL" | "UNMATCHED" | "NO_CHANGE" | "REVIEW";
   matchedSalidaId: string | null;
   note: string;
+}
+
+/** Tolerancia inicial para que una salida se refleje en Siigo Pyme. */
+function reconciliationToleranceMinutes(): number {
+  const raw = Number(process.env.SIIGO_RECONCILIATION_TOLERANCE_MINUTES ?? 30);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 30;
 }
 
 /**
@@ -1686,17 +1712,15 @@ export interface BalanceDiff {
 async function snapshotActiveBalances(
   executor: DbExecutor
 ): Promise<Map<string, { productId: string; quantity: number }>> {
-  // Se captura el saldo por GRUPO CONSOLIDADO (descripci?n + unidad + bodega)
-  // para que la diferencia contra la importaci?n nueva se compare en la misma
-  // unidad de an?lisis que usan las reservas.
+  // La comparación es por CÓDIGO de producto + bodega. Nunca por descripción:
+  // dos productos distintos pueden compartir nombre y no deben mezclarse.
   const rows = await executor.execute<{
     group_key: string;
     product_id: string;
     quantity: string;
   }>(sql`
     SELECT
-      lower(btrim(regexp_replace(p.name, '\s+', ' ', 'g'))) || '|' ||
-      b.siigo_bodega_code::text AS group_key,
+      lower(btrim(p.code)) || '|' || b.siigo_bodega_code::text AS group_key,
       (array_agg(b.product_id ORDER BY b.location_code))[1] AS product_id,
       SUM(b.quantity) AS quantity
     FROM siigo_balances b
@@ -1720,18 +1744,63 @@ async function snapshotActiveBalances(
 }
 
 
+/** Importación COMPLETED inmediatamente anterior (nunca la misma). */
+async function getPreviousCompletedRun(
+  executor: DbExecutor,
+  runId: string,
+  fileSha256: string
+): Promise<{ id: string; finishedAt: Date } | null> {
+  const rows = await executor.execute<{
+    id: string;
+    finished_at: Date | null;
+  }>(sql`
+    SELECT id, finished_at
+    FROM siigo_import_runs
+    WHERE status = 'COMPLETED'
+      AND id <> ${runId}::uuid
+      AND file_sha256 <> ${fileSha256}
+      AND finished_at IS NOT NULL
+    ORDER BY finished_at DESC
+    LIMIT 1
+  `);
+
+  const row = (rows as unknown as { id: string; finished_at: Date | null }[])[0];
+  return row?.finished_at ? { id: row.id, finishedAt: row.finished_at } : null;
+}
+
+/** ¿Este archivo ya se había importado antes? Evita duplicar alertas. */
+async function isRepeatedFile(
+  executor: DbExecutor,
+  runId: string,
+  fileSha256: string
+): Promise<boolean> {
+  const rows = await executor.execute<{ exists: boolean }>(sql`
+    SELECT EXISTS (
+      SELECT 1
+      FROM siigo_import_runs
+      WHERE file_sha256 = ${fileSha256}
+        AND id <> ${runId}::uuid
+    ) AS exists
+  `);
+  return Boolean((rows as unknown as { exists: boolean }[])[0]?.exists);
+}
+
 /**
- * Compara el saldo nuevo con el anterior (por producto y bodega) y registra
- * las diferencias para revisi�n.
+ * Compara el saldo nuevo con el anterior por CÓDIGO de producto + bodega.
  *
- * @param previous Saldos capturados ANTES de la actualizaci�n.
+ * Saldo esperado = saldo anterior − unidades comprometidas en órdenes del
+ * intervalo que ya debían estar registradas en Siigo.
+ * Diferencia = saldo nuevo − saldo esperado.
  */
 async function computeAndStoreDiffs(
   tx: DbExecutor,
   runId: string,
-  previous: Map<string, { productId: string; quantity: number }>
+  previous: Map<string, { productId: string; quantity: number }>,
+  previousRun: { id: string; finishedAt: Date } | null
 ): Promise<BalanceDiff[]> {
-  // Saldos de la corrida actual, por grupo consolidado.
+  if (!previousRun) return [];
+
+  // Saldos de la corrida actual, por código de producto + bodega.
   const currentRows = await tx.execute<{
     group_key: string;
     product_id: string;
@@ -1739,8 +1808,7 @@ async function computeAndStoreDiffs(
     quantity: string;
   }>(sql`
     SELECT
-      lower(btrim(regexp_replace(p.name, '\s+', ' ', 'g'))) || '|' ||
-      b.siigo_bodega_code::text AS group_key,
+      lower(btrim(p.code)) || '|' || b.siigo_bodega_code::text AS group_key,
       (array_agg(b.product_id ORDER BY b.location_code))[1] AS product_id,
       b.siigo_bodega_code,
       SUM(b.quantity) AS quantity
@@ -1757,7 +1825,12 @@ async function computeAndStoreDiffs(
     quantity: string;
   }[]) ?? [];
 
-  // Reservas vigentes por grupo consolidado.
+  // Solo se comparan los productos presentes en la importación nueva. Un
+  // reporte parcial (una bodega o unos pocos productos) NO significa que el
+  // resto del inventario quedó en cero: esas existencias conservan su último
+  // saldo conocido.
+
+  // Reservas vigentes por código + bodega.
   const reservationRows = await tx.execute<{
     group_key: string;
     reserved: string;
@@ -1765,8 +1838,7 @@ async function computeAndStoreDiffs(
     SELECT
       COALESCE(
         r.group_key,
-        lower(btrim(regexp_replace(p.name, '\s+', ' ', 'g'))) || '|' ||
-        r.siigo_bodega_code::text
+        lower(btrim(p.code)) || '|' || r.siigo_bodega_code::text
       ) AS group_key,
       SUM(r.reserved_quantity) AS reserved
     FROM siigo_reservations r
@@ -1781,32 +1853,58 @@ async function computeAndStoreDiffs(
     )
   );
 
+  // Órdenes creadas entre la importación anterior y esta, con su cantidad
+  // comprometida. Las recién creadas quedan en tolerancia antes de alertar.
+  const toleranceMinutes = reconciliationToleranceMinutes();
+  const committedRows = await tx.execute<{
+    group_key: string;
+    committed: string;
+    mature: boolean;
+  }>(sql`
+    SELECT
+      lower(btrim(p.code)) || '|' || si.siigo_bodega_code::text AS group_key,
+      SUM(si.quantity) AS committed,
+      bool_or(
+        s.created_at <= now() - (${toleranceMinutes}::int * interval '1 minute')
+        OR s.status IN ('DELIVERED', 'CONFIRMED_SIIGO')
+      ) AS mature
+    FROM salida_items si
+    JOIN salidas s ON s.id = si.salida_id
+    JOIN products p ON p.id = si.product_id
+    WHERE s.created_at > ${previousRun.finishedAt}
+      AND s.created_at <= now()
+      AND s.deleted_at IS NULL
+      AND s.status IN ('GENERATED', 'DELIVERED', 'CONFIRMED_SIIGO')
+    GROUP BY 1
+  `);
+
+  const committedByKey = new Map(
+    (committedRows as unknown as {
+      group_key: string;
+      committed: string;
+      mature: boolean;
+    }[]).map((row) => [
+      row.group_key,
+      { quantity: Number(row.committed ?? 0), mature: Boolean(row.mature) },
+    ])
+  );
+
   const diffs: BalanceDiff[] = current
     .map((row) => {
       const previousEntry = previous.get(row.group_key);
       const previousQuantity = previousEntry?.quantity ?? 0;
       const newQuantity = Number(row.quantity ?? 0);
-      const delta = round3(newQuantity - previousQuantity);
       const reservedQuantity = reservedByKey.get(row.group_key) ?? 0;
+      const committed = committedByKey.get(row.group_key);
+      const committedQuantity = committed?.quantity ?? 0;
 
-      let status: BalanceDiff["status"] = "NO_CHANGE";
-      let note = "";
-
-      if (delta < 0 && reservedQuantity > 0) {
-        status =
-          Math.abs(delta) >= reservedQuantity - 0.0005 ? "MATCHED" : "PARTIAL";
-        note =
-          status === "MATCHED"
-            ? "El descuento de Siigo cubre la(s) salida(s) pendiente(s)."
-            : "El descuento de Siigo cubre solo una parte de la(s) salida(s) pendiente(s).";
-      } else if (delta < 0) {
-        status = "UNMATCHED";
-        note =
-          "Siigo descuenta existencias que no corresponden a salidas del sistema. Revisar en Siigo Pyme.";
-      } else if (delta > 0) {
-        status = "UNMATCHED";
-        note = "Siigo informa más existencias de las que tenía el sistema.";
-      }
+      const calculation = calculateReconciliation({
+        previousQuantity,
+        newQuantity,
+        committedQuantity,
+        matureOrder: committed ? committed.mature : null,
+        toleranceMinutes,
+      });
 
       return {
         productId: row.product_id,
@@ -1814,14 +1912,24 @@ async function computeAndStoreDiffs(
         siigoBodegaCode: Number(row.siigo_bodega_code),
         previousQuantity,
         newQuantity,
-        delta,
+        delta: calculation.delta,
         reservedQuantity,
-        status,
+        expectedQuantity: calculation.expectedQuantity,
+        difference: calculation.difference,
+        committedQuantity,
+        previousRunId: previousRun.id,
+        reviewStatus: calculation.reviewStatus,
+        status: calculation.status,
         matchedSalidaId: null,
-        note,
+        note: calculation.note,
       };
     })
-    .filter((diff) => diff.delta !== 0);
+    .filter(
+      (diff) =>
+        diff.delta !== 0 ||
+        diff.committedQuantity !== 0 ||
+        diff.reviewStatus !== "NOT_REQUIRED"
+    );
 
   if (diffs.length === 0) return [];
 
@@ -1840,7 +1948,12 @@ async function computeAndStoreDiffs(
           ${diff.reservedQuantity}::numeric,
           ${diff.status}::text,
           ${diff.note}::text,
-          ${diff.groupKey}::text
+          ${diff.groupKey}::text,
+          ${diff.previousRunId}::uuid,
+          ${diff.expectedQuantity}::numeric,
+          ${diff.difference}::numeric,
+          ${diff.committedQuantity}::numeric,
+          ${diff.reviewStatus}::text
         )`
       ),
       sql`, `
@@ -1850,7 +1963,8 @@ async function computeAndStoreDiffs(
       INSERT INTO siigo_balance_diffs (
         import_run_id, product_id, siigo_bodega_code,
         previous_quantity, new_quantity, delta, reserved_quantity, status, note,
-        group_key
+        group_key, previous_run_id, expected_quantity, difference,
+        committed_quantity, review_status
       )
       VALUES ${values}
     `);

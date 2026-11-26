@@ -15,6 +15,7 @@ export const MESSAGES = {
   quantity: "Debes ingresar una cantidad mayor que 0",
   weight: "Debes ingresar un peso mayor que 0",
   decimal: "Usa coma como separador decimal (por ejemplo, 2,5)",
+  decimals: "La cantidad admite máximo dos decimales",
   expiration: "Debes seleccionar la fecha de vencimiento del producto",
   noStock:
     "Este producto no tiene unidades disponibles para agregar a la orden de pedido",
@@ -31,7 +32,7 @@ export function parseNumericInput(raw: string): number | null {
   const trimmed = raw.trim();
   if (trimmed === "") return null;
   if (trimmed.includes(".")) return null;
-  if (!/^\d+(,\d+)?$/.test(trimmed)) return null;
+  if (!/^\d+(,\d{1,2})?$/.test(trimmed)) return null;
   const value = Number(trimmed.replace(",", "."));
   return Number.isFinite(value) ? value : null;
 }
@@ -45,6 +46,7 @@ export function validateQuantity(
   available: number
 ): string | null {
   if (raw.includes(".")) return MESSAGES.decimal;
+  if (/^\d+,\d{3,}$/.test(raw.trim())) return MESSAGES.decimals;
   const value = parseNumericInput(raw);
   if (value === null || value <= 0) return MESSAGES.quantity;
   if (value > available + 0.0005) return MESSAGES.exceedsStock;
