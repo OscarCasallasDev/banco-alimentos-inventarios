@@ -199,18 +199,19 @@ export async function listReconciliationAlerts(
 export async function getLatestReconciliationSummary(
   executor: DbExecutor
 ): Promise<ReconciliationSummary | null> {
-  // El resumen debe corresponder a la ÚLTIMA importación completada, no a
-  // una comparación antigua que quedó en la tabla. Así el dashboard no
-  // muestra cifras viejas cuando la importación más reciente no comparó.
-  const [latestImport] = (await executor.execute<{ id: string }>(sql`
-    SELECT id
-    FROM siigo_import_runs
-    WHERE status = 'COMPLETED'
-    ORDER BY finished_at DESC NULLS LAST
+  // Se muestra la última comparación DISPONIBLE. El indicador no se altera:
+  // su fecha y sus registros son los de esa comparación. El proceso de
+  // importación resumida ahora genera comparación para que la próxima
+  // importación reemplace este resultado.
+  const [latest] = (await executor.execute<{ import_run_id: string }>(sql`
+    SELECT import_run_id
+    FROM siigo_balance_diffs
+    GROUP BY import_run_id
+    ORDER BY MAX(created_at) DESC
     LIMIT 1
-  `)) as unknown as { id: string }[];
+  `)) as unknown as { import_run_id: string }[];
 
-  if (!latestImport?.id) return null;
+  if (!latest?.import_run_id) return null;
 
   const rows = (await executor.execute<Record<string, unknown>>(sql`
     SELECT
@@ -223,7 +224,7 @@ export async function getLatestReconciliationSummary(
     JOIN products p ON p.id = d.product_id
     LEFT JOIN siigo_import_runs prev ON prev.id = d.previous_run_id
     LEFT JOIN siigo_import_runs cur ON cur.id = d.import_run_id
-    WHERE d.import_run_id = ${latestImport.id}::uuid
+    WHERE d.import_run_id = ${latest.import_run_id}::uuid
     ORDER BY p.name, d.siigo_bodega_code
   `)) as unknown as Record<string, unknown>[];
 
@@ -254,7 +255,7 @@ export async function getLatestReconciliationSummary(
      AND s.deleted_at IS NULL
      AND s.status IN ('GENERATED', 'DELIVERED', 'CONFIRMED_SIIGO')
     JOIN users us ON us.id = s.user_id
-    WHERE d.import_run_id = ${latestImport.id}::uuid
+    WHERE d.import_run_id = ${latest.import_run_id}::uuid
       AND d.movement_type = 'DECREASE_DISCREPANCY'
     GROUP BY d.id
   `)) as unknown as Record<string, unknown>[];
@@ -307,7 +308,7 @@ export async function getLatestReconciliationSummary(
   );
 
   return {
-    importRunId: latestImport.id,
+    importRunId: latest.import_run_id,
     previousRunId: (first?.previous_run_id as string | null) ?? null,
     previousRunFinishedAt:
       (first?.previous_run_finished_at as string | Date | null) ?? null,
