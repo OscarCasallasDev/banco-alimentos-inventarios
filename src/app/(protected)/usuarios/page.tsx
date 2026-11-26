@@ -50,6 +50,15 @@ const roleLabels: Record<string, string> = {
   CONTABILIDAD: "Contabilidad",
 };
 
+/** Roles disponibles en el formulario, con su valor interno real. */
+const ROLE_OPTIONS = [
+  { value: "RECEPCION", label: "Recepcionista" },
+  { value: "DESPACHO", label: "Despacho" },
+  { value: "ALMACENISTA", label: "Almacenista" },
+  { value: "COORDINADOR", label: "Coordinador" },
+  { value: "SUPERADMIN", label: "Superadmin" },
+] as const;
+
 const emptyForm = {
   firstName: "",
   lastName: "",
@@ -554,17 +563,22 @@ export default function UsuariosPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Rol *
                 </label>
-                <input
-                  type="text"
+                <select
                   value={form.role}
                   onChange={(e) => setForm({ ...form, role: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                   required
-                  placeholder="almacenista"
-                />
+                >
+                  <option value="">Seleccione un rol</option>
+                  {ROLE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
                 <p className="text-xs text-gray-500 mt-1">
-                  Se escribe a mano y se normaliza: «Almacenista», «ALMACENISTA»
-                  y «almacenista» son el mismo rol.
+                  Seleccione el rol que tendrá el usuario. Los permisos se
+                  asignan automáticamente según ese rol.
                 </p>
               </div>
 

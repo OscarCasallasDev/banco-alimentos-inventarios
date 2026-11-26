@@ -17,7 +17,11 @@ import { getDb, closeDb, type DbTransaction } from "@/lib/db/client";
 import { users, userModules } from "@/lib/db/schema";
 import { buildUsername, slugify, suggestUsername } from "@/lib/auth/username";
 import { checkPasswordStrength } from "@/lib/auth/password";
-import { normalizeRole, canAccessModule } from "@/lib/auth/permissions";
+import {
+  normalizeRole,
+  canAccessModule,
+  permissionsForRole,
+} from "@/lib/auth/permissions";
 import {
   createUser,
   setUserModules,
@@ -124,6 +128,21 @@ describe("Normalización del rol", () => {
 // ============================================================
 // 4. ACCESO A MÓDULOS SEGÚN PERMISOS
 // ============================================================
+
+describe("Permisos de recepción en despacho", () => {
+  it("el almacenista puede guardar la recepción", () => {
+    expect(permissionsForRole("ALMACENISTA")).toContain("salidas.receive");
+  });
+
+  it("despacho y coordinador conservan la recepción", () => {
+    expect(permissionsForRole("DESPACHO")).toContain("salidas.receive");
+    expect(permissionsForRole("COORDINADOR")).toContain("salidas.receive");
+  });
+
+  it("recepción no obtiene el permiso de recepción de salidas", () => {
+    expect(permissionsForRole("RECEPCION")).not.toContain("salidas.receive");
+  });
+});
 
 describe("Acceso a módulos", () => {
   it("el superadmin entra siempre", () => {

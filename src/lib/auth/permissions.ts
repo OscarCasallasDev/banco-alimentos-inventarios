@@ -115,6 +115,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, Permission[]> = {
     "salidas.generate",
     "salidas.view_document",
     "salidas.cancel",
+    "salidas.receive",
   ],
   RECEPCION: ["inventory.read"],
   DESPACHO: [
