@@ -274,6 +274,7 @@ async function main() {
   const salida = await createSalida(
     {
       programId,
+      customDestinationName: "PRUEBA DE RECONCILIACION",
       warehouseId: null,
       notes: "Prueba de reconciliación",
       items: [

@@ -1,11 +1,23 @@
 /**
  * Cálculo puro de la conciliación entre dos importaciones consecutivas.
  *
- * Saldo esperado = saldo anterior − unidades comprometidas del intervalo.
- * Diferencia = saldo nuevo importado − saldo esperado.
+ * Regla principal:
+ *   - Sin cambio de existencias: no hay discrepancia.
+ *   - Aumento de existencias: es una entrada; no hay discrepancia.
+ *   - Disminución: se compara la disminución real contra las unidades
+ *     justificadas por las órdenes del intervalo.
+ *
+ * Saldo esperado = saldo anterior − unidades justificadas.
+ * Diferencia = saldo nuevo − saldo esperado.
  */
 
 import { round3 } from "@/lib/siigo/import/parser";
+
+export type MovementType =
+  | "INCREASE"
+  | "NO_CHANGE"
+  | "DECREASE_MATCHED"
+  | "DECREASE_DISCREPANCY";
 
 export type ReconciliationStatus =
   | "MATCHED"
@@ -24,15 +36,13 @@ export interface ReconciliationCalculationInput {
   previousQuantity: number;
   newQuantity: number;
   committedQuantity: number;
-  /** true = la orden ya debía reflejarse; false = aún está en tolerancia. */
-  matureOrder: boolean | null;
-  toleranceMinutes: number;
 }
 
 export interface ReconciliationCalculation {
   delta: number;
   expectedQuantity: number;
   difference: number;
+  movementType: MovementType;
   status: ReconciliationStatus;
   reviewStatus: ReconciliationReviewStatus;
   note: string;
@@ -51,49 +61,61 @@ export function calculateReconciliation(
   const expectedQuantity = round3(previousQuantity - committedQuantity);
   const difference = round3(newQuantity - expectedQuantity);
 
+  // Sin cambios: la salida todavía no se refleja en Siigo Pyme. Es una
+  // demora operativa normal, no una discrepancia.
+  if (Math.abs(delta) <= EPSILON) {
+    return {
+      delta,
+      expectedQuantity,
+      difference,
+      movementType: "NO_CHANGE",
+      status: "NO_CHANGE",
+      reviewStatus: "NOT_REQUIRED",
+      note:
+        "Sin cambios en las existencias. La salida, si existe, aún no se ha reflejado en Siigo Pyme.",
+    };
+  }
+
+  // Aumento: entrada o incremento de inventario. No se descuentan órdenes.
+  if (delta > 0) {
+    return {
+      delta,
+      expectedQuantity,
+      difference,
+      movementType: "INCREASE",
+      status: "NO_CHANGE",
+      reviewStatus: "NOT_REQUIRED",
+      note: `Incremento de inventario de ${delta} unidades entre importaciones.`,
+    };
+  }
+
+  // Disminución que coincide con las unidades justificadas por las órdenes.
   if (Math.abs(difference) <= EPSILON) {
     return {
       delta,
       expectedQuantity,
       difference,
-      status:
-        committedQuantity > 0 && delta < 0
-          ? "MATCHED"
-          : delta === 0
-            ? "NO_CHANGE"
-            : "MATCHED",
+      movementType: "DECREASE_MATCHED",
+      status: "MATCHED",
       reviewStatus: "NOT_REQUIRED",
       note:
-        committedQuantity > 0 && delta < 0
-          ? "La reducción de Siigo Pyme coincide con las unidades comprometidas."
-          : "El saldo nuevo coincide con el saldo esperado.",
+        "La disminución registrada en Siigo Pyme coincide con las unidades justificadas por las órdenes.",
     };
   }
 
-  if (committedQuantity > 0 && input.matureOrder === false) {
-    return {
-      delta,
-      expectedQuantity,
-      difference,
-      status: "REVIEW",
-      reviewStatus: "DEFERRED",
-      note:
-        "Salida reciente pendiente de reflejarse en Siigo Pyme. " +
-        `Se dará tolerancia de ${input.toleranceMinutes} minutos antes de alertar.`,
-    };
-  }
-
+  // Disminución con diferencia: requiere revisión.
   return {
     delta,
     expectedQuantity,
     difference,
+    movementType: "DECREASE_DISCREPANCY",
     status: "REVIEW",
     reviewStatus: "PENDING",
     note:
-      difference > 0
-        ? "La reducción registrada en Siigo Pyme es menor que las unidades comprometidas. " +
-          "Revisar si la salida ya se registró o si hubo otros movimientos."
-        : "Siigo Pyme redujo más unidades de las comprometidas en el sistema. " +
-          "Revisar posibles movimientos adicionales; no se presume pérdida ni irregularidad.",
+      difference < 0
+        ? "Siigo Pyme descontó más unidades de las justificadas por las órdenes. " +
+          "Revisar posibles movimientos adicionales; no se presume pérdida ni irregularidad."
+        : "Siigo Pyme descontó menos unidades de las justificadas por las órdenes. " +
+          "Revisar si la salida quedó registrada parcialmente o si hubo otros movimientos.",
   };
 }

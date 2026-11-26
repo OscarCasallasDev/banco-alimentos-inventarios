@@ -27,6 +27,7 @@ import { getLastSuccessfulRun } from "@/lib/services/siigo-import.service";
 import { getCurrentUser } from "@/lib/auth/session";
 import ImportarExcel from "@/components/siigo/ImportarExcel";
 import ConciliacionAlertasPanel from "@/components/dashboard/ConciliacionAlertasPanel";
+import ConciliacionResumenPanel from "@/components/dashboard/ConciliacionResumenPanel";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -285,7 +286,12 @@ export default async function DashboardPage() {
       </div>
 
       {/* Conciliación entre importaciones: solo superadministrador (Ricardo). */}
-      {puedeImportar && <ConciliacionAlertasPanel />}
+      {puedeImportar && (
+        <>
+          <ConciliacionResumenPanel />
+          <ConciliacionAlertasPanel />
+        </>
+      )}
 
       {/* Indicadores de órdenes de pedido */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">

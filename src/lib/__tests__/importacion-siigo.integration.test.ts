@@ -388,6 +388,7 @@ describeDb("Importación manual del reporte resumen de Siigo", () => {
     const salida = await createSalida(
       {
         customProgramName: "PRUEBA IDENTIFICACION ALMACENISTA",
+        customDestinationName: "PRUEBA IDENTIFICACION ALMACENISTA",
         notes: "Prueba",
         items: [
           {

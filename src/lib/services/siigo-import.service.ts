@@ -877,7 +877,9 @@ export async function finalizeRun(
           balancesCount,
           movementsCount,
           groupsReview: computation.stats.groupsUnderReview,
-          diffsFound: diffs.length,
+          diffsFound: diffs.filter(
+            (diff) => diff.movementType === "DECREASE_DISCREPANCY"
+          ).length,
           errorSummary: {
             issues: computation.issues.slice(0, 100),
             issueCount: computation.issues.length,
@@ -1685,17 +1687,17 @@ export interface BalanceDiff {
   committedQuantity: number;
   /** Importación anterior con la que se comparó. */
   previousRunId: string | null;
+  /** INCREASE | NO_CHANGE | DECREASE_MATCHED | DECREASE_DISCREPANCY. */
+  movementType:
+    | "INCREASE"
+    | "NO_CHANGE"
+    | "DECREASE_MATCHED"
+    | "DECREASE_DISCREPANCY";
   /** NOT_REQUIRED | PENDING | DEFERRED | VALIDATED. */
   reviewStatus: "NOT_REQUIRED" | "PENDING" | "DEFERRED" | "VALIDATED";
   status: "MATCHED" | "PARTIAL" | "UNMATCHED" | "NO_CHANGE" | "REVIEW";
   matchedSalidaId: string | null;
   note: string;
-}
-
-/** Tolerancia inicial para que una salida se refleje en Siigo Pyme. */
-function reconciliationToleranceMinutes(): number {
-  const raw = Number(process.env.SIIGO_RECONCILIATION_TOLERANCE_MINUTES ?? 30);
-  return Number.isFinite(raw) && raw >= 0 ? raw : 30;
 }
 
 /**
@@ -1854,20 +1856,14 @@ async function computeAndStoreDiffs(
   );
 
   // Órdenes creadas entre la importación anterior y esta, con su cantidad
-  // comprometida. Las recién creadas quedan en tolerancia antes de alertar.
-  const toleranceMinutes = reconciliationToleranceMinutes();
+  // comprometida. Se acumulan por producto + bodega sin duplicar órdenes.
   const committedRows = await tx.execute<{
     group_key: string;
     committed: string;
-    mature: boolean;
   }>(sql`
     SELECT
       lower(btrim(p.code)) || '|' || si.siigo_bodega_code::text AS group_key,
-      SUM(si.quantity) AS committed,
-      bool_or(
-        s.created_at <= now() - (${toleranceMinutes}::int * interval '1 minute')
-        OR s.status IN ('DELIVERED', 'CONFIRMED_SIIGO')
-      ) AS mature
+      SUM(si.quantity) AS committed
     FROM salida_items si
     JOIN salidas s ON s.id = si.salida_id
     JOIN products p ON p.id = si.product_id
@@ -1882,11 +1878,7 @@ async function computeAndStoreDiffs(
     (committedRows as unknown as {
       group_key: string;
       committed: string;
-      mature: boolean;
-    }[]).map((row) => [
-      row.group_key,
-      { quantity: Number(row.committed ?? 0), mature: Boolean(row.mature) },
-    ])
+    }[]).map((row) => [row.group_key, Number(row.committed ?? 0)])
   );
 
   const diffs: BalanceDiff[] = current
@@ -1895,15 +1887,12 @@ async function computeAndStoreDiffs(
       const previousQuantity = previousEntry?.quantity ?? 0;
       const newQuantity = Number(row.quantity ?? 0);
       const reservedQuantity = reservedByKey.get(row.group_key) ?? 0;
-      const committed = committedByKey.get(row.group_key);
-      const committedQuantity = committed?.quantity ?? 0;
+      const committedQuantity = committedByKey.get(row.group_key) ?? 0;
 
       const calculation = calculateReconciliation({
         previousQuantity,
         newQuantity,
         committedQuantity,
-        matureOrder: committed ? committed.mature : null,
-        toleranceMinutes,
       });
 
       return {
@@ -1918,18 +1907,13 @@ async function computeAndStoreDiffs(
         difference: calculation.difference,
         committedQuantity,
         previousRunId: previousRun.id,
+        movementType: calculation.movementType,
         reviewStatus: calculation.reviewStatus,
         status: calculation.status,
         matchedSalidaId: null,
         note: calculation.note,
       };
-    })
-    .filter(
-      (diff) =>
-        diff.delta !== 0 ||
-        diff.committedQuantity !== 0 ||
-        diff.reviewStatus !== "NOT_REQUIRED"
-    );
+    });
 
   if (diffs.length === 0) return [];
 
@@ -1953,6 +1937,7 @@ async function computeAndStoreDiffs(
           ${diff.expectedQuantity}::numeric,
           ${diff.difference}::numeric,
           ${diff.committedQuantity}::numeric,
+          ${diff.movementType}::text,
           ${diff.reviewStatus}::text
         )`
       ),
@@ -1964,7 +1949,7 @@ async function computeAndStoreDiffs(
         import_run_id, product_id, siigo_bodega_code,
         previous_quantity, new_quantity, delta, reserved_quantity, status, note,
         group_key, previous_run_id, expected_quantity, difference,
-        committed_quantity, review_status
+        committed_quantity, movement_type, review_status
       )
       VALUES ${values}
     `);

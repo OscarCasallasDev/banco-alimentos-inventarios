@@ -1475,6 +1475,10 @@ export const siigoBalanceDiffs = pgTable(
     })
       .notNull()
       .default(0),
+    /** INCREASE | NO_CHANGE | DECREASE_MATCHED | DECREASE_DISCREPANCY. */
+    movementType: varchar("movement_type", { length: 30 })
+      .notNull()
+      .default("NO_CHANGE"),
     /** NOT_REQUIRED | PENDING | DEFERRED | VALIDATED. */
     reviewStatus: varchar("review_status", { length: 20 })
       .notNull()

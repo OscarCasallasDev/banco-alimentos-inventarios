@@ -4,58 +4,65 @@ import { describe, it, expect } from "vitest";
 import { calculateReconciliation } from "@/lib/reconciliation/calculation";
 
 describe("Conciliación de saldos por producto y bodega", () => {
-  it("saldo anterior 64, comprometido 61 y nuevo 3: sin discrepancia", () => {
+  it("64 → 64 con orden de 61: SIN CAMBIOS, sin alerta", () => {
+    const result = calculateReconciliation({
+      previousQuantity: 64,
+      committedQuantity: 61,
+      newQuantity: 64,
+    });
+
+    expect(result.movementType).toBe("NO_CHANGE");
+    expect(result.reviewStatus).toBe("NOT_REQUIRED");
+    expect(result.delta).toBe(0);
+  });
+
+  it("64 → 70 con orden de 61: INCREMENTO de 6, sin alerta", () => {
+    const result = calculateReconciliation({
+      previousQuantity: 64,
+      committedQuantity: 61,
+      newQuantity: 70,
+    });
+
+    expect(result.movementType).toBe("INCREASE");
+    expect(result.reviewStatus).toBe("NOT_REQUIRED");
+    expect(result.delta).toBe(6);
+  });
+
+  it("64 → 3 con orden de 61: DISMINUCIÓN CORRECTA, sin alerta", () => {
     const result = calculateReconciliation({
       previousQuantity: 64,
       committedQuantity: 61,
       newQuantity: 3,
-      matureOrder: true,
-      toleranceMinutes: 30,
     });
 
     expect(result.expectedQuantity).toBe(3);
     expect(result.difference).toBe(0);
-    expect(result.status).toBe("MATCHED");
+    expect(result.movementType).toBe("DECREASE_MATCHED");
     expect(result.reviewStatus).toBe("NOT_REQUIRED");
   });
 
-  it("saldo anterior 64, comprometido 61 y nuevo 0: diferencia de 3", () => {
+  it("64 → 0 con orden de 61: DISMINUCIÓN CON DISCREPANCIA de 3", () => {
     const result = calculateReconciliation({
       previousQuantity: 64,
       committedQuantity: 61,
       newQuantity: 0,
-      matureOrder: true,
-      toleranceMinutes: 30,
     });
 
     expect(result.expectedQuantity).toBe(3);
     expect(result.difference).toBe(-3);
+    expect(result.movementType).toBe("DECREASE_DISCREPANCY");
     expect(result.reviewStatus).toBe("PENDING");
   });
 
-  it("salida reciente aún no reflejada: queda diferida, no alerta", () => {
+  it("una disminución sin órdenes queda pendiente de revisión", () => {
     const result = calculateReconciliation({
       previousQuantity: 64,
-      committedQuantity: 61,
-      newQuantity: 64,
-      matureOrder: false,
-      toleranceMinutes: 30,
+      committedQuantity: 0,
+      newQuantity: 60,
     });
 
-    expect(result.difference).toBe(61);
-    expect(result.reviewStatus).toBe("DEFERRED");
-  });
-
-  it("salida antigua no reflejada: genera alerta pendiente", () => {
-    const result = calculateReconciliation({
-      previousQuantity: 64,
-      committedQuantity: 61,
-      newQuantity: 64,
-      matureOrder: true,
-      toleranceMinutes: 30,
-    });
-
-    expect(result.difference).toBe(61);
+    expect(result.difference).toBe(-4);
+    expect(result.movementType).toBe("DECREASE_DISCREPANCY");
     expect(result.reviewStatus).toBe("PENDING");
   });
 
@@ -64,8 +71,6 @@ describe("Conciliación de saldos por producto y bodega", () => {
       previousQuantity: 64,
       committedQuantity: 61,
       newQuantity: 0,
-      matureOrder: true,
-      toleranceMinutes: 30,
     });
 
     expect(result.note).toMatch(/revisar/i);
