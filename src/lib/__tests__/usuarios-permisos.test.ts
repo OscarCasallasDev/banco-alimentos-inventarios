@@ -345,18 +345,18 @@ describeDb("Persistencia de permisos e inicio de sesión", () => {
       const creado = await createUser(tx, {
         firstName: "Óscar",
         lastName: "Casallas",
-        cedula: "123456789",
+        cedula: "900000001",
         password: "Banco2026!",
         role: "ALMACENISTA",
         modules: [],
       });
-      expect(creado.cedula).toBe("123456789");
+      expect(creado.cedula).toBe("900000001");
 
       await expect(
         createUser(tx, {
           firstName: "Ricardo",
           lastName: "Pérez",
-          cedula: "123456789",
+          cedula: "900000001",
           password: "Banco2026!",
           role: "ALMACENISTA",
           modules: [],
